@@ -235,12 +235,16 @@ test('clearing local data returns to onboarding', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '先从宝宝档案开始' })).toBeVisible()
 })
 
-test('mobile workspace exposes a controllable details sheet', async ({ page }) => {
+test('mobile workspace scrolls to the details below the stage', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await createBaby(page)
-  await expect(page.getByTestId('mobile-sheet-controls')).toBeVisible()
-  await page.getByRole('button', { name: '半屏' }).click()
-  await expect(page.getByTestId('context-inspector')).toHaveAttribute('data-sheet', 'half')
+  await expect(page.getByTestId('mobile-sheet-controls')).toHaveCount(0)
+  const inspector = page.getByTestId('context-inspector')
+  await expect(inspector).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const element = document.querySelector('[data-testid="context-inspector"]')
+    return element ? element.getBoundingClientRect().top + window.scrollY : 0
+  })).toBeGreaterThan(500)
 })
 
 test('onboarding keeps the approved visual direction', async ({ page }) => {

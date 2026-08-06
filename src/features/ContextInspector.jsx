@@ -10,21 +10,21 @@ import { CareOverview } from './CareOverview.jsx'
 import { ConcernSupport } from './ConcernSupport.jsx'
 import { QuickRecordPanel } from './QuickRecordPanel.jsx'
 
-export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, baby = null, careEvents = [], concerns = [], onQuickRecord, onCreateConcern, onResolveConcern, sheet, locale = 'zh-CN', readOnly = false }) {
+export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, baby = null, careEvents = [], concerns = [], onQuickRecord, onDeleteQuickRecord, onCreateConcern, onResolveConcern, locale = 'zh-CN', readOnly = false }) {
   const copy = getCopy(locale)
   const [concernOpen, setConcernOpen] = useState(false)
   const stageLabel = stage.id === 'newborn-early' ? copy.newbornEarly : stage.id === 'newborn-adaptation' ? copy.newbornAdaptation : copy.outOfScope
   const stageRange = stage.id === 'newborn-early' ? copy.newbornEarlyRange : stage.id === 'newborn-adaptation' ? copy.newbornAdaptationRange : copy.outOfScope
   if (!topicMode) {
     return (
-      <aside className="context-inspector" data-testid="context-inspector" data-sheet={sheet}>
+      <aside className="context-inspector" data-testid="context-inspector">
         <div className="inspector-hero stage-inspector">
           <p className="eyebrow">{locale === 'en-US' ? 'Current stage' : '当前阶段'}</p>
           <h2>{stageLabel}</h2>
           <p>{stageRange}</p>
         </div>
-        <CareOverview baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} />
-        <QuickRecordPanel locale={locale} onRecord={onQuickRecord} onConcern={() => setConcernOpen(true)} readOnly={readOnly} />
+        <CareOverview baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} onDeleteQuickRecord={onDeleteQuickRecord} readOnly={readOnly} />
+        <QuickRecordPanel baby={baby} locale={locale} onRecord={onQuickRecord} onConcern={() => setConcernOpen(true)} readOnly={readOnly} />
         <ConcernSupport open={concernOpen} onOpenChange={setConcernOpen} locale={locale} concerns={concerns} onCreate={onCreateConcern} onResolve={onResolveConcern} readOnly={readOnly} />
         <RecordsLink locale={locale} />
         <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
@@ -40,7 +40,7 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
 
   const safety = evaluateMedicalTopic(JAUNDICE_TOPIC)
   return (
-    <aside className="context-inspector" data-testid="context-inspector" data-sheet={sheet}>
+    <aside className="context-inspector" data-testid="context-inspector">
       <div className="inspector-hero topic-inspector">
         <p className="eyebrow">{locale === 'en-US' ? 'Condition learning topic' : '疾病认知专题'}</p>
         <h2>{locale === 'en-US' ? JAUNDICE_TOPIC.titleEn : JAUNDICE_TOPIC.title}</h2>
