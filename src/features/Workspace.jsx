@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Maximize2, Minimize2, PanelBottom } from 'lucide-react'
 import { getAgeDays, getStage } from '../domain/baby.js'
 import { createObservation } from '../domain/observation.js'
-import { getAdminTasks, getDailyTasks, updateTaskLog, upsertAdminTaskRecord } from '../domain/carePlan.js'
+import { getAdminTasks, getDailyTasks } from '../domain/carePlan.js'
 import { createGrowthMeasurement } from '../domain/carePlan.js'
 import { createCareEvent, createConcern as createConcernRecord } from '../domain/careEvents.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
@@ -26,28 +26,78 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
   }
 
   function saveObservation(input) {
-    const observation = createObservation(input)
-    setState((current) => ({ ...current, observations: [...current.observations, observation] }))
+    const now = new Date().toISOString()
+    const observation = createObservation(input, { now })
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    const event = createCareEvent({
+      babyId: state.baby.id,
+      kind: 'caregiver_observation',
+      category: input.topicId || 'observation',
+      occurredAt: input.firstNoticedAt || now,
+      recordedAt: now,
+      actor: recorder,
+      source: 'caregiver',
+      payload: observation,
+    })
+    return setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
   }
 
   function updateTask(taskId, input) {
-    setState((current) => ({ ...current, taskLogs: updateTaskLog(current.taskLogs, taskId, input) }))
+    const now = new Date().toISOString()
+    const date = input.date || new Date().toISOString().slice(0, 10)
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    const event = createCareEvent({
+      babyId: state.baby.id,
+      kind: 'caregiver_observation',
+      category: 'care_action',
+      occurredAt: `${date}T12:00:00.000Z`,
+      recordedAt: now,
+      actor: recorder,
+      source: 'caregiver',
+      payload: { taskId, date, status: input.status || 'done', performedBy: input.actor || null, note: input.note || '' },
+    })
+    return setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
   }
 
   function addGrowth(measurement) {
     const next = measurement?.id ? measurement : createGrowthMeasurement(measurement || {})
-    setState((current) => ({ ...current, growthMeasurements: [...current.growthMeasurements, next] }))
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    const event = createCareEvent({
+      id: next.id,
+      babyId: state.baby.id,
+      kind: 'measurement',
+      category: 'growth_measurement',
+      occurredAt: `${next.measuredAt}T12:00:00.000Z`,
+      recordedAt: next.createdAt,
+      actor: recorder,
+      source: 'caregiver',
+      payload: next,
+    })
+    return setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
   }
 
   function updateAdminTask(taskId, input) {
-    setState((current) => ({ ...current, adminTaskRecords: upsertAdminTaskRecord(current.adminTaskRecords, taskId, input) }))
+    const now = new Date().toISOString()
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    return setState((current) => ({
+      ...current,
+      careEvents: [...current.careEvents, createCareEvent({
+        babyId: current.baby.id,
+        kind: 'caregiver_observation',
+        category: 'admin_task',
+        occurredAt: now,
+        recordedAt: now,
+        actor: recorder,
+        source: 'caregiver',
+        payload: { taskId, ...input },
+      })],
+    }))
   }
 
   function recordCareEvent(input) {
     const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
-    const event = createCareEvent({ ...input, babyId: state.baby.id, source: 'caregiver_entered', recordedBy: recorder })
-    setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
-    return event
+    const event = createCareEvent({ ...input, babyId: state.baby.id, source: 'caregiver', actor: recorder, category: input.category || input.type })
+    return setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
   }
 
   function createSupportConcern(input) {
@@ -57,24 +107,23 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
     const event = createCareEvent({
       babyId: state.baby.id,
-      type: 'symptom_observation',
-      source: 'caregiver_entered',
-      recordedBy: recorder,
-      relatedConcernId: concern.id,
-      payload: { supportTopic: input.topicId, supportTitle: topic.title, facts: input.facts || [], notes: input.notes || '', plan: input.plan || null },
+      kind: 'caregiver_observation',
+      category: input.topicId,
+      source: 'caregiver',
+      actor: recorder,
+      payload: { concernId: concern.id, supportTopic: input.topicId, supportTitle: topic.title, facts: input.facts || [], notes: input.notes || '', plan: input.plan || null },
     })
-    setState((current) => ({ ...current, concerns: [...current.concerns, concern], careEvents: [...current.careEvents, event] }))
-    return concern
+    return setState((current) => ({ ...current, concerns: [...current.concerns, concern], careEvents: [...current.careEvents, event] })).then(() => concern)
   }
 
   function resolveSupportConcern(concernId) {
     const now = new Date().toISOString()
     const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
     const concern = state.concerns.find((item) => item.id === concernId)
-    setState((current) => ({
+    return setState((current) => ({
       ...current,
       concerns: current.concerns.map((item) => item.id === concernId ? { ...item, status: 'closed', updatedAt: now } : item),
-      careEvents: [...current.careEvents, createCareEvent({ babyId: state.baby.id, type: 'care_action', source: 'caregiver_entered', recordedBy: recorder, relatedConcernId: concernId, payload: { supportStatus: 'closed', supportTitle: concern?.title || '' } })],
+      careEvents: [...current.careEvents, createCareEvent({ babyId: state.baby.id, kind: 'caregiver_observation', category: 'care_action', source: 'caregiver', actor: recorder, payload: { concernId, supportStatus: 'closed', supportTitle: concern?.title || '' } })],
     }))
   }
 

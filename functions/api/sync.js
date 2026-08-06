@@ -1,12 +1,5 @@
 import { json, requireSession } from '../_shared/auth.js'
 
-const COLLECTIONS = ['observations', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
-
-function recordId(collection, value, index) {
-  if (collection === 'questions') return 'questions'
-  return String(value?.id || `${collection}-${index}`)
-}
-
 function parseRecord(row) {
   try {
     return JSON.parse(row.payload_json)
@@ -27,11 +20,10 @@ async function loadWorkspace(env, accountId, babyId) {
   const baby = await accessibleBaby(env, accountId, babyId)
   if (!baby) return null
   const rows = await env.DB.prepare('SELECT collection, record_id, payload_json FROM workspace_records WHERE baby_id = ? ORDER BY updated_at').bind(baby.id).all()
-  const state = { baby, observations: [], questions: [], taskLogs: [], adminTaskRecords: [], growthMeasurements: [], milestoneRecords: [] }
+  const state = { baby, questions: [] }
   for (const row of rows.results || []) {
     const value = parseRecord(row)
     if (row.collection === 'questions') state.questions = Array.isArray(value) ? value : []
-    else if (COLLECTIONS.includes(row.collection) && value) state[row.collection].push(value)
   }
   return state
 }
@@ -86,12 +78,7 @@ export async function onRequestPost({ request, env }) {
     ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
   `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
 
-  const records = []
-  for (const collection of COLLECTIONS) {
-    const values = Array.isArray(body[collection]) ? body[collection] : []
-    values.forEach((value, index) => records.push([baby.id, collection, recordId(collection, value, index), JSON.stringify(value), value?.updatedAt || value?.createdAt || now, auth.session.accountId]))
-  }
-  records.push([baby.id, 'questions', 'questions', JSON.stringify(Array.isArray(body.questions) ? body.questions : []), now, auth.session.accountId])
+  const records = [[baby.id, 'questions', 'questions', JSON.stringify(Array.isArray(body.questions) ? body.questions : []), now, auth.session.accountId]]
   if (records.length) {
     await env.DB.batch(records.map((record) => env.DB.prepare(`
       INSERT INTO workspace_records (baby_id, collection, record_id, payload_json, updated_at, updated_by)

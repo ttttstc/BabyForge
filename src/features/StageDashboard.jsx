@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Baby, CalendarDays, Check, ChevronLeft, ChevronRight, CircleHelp, LineChart, Plus, ShieldCheck } from 'lucide-react'
 import { getAgeDays, getStage } from '../domain/baby.js'
-import { GROWTH_TYPES, createGrowthMeasurement, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey, upsertAdminTaskRecord, upsertMilestoneRecord } from '../domain/carePlan.js'
+import { GROWTH_TYPES, createGrowthMeasurement, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey } from '../domain/carePlan.js'
+import { createCareEvent } from '../domain/careEvents.js'
 import { Header } from './Header.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
 import { eventTitle } from '../domain/careSummary.js'
@@ -36,20 +37,27 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   const selectedCareEvents = state.careEvents.filter((item) => String(item.occurredAt || item.createdAt).slice(0, 10) === selectedDate && item.status !== 'voided')
   const completed = milestones.filter((item) => item.status === 'done').length
 
+  function recorder() {
+    return state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+  }
+
+  function appendCareEvent(category, payload, occurredAt = new Date().toISOString()) {
+    return setState((current) => ({ ...current, careEvents: [...current.careEvents, createCareEvent({ babyId: current.baby.id, kind: 'caregiver_observation', category, occurredAt, recordedAt: new Date().toISOString(), actor: recorder(), source: 'caregiver', payload })] }))
+  }
+
   function updateMilestone(milestoneId, status) {
-    setState((current) => ({ ...current, milestoneRecords: upsertMilestoneRecord(current.milestoneRecords, milestoneId, { status }) }))
+    return appendCareEvent('milestone', { milestoneId, status })
   }
 
   function addMeasurement(event) {
     event.preventDefault()
     if (!growthValue.trim()) return
     const measurement = createGrowthMeasurement({ type: growthType, value: growthValue, measuredAt: growthDate })
-    setState((current) => ({ ...current, growthMeasurements: [...current.growthMeasurements, measurement] }))
-    setGrowthValue('')
+    appendCareEvent('growth_measurement', measurement, `${growthDate}T12:00:00.000Z`).then(() => setGrowthValue('')).catch(() => {})
   }
 
   function updateAdminTask(taskId, input) {
-    setState((current) => ({ ...current, adminTaskRecords: upsertAdminTaskRecord(current.adminTaskRecords, taskId, input) }))
+    return appendCareEvent('admin_task', { taskId, ...input })
   }
 
   function moveMonth(offset) {

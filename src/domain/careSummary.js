@@ -19,7 +19,11 @@ function asTime(value) {
 }
 
 function isActive(event) {
-  return event?.status !== 'voided'
+  return event?.status === 'active'
+}
+
+function categoryOf(event) {
+  return event?.category || event?.type
 }
 
 export function getRecentCareEvents(events = [], limit = 8) {
@@ -28,16 +32,17 @@ export function getRecentCareEvents(events = [], limit = 8) {
 
 export function eventTitle(event, locale = 'zh-CN') {
   const isEnglish = locale === 'en-US'
-  const label = EVENT_LABELS[event?.type]?.[isEnglish ? 'en' : 'zh'] || (isEnglish ? 'Care record' : '照护记录')
-  if (event?.type === 'bottle_feeding' && event.payload?.amountMl) return `${label} ${event.payload.amountMl} mL`
-  if (event?.type === 'diaper') {
+  const category = event?.category || event?.type
+  const label = EVENT_LABELS[category]?.[isEnglish ? 'en' : 'zh'] || (isEnglish ? 'Care record' : '照护记录')
+  if (category === 'bottle_feeding' && event.payload?.amountMl) return `${label} ${event.payload.amountMl} mL`
+  if (category === 'diaper') {
     const kind = event.payload?.kind
     if (kind === 'urine') return isEnglish ? 'Urine' : '只有尿'
     if (kind === 'stool') return isEnglish ? 'Stool' : '只有便'
     if (kind === 'both') return isEnglish ? 'Urine and stool' : '尿和便'
   }
-  if (event?.type === 'temperature' && event.payload?.value) return `${label} ${event.payload.value} ${event.payload.unit || '°C'}`
-  if (event?.type === 'symptom_observation' && event.payload?.supportTitle) {
+  if (category === 'temperature' && event.payload?.value) return `${label} ${event.payload.value} ${event.payload.unit || '°C'}`
+  if (category === 'symptom_observation' && event.payload?.supportTitle) {
     const title = event.payload.supportTitle?.[isEnglish ? 'en' : 'zh'] || event.payload.supportTitle
     return `${isEnglish ? 'Concern' : '关注'}：${title}`
   }
@@ -48,23 +53,23 @@ export function getCareSnapshot(events = [], concerns = [], now = new Date()) {
   const active = events.filter(isActive)
   const since = asTime(now) - DAY_MS
   const recent = active.filter((event) => asTime(event.occurredAt || event.createdAt) >= since)
-  const feeding = active.filter((event) => event.type === 'breastfeeding' || event.type === 'bottle_feeding')
-  const diapers = recent.filter((event) => event.type === 'diaper')
-  const temperatures = active.filter((event) => event.type === 'temperature')
+  const feeding = active.filter((event) => categoryOf(event) === 'breastfeeding' || categoryOf(event) === 'bottle_feeding')
+  const diapers = recent.filter((event) => categoryOf(event) === 'diaper')
+  const temperatures = active.filter((event) => categoryOf(event) === 'temperature')
   const latest = (items) => items.slice().sort((a, b) => asTime(b.occurredAt || b.createdAt) - asTime(a.occurredAt || a.createdAt))[0] || null
-  const bottleMl = recent.reduce((sum, event) => sum + (event.type === 'bottle_feeding' ? Number(event.payload?.amountMl) || 0 : 0), 0)
+  const bottleMl = recent.reduce((sum, event) => sum + (categoryOf(event) === 'bottle_feeding' ? Number(event.payload?.amountMl) || 0 : 0), 0)
   const wet = diapers.filter((event) => event.payload?.kind === 'urine' || event.payload?.kind === 'both').length
   const stool = diapers.filter((event) => event.payload?.kind === 'stool' || event.payload?.kind === 'both').length
   const openConcerns = concerns.filter((concern) => concern.status === 'open')
   const lastUpdated = latest(active)
   return {
     lastFeeding: latest(feeding),
-    lastDiaper: latest(active.filter((event) => event.type === 'diaper')),
+    lastDiaper: latest(active.filter((event) => categoryOf(event) === 'diaper')),
     lastTemperature: latest(temperatures),
     lastUpdated,
     openConcerns,
     metrics: {
-      feedingCount: recent.filter((event) => event.type === 'breastfeeding' || event.type === 'bottle_feeding').length,
+      feedingCount: recent.filter((event) => categoryOf(event) === 'breastfeeding' || categoryOf(event) === 'bottle_feeding').length,
       bottleMl,
       diaperCount: diapers.length,
       wetDiaperCount: wet,
@@ -82,7 +87,7 @@ export function formatEventTime(event, locale = 'zh-CN') {
 
 export function eventFacts(event, locale = 'zh-CN') {
   const isEnglish = locale === 'en-US'
-  if (event?.type === 'diaper') return isEnglish ? `Entered by ${event.recordedBy?.displayName || 'caregiver'}` : `记录人：${event.recordedBy?.displayName || '照护者'}`
-  if (event?.type === 'bottle_feeding') return isEnglish ? `Actual amount · ${event.recordedBy?.displayName || 'caregiver'}` : `实际喝下奶量 · ${event.recordedBy?.displayName || '照护者'}`
-  return isEnglish ? `Entered by ${event?.recordedBy?.displayName || 'caregiver'}` : `记录人：${event?.recordedBy?.displayName || '照护者'}`
+  if (categoryOf(event) === 'diaper') return isEnglish ? `Entered by ${event.actor?.displayName || event.recordedBy?.displayName || 'caregiver'}` : `记录人：${event.actor?.displayName || event.recordedBy?.displayName || '照护者'}`
+  if (categoryOf(event) === 'bottle_feeding') return isEnglish ? `Actual amount · ${event.actor?.displayName || event.recordedBy?.displayName || 'caregiver'}` : `实际喝下奶量 · ${event.actor?.displayName || event.recordedBy?.displayName || '照护者'}`
+  return isEnglish ? `Entered by ${event?.actor?.displayName || event?.recordedBy?.displayName || 'caregiver'}` : `记录人：${event?.actor?.displayName || event?.recordedBy?.displayName || '照护者'}`
 }

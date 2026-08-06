@@ -25,13 +25,15 @@ export function ConcernSupport({ locale = 'zh-CN', concerns = [], onCreate, onCl
     setFacts((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id])
   }
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault()
     if (!topicId) return
     const plan = evaluateSupport({ topicId, facts })
-    const concern = onCreate?.({ topicId, facts, notes, plan })
-    setLastPlan({ ...plan, concernId: concern?.id })
-    setNotes('')
+    try {
+      const concern = await onCreate?.({ topicId, facts, notes, plan })
+      setLastPlan({ ...plan, concernId: concern?.id })
+      setNotes('')
+    } catch { /* Keep the form values for a manual retry; the header shows offline status. */ }
   }
 
   function close() {

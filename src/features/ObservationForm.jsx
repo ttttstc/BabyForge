@@ -4,29 +4,39 @@ import { getCopy } from '../domain/i18n.js'
 
 export function ObservationForm({ observationCount, onSave, questions, onQuestionsChange, variant = 'jaundice', locale = 'zh-CN', readOnly = false }) {
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
   const copy = getCopy(locale)
   const isPediatric = variant === 'pediatric'
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault()
+    setSaveError('')
+    setSaving(true)
     const data = new FormData(event.currentTarget)
-    onSave({
-      firstNoticedAt: data.get('firstNoticedAt'),
-      bodyAreas: data.getAll('bodyAreas'),
-      symptoms: data.getAll('symptoms'),
-      feedingChange: data.get('feedingChange'),
-      alertness: data.get('alertness'),
-      eliminationNotes: data.get('eliminationNotes'),
-      symptomNotes: data.get('symptomNotes'),
-      temperatureValue: data.get('temperatureValue'),
-      temperatureUnit: data.get('temperatureUnit'),
-      bilirubinValue: data.get('bilirubinValue'),
-      bilirubinUnit: data.get('bilirubinUnit'),
-      measuredAt: data.get('measuredAt'),
-      measurementSource: data.get('measurementSource'),
-    })
-    setSaved(true)
-    event.currentTarget.reset()
+    try {
+      await onSave({
+        firstNoticedAt: data.get('firstNoticedAt'),
+        bodyAreas: data.getAll('bodyAreas'),
+        symptoms: data.getAll('symptoms'),
+        feedingChange: data.get('feedingChange'),
+        alertness: data.get('alertness'),
+        eliminationNotes: data.get('eliminationNotes'),
+        symptomNotes: data.get('symptomNotes'),
+        temperatureValue: data.get('temperatureValue'),
+        temperatureUnit: data.get('temperatureUnit'),
+        bilirubinValue: data.get('bilirubinValue'),
+        bilirubinUnit: data.get('bilirubinUnit'),
+        measuredAt: data.get('measuredAt'),
+        measurementSource: data.get('measurementSource'),
+      })
+      setSaved(true)
+      event.currentTarget.reset()
+    } catch (error) {
+      setSaveError(error?.message || (locale === 'en-US' ? 'Save failed. Your input is still here; retry.' : '保存失败，当前输入已保留，请重试。'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -99,8 +109,9 @@ export function ObservationForm({ observationCount, onSave, questions, onQuestio
             </div>
           </div>
         )}
-        <button className="primary-button compact" type="submit">{copy.save}</button>
+        <button className="primary-button compact" type="submit" disabled={saving}>{saving ? (locale === 'en-US' ? 'Saving…' : '保存中…') : copy.save}</button>
         {(saved || observationCount > 0) && <p className="saved-message"><CheckCircle2 size={15} />{copy.savedObservations(observationCount)}</p>}
+        {saveError && <p className="save-error" role="alert">{saveError}</p>}
         </fieldset>
       </form>
       <label className="questions-field">{copy.questions}

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { getAgeDays } from '../domain/baby.js'
 import { createObservation } from '../domain/observation.js'
+import { createCareEvent } from '../domain/careEvents.js'
 import { getCopy } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { anatomyArt, ANATOMY_RESOURCES, getAnatomyHotspots, getAnatomyResource, getPediatricDisease, PEDIATRIC_DISEASES, localized } from '../content/pediatricDiseases.js'
@@ -158,8 +159,22 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
   }
 
   function saveObservation(input) {
-    const observation = createObservation({ ...input, topicId: disease.id })
-    setState((current) => ({ ...current, observations: [...current.observations, observation] }))
+    const now = new Date().toISOString()
+    const observation = createObservation({ ...input, topicId: disease.id }, { now })
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    return setState((current) => ({
+      ...current,
+      careEvents: [...current.careEvents, createCareEvent({
+        babyId: current.baby.id,
+        kind: 'caregiver_observation',
+        category: disease.id,
+        occurredAt: input.firstNoticedAt || now,
+        recordedAt: now,
+        actor: recorder,
+        source: 'caregiver',
+        payload: observation,
+      })],
+    }))
   }
 
   function handleTool(tool) {
@@ -183,7 +198,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
 
   return (
     <main className="app-shell pediatric-shell">
-      <Header route={ROUTES.pediatric} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} />
+      <Header route={ROUTES.pediatric} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="pediatric-workspace">
         <aside className="pediatric-library" aria-label={locale === 'en-US' ? 'Common pediatric conditions' : '常见儿科病'}>
           <div className="pediatric-panel-heading"><span>{locale === 'en-US' ? 'Explore library' : '探索资料库'}</span><BookOpen size={16} /></div>
