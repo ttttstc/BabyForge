@@ -100,6 +100,7 @@ test('birth measurements persist through onboarding and growth profile settings'
   await page.getByRole('button', { name: '阶段', exact: true }).click()
   await expect(page.locator('.growth-evaluation-note')).toContainText('ws-t-800-2022')
   await expect(page.locator('.growth-evaluation-note')).toContainText('出生记录')
+  await expect(page.getByLabel('成长年龄口径')).toHaveValue('corrected')
 
   await page.getByRole('button', { name: '设置' }).click()
   await page.getByLabel('年龄口径').selectOption('corrected')
@@ -110,6 +111,12 @@ test('birth measurements persist through onboarding and growth profile settings'
   await page.getByRole('button', { name: '阶段', exact: true }).click()
   await expect(page.getByLabel('成长年龄口径')).toHaveValue('corrected')
   await expect(page.locator('.growth-state-summary strong').nth(1)).toContainText('2.1 kg')
+  await page.getByRole('button', { name: '设置' }).click()
+  await page.locator('.settings-growth-form input[name="birthWeight"]').fill('')
+  await page.getByRole('button', { name: '保存成长档案' }).click()
+  await page.getByRole('button', { name: '完成设置' }).click()
+  await page.getByRole('button', { name: '阶段', exact: true }).click()
+  await expect(page.locator('.growth-state-summary strong').nth(1)).toContainText('暂无')
 })
 
 test('girl profile persists and selects the girl visual set', async ({ page }) => {

@@ -51,6 +51,7 @@ export function Onboarding({ onCreate, locale = 'zh-CN', onLocaleChange }) {
       birthDate,
       gestationalWeeks,
       gestationalDays,
+      growthAgeBasis: gestationalWeeks * 7 + gestationalDays < 37 * 7 ? 'corrected' : 'chronological',
       birthMultiplicity: data.get('birthMultiplicity') || 'singleton',
       birthMeasurements,
       sex: data.get('sex'),

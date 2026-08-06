@@ -79,6 +79,10 @@ caregiver_observation | standardized_screening`；`ageBasis` 取
 ID、版本、官方来源 URL、输入记录 ID、年龄口径、评估时间、数据质量和限制；不完整或
 超出标准范围时显示限制，不插值生成不存在的官方参考数据。
 
+早产儿默认使用矫正年龄；未选择矫正年龄时不套用足月儿童的 WS/T 423 参考。经后年龄
+会作为输入口径和展示年龄保存，但 WS/T 423 仍按出生后整月选择官方标准。同步保存时，
+当前成长测量集合是该账号的完整状态，已移除的旧记录会同步为删除。
+
 官方来源： [WS/T 423—2022 PDF](https://www.nhc.gov.cn/wjw/c100311/202211/923e7646561d4b88b72da9097d4da4d5/files/1743494775650_75549.pdf)、[WS/T 800—2022 PDF](https://www.nhc.gov.cn/wjw/c100311/202208/07787ef64ba34fe1bc8bbdae9fd0d4e5/files/1743494772822_91366.pdf)。
 
 ### ObservationRecord

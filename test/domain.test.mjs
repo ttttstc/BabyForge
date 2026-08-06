@@ -243,6 +243,27 @@ test('growth evaluator keeps birth and corrected-age standards isolated', () => 
   assert.match(multiple.limitations.join(' '), /单胎/)
 })
 
+test('postmenstrual age is reported separately from the WS/T 423 reference month', () => {
+  const baby = { id: 'baby-pma', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40, gestationalDays: 0 }
+  const context = getGrowthAgeContext(baby, '2026-08-06', 'postmenstrual')
+  assert.equal(context.ageDays, 285)
+  assert.equal(context.ageMonths, 9)
+  assert.equal(context.referenceAgeMonths, 0)
+  const evaluated = evaluateGrowthMeasurement({ id: 'pma-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical', ageBasis: 'postmenstrual' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(evaluated.dataQuality, 'sufficient')
+  assert.equal(evaluated.ageDays, 285)
+  assert.equal(evaluated.referenceAgeMonths, 0)
+})
+
+test('preterm chronological follow-ups withhold term references until corrected age is selected', () => {
+  const baby = { id: 'baby-preterm-default', birthDate: '2026-08-01', sex: 'female', gestationalWeeks: 28, gestationalDays: 0 }
+  const chronological = evaluateGrowthMeasurement({ id: 'preterm-chronological', type: 'weight', value: '2.8', measuredAt: '2026-11-01', source: 'clinical' }, baby, [], { now: '2026-11-02T10:00:00.000Z' })
+  assert.equal(chronological.dataQuality, 'insufficient')
+  assert.match(chronological.limitations.join(' '), /早产儿.*矫正年龄/)
+  const corrected = evaluateGrowthMeasurement({ id: 'preterm-corrected', type: 'weight', value: '2.8', measuredAt: '2026-11-01', source: 'clinical', ageBasis: 'corrected' }, baby, [], { now: '2026-11-02T10:00:00.000Z' })
+  assert.equal(corrected.dataQuality, 'sufficient')
+})
+
 test('growth evaluator reports insufficient history and never fabricates reference values', () => {
   const baby = { id: 'baby-limited', birthDate: '2026-08-01', sex: 'female', gestationalWeeks: 40, gestationalDays: 0 }
   assert.match(validateGrowthMeasurement({ type: 'weight', value: '-1', measuredAt: '2026-08-06' }, baby, { now: '2026-08-06T10:00:00.000Z' }).join(' '), /正数/)
@@ -282,10 +303,10 @@ test('growth evaluator covers invalid inputs, unsupported standard ages, and tra
   assert.equal(unsupportedAge.dataQuality, 'insufficient')
   assert.match(unsupportedAge.limitations.join(' '), /官方标准缺少对应年龄或指标数据/)
   const previous = createEvaluatedGrowthMeasurement({ id: 'previous', type: 'weight', value: '2.4', measuredAt: '2026-08-01', source: 'clinical' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
-  const shift = evaluateGrowthMeasurement({ id: 'shift', type: 'weight', value: '4.7', measuredAt: '2026-08-01', source: 'clinical' }, baby, [previous], { now: '2026-08-06T10:00:00.000Z' })
+  const shift = evaluateGrowthMeasurement({ id: 'shift', type: 'weight', value: '4.7', measuredAt: '2026-08-02', source: 'clinical' }, baby, [previous], { now: '2026-08-06T10:00:00.000Z' })
   assert.equal(shift.trajectoryStatus, 'shift_needs_review')
   const verifyPrevious = createEvaluatedGrowthMeasurement({ id: 'verify-previous', type: 'weight', value: '3.2', measuredAt: '2026-08-01', source: 'clinical' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
-  const verify = evaluateGrowthMeasurement({ id: 'verify', type: 'weight', value: '5', measuredAt: '2026-08-01', source: 'clinical' }, baby, [verifyPrevious], { now: '2026-08-06T10:00:00.000Z' })
+  const verify = evaluateGrowthMeasurement({ id: 'verify', type: 'weight', value: '5', measuredAt: '2026-08-02', source: 'clinical' }, baby, [verifyPrevious], { now: '2026-08-06T10:00:00.000Z' })
   assert.equal(verify.trajectoryStatus, 'verify_measurement')
   const postmenstrualEvaluation = evaluateGrowthMeasurement({ id: 'pma', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical', ageBasis: 'postmenstrual' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
   assert.match(postmenstrualEvaluation.limitations.join(' '), /经后年龄仅保留/)
@@ -309,12 +330,30 @@ test('legacy facts migrate into CareEvent without treating actor as performer', 
   assert.equal(unchanged.careEvents[0].version, state.careEvents[0].version)
 })
 
+test('removing a legacy growth record emits a void event for sync', () => {
+  const baby = { id: 'baby-growth-delete' }
+  const measurement = { id: 'birth-weight-old', type: 'weight', value: '3.2', unit: 'kg', measuredAt: '2026-08-01', source: 'birth_record' }
+  const previous = bridgeLegacyChanges({ baby, growthMeasurements: [measurement], careEvents: [] }, { baby, growthMeasurements: [measurement], careEvents: [] }, { babyId: baby.id, now: '2026-08-06T10:00:00.000Z' })
+  const next = bridgeLegacyChanges(previous, { ...previous, growthMeasurements: [] }, { babyId: baby.id, now: '2026-08-06T11:00:00.000Z' })
+  const removed = next.careEvents.find((event) => event.payload?.legacyId === measurement.id)
+  assert.equal(removed.status, 'voided')
+  assert.deepEqual(changedCareEvents(previous.careEvents, next.careEvents).map((item) => item.operation), ['void'])
+})
+
 test('care event merge keeps newer server revision and detects local outbox operations', () => {
   const local = createCareEvent({ id: 'event-1', babyId: 'baby-1', occurredAt: '2026-08-05T08:00:00Z', payload: { value: 'local' } }, { now: '2026-08-05T08:01:00Z' })
   const remote = createCareEvent({ ...local, payload: { value: 'server' }, updatedAt: '2026-08-05T08:02:00Z', version: 2 }, { now: '2026-08-05T08:02:00Z' })
   assert.equal(mergeCareEvents([local], [remote])[0].payload.value, 'server')
   assert.deepEqual(changedCareEvents([], [local]).map((item) => item.operation), ['create'])
   assert.deepEqual(changedCareEvents([local], [{ ...local, ...remote, status: 'voided' }]).map((item) => item.operation), ['void'])
+})
+
+test('trajectory history ignores measurements recorded after the current backfilled date', () => {
+  const baby = { id: 'baby-backfill', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40 }
+  const later = createEvaluatedGrowthMeasurement({ id: 'later', type: 'weight', value: '3.8', measuredAt: '2026-08-06', source: 'clinical' }, baby, [], { now: '2026-08-07T10:00:00.000Z' })
+  const backfilled = evaluateGrowthMeasurement({ id: 'backfilled', type: 'weight', value: '3.2', measuredAt: '2026-08-03', source: 'clinical' }, baby, [later], { now: '2026-08-07T10:00:00.000Z' })
+  assert.equal(backfilled.dataQuality, 'sufficient')
+  assert.equal(backfilled.trajectoryStatus, 'insufficient_history')
 })
 
 test('server event input rejects unknown values and missing recorder', () => {

@@ -50,6 +50,7 @@ export function App() {
     const eventChanges = changedCareEvents(previous.careEvents || [], next.careEvents || [])
     const nonEventWorkspaceChanged = JSON.stringify(previous.baby || null) !== JSON.stringify(next.baby || null)
       || JSON.stringify(previous.questions || []) !== JSON.stringify(next.questions || [])
+      || JSON.stringify(previous.growthMeasurements || []) !== JSON.stringify(next.growthMeasurements || [])
     stateRef.current = next
     saveState(globalThis.localStorage, next, session?.username)
     setState(next)

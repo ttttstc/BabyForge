@@ -201,9 +201,24 @@ export function bridgeLegacyChanges(previous = {}, next = {}, options = {}) {
   const migrated = migrateLegacyState(next, { ...options, legacyCollections: [] })
   const previousEvents = new Map((Array.isArray(previous.careEvents) ? previous.careEvents : []).map((event) => [event.id, event]))
   const events = new Map((Array.isArray(migrated.careEvents) ? migrated.careEvents : []).map((event) => [event.id, event]))
+  const now = options.now || new Date().toISOString()
   const collections = !Array.isArray(previous.careEvents) || previous.careEvents.length === 0
     ? LEGACY_COLLECTIONS
     : LEGACY_COLLECTIONS.filter((collection) => JSON.stringify(previous[collection] || []) !== JSON.stringify(next[collection] || []))
+  for (const collection of collections) {
+    const currentIds = new Set((Array.isArray(next[collection]) ? next[collection] : []).map((record, index) => String(record?.id || `${collection}-${index}`)))
+    for (const [eventId, event] of events) {
+      if (event.status === 'voided' || event.payload?.legacyCollection !== collection) continue
+      if (!currentIds.has(String(event.payload?.legacyId || ''))) {
+        events.set(eventId, {
+          ...event,
+          status: 'voided',
+          updatedAt: now,
+          version: Math.max(1, Number(event.version) || 1) + 1,
+        })
+      }
+    }
+  }
   for (const generated of legacyEventsFromState(migrated, { ...options, legacyCollections: collections })) {
     const prior = previousEvents.get(generated.id) || events.get(generated.id)
     if (!prior) {

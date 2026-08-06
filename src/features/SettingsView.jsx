@@ -19,19 +19,22 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
     if (!Number.isFinite(gestationalWeeks) || gestationalWeeks < 20 || gestationalWeeks > 44 || !Number.isInteger(gestationalDays) || gestationalDays < 0 || gestationalDays > 6) return
     setState((current) => {
       const birthDate = current.baby.birthDate
+      const existingBirth = new Map(current.growthMeasurements
+        .filter((item) => item.source === 'birth_record' && String(item.measuredAt).slice(0, 10) === String(birthDate).slice(0, 10))
+        .map((item) => [item.type, item]))
       const birthInputs = [
         ['weight', data.get('birthWeight'), 'kg', 'weight_scale'],
         ['length', data.get('birthLength'), 'cm', 'lying_length'],
         ['headCircumference', data.get('birthHeadCircumference'), 'cm', 'head_circumference_tape'],
       ]
-      const nonBirth = current.growthMeasurements.filter((item) => !(item.measuredAt === birthDate && item.source === 'birth_record'))
+      const nonBirth = current.growthMeasurements.filter((item) => !(String(item.measuredAt).slice(0, 10) === String(birthDate).slice(0, 10) && item.source === 'birth_record'))
       const profile = { ...current.baby, gestationalWeeks, gestationalDays, growthAgeBasis: data.get('growthAgeBasis'), birthMultiplicity: data.get('birthMultiplicity') }
-      const birthMeasurements = birthInputs.filter(([, value]) => String(value || '').trim()).map(([type, value, unit, method]) => createEvaluatedGrowthMeasurement({ type, value: String(value).trim(), unit, measuredAt: birthDate, method, source: 'birth_record' }, profile, nonBirth))
+      const birthMeasurements = birthInputs.filter(([, value]) => String(value || '').trim()).map(([type, value, unit, method]) => createEvaluatedGrowthMeasurement({ id: existingBirth.get(type)?.id, type, value: String(value).trim(), unit, measuredAt: birthDate, method, source: 'birth_record' }, profile, nonBirth))
       return { ...current, baby: profile, growthMeasurements: [...nonBirth, ...birthMeasurements] }
     })
   }
 
-  const birthMeasurements = state.growthMeasurements.filter((item) => item.measuredAt === state.baby?.birthDate && item.source === 'birth_record')
+  const birthMeasurements = state.growthMeasurements.filter((item) => String(item.measuredAt).slice(0, 10) === String(state.baby?.birthDate).slice(0, 10) && item.source === 'birth_record')
   const birthValue = (type) => birthMeasurements.find((item) => item.type === type)?.value || ''
 
   return (

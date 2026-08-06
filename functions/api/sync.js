@@ -90,18 +90,27 @@ export async function onRequestPost({ request, env }) {
   `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, gestationalDays, growthAgeBasis, birthMultiplicity, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
 
   const records = []
+  const deletions = []
   for (const collection of COLLECTIONS) {
-    const values = Array.isArray(body[collection]) ? body[collection] : []
+    if (!Array.isArray(body[collection])) continue
+    const values = body[collection]
+    const ids = values.map((value, index) => recordId(collection, value, index))
+    const placeholders = ids.map(() => '?').join(', ')
+    deletions.push(env.DB.prepare(ids.length
+      ? `DELETE FROM workspace_records WHERE baby_id = ? AND collection = ? AND record_id NOT IN (${placeholders})`
+      : 'DELETE FROM workspace_records WHERE baby_id = ? AND collection = ?').bind(...(ids.length ? [baby.id, collection, ...ids] : [baby.id, collection])))
     values.forEach((value, index) => records.push([baby.id, collection, recordId(collection, value, index), JSON.stringify(value), value?.updatedAt || value?.createdAt || now, auth.session.accountId]))
   }
-  records.push([baby.id, 'questions', 'questions', JSON.stringify(Array.isArray(body.questions) ? body.questions : []), now, auth.session.accountId])
-  if (records.length) {
-    await env.DB.batch(records.map((record) => env.DB.prepare(`
+  const questions = Array.isArray(body.questions) ? body.questions : []
+  deletions.push(env.DB.prepare('DELETE FROM workspace_records WHERE baby_id = ? AND collection = ? AND record_id != ?').bind(baby.id, 'questions', 'questions'))
+  records.push([baby.id, 'questions', 'questions', JSON.stringify(questions), now, auth.session.accountId])
+  if (records.length || deletions.length) {
+    await env.DB.batch([...deletions, ...records.map((record) => env.DB.prepare(`
       INSERT INTO workspace_records (baby_id, collection, record_id, payload_json, updated_at, updated_by)
       VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(baby_id, collection, record_id) DO UPDATE SET payload_json=excluded.payload_json, updated_at=excluded.updated_at, updated_by=excluded.updated_by
       WHERE excluded.updated_at >= workspace_records.updated_at
-    `).bind(...record)))
+    `).bind(...record))])
   }
   const state = await loadWorkspace(env, auth.session.accountId, baby.id)
   return json(state)

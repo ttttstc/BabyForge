@@ -46,6 +46,10 @@ function completedMonths(start, end) {
   return Math.max(0, months)
 }
 
+function approximateMonthsFromDays(days) {
+  return days === null || days === undefined ? null : Math.max(0, Math.floor(days / 30.4375))
+}
+
 function gestationalDays(baby) {
   if (baby?.gestationalWeeks === null || baby?.gestationalWeeks === undefined || String(baby.gestationalWeeks).trim() === '') return null
   const weeks = Number(baby?.gestationalWeeks)
@@ -54,13 +58,20 @@ function gestationalDays(baby) {
   return Math.round(weeks * 7 + days)
 }
 
+function isPreterm(baby) {
+  const days = gestationalDays(baby)
+  return days !== null && days < 37 * 7
+}
+
 export function getGrowthAgeContext(baby, measuredAt, requestedBasis = 'chronological') {
   const basis = GROWTH_AGE_BASES.includes(requestedBasis) ? requestedBasis : 'chronological'
   const measuredDate = dateKey(measuredAt)
   const chronologicalAgeDays = dateDiffInDays(baby.birthDate, measuredAt)
+  const chronologicalAgeMonths = completedMonths(baby.birthDate, measuredAt)
   const gestation = gestationalDays(baby)
   let ageStart = baby.birthDate
   let ageDays = chronologicalAgeDays
+  let ageMonths = chronologicalAgeMonths
   const limitations = []
 
   if (basis === 'corrected') {
@@ -71,6 +82,7 @@ export function getGrowthAgeContext(baby, measuredAt, requestedBasis = 'chronolo
     } else {
       ageStart = addDays(baby.birthDate, 280 - gestation)
       ageDays = dateDiffInDays(ageStart, measuredAt)
+      ageMonths = completedMonths(ageStart, measuredAt)
       if (ageDays < 0) limitations.push('矫正年龄尚未达到预产期')
     }
   }
@@ -79,15 +91,21 @@ export function getGrowthAgeContext(baby, measuredAt, requestedBasis = 'chronolo
   if (basis === 'postmenstrual' && postmenstrualAgeDays === null) {
     limitations.push('缺少有效出生孕周，无法计算经后年龄')
     ageDays = null
+    ageMonths = null
+  } else if (basis === 'postmenstrual') {
+    ageDays = postmenstrualAgeDays
+    ageMonths = approximateMonthsFromDays(postmenstrualAgeDays)
   }
 
   return {
     basis,
     chronologicalAgeDays,
+    chronologicalAgeMonths,
     correctedAgeDays: basis === 'corrected' ? ageDays : gestation === null ? null : chronologicalAgeDays - (280 - gestation),
     postmenstrualAgeDays,
     ageDays,
-    ageMonths: ageStart ? completedMonths(ageStart, measuredAt) : null,
+    ageMonths: ageStart ? ageMonths : null,
+    referenceAgeMonths: chronologicalAgeMonths,
     gestationalDays: gestation,
     measuredAt: measuredDate.toISOString().slice(0, 10),
     limitations,
@@ -162,8 +180,9 @@ function percentileBand(value, row) {
 }
 
 function trajectoryStatus(measurement, history, baby, evaluation) {
+  const measuredDate = String(measurement?.measuredAt || '').slice(0, 10)
   const previous = (Array.isArray(history) ? history : [])
-    .filter((item) => item?.id !== measurement?.id && item?.type === measurement?.type && item?.status !== 'voided')
+    .filter((item) => item?.id !== measurement?.id && item?.type === measurement?.type && item?.status !== 'voided' && String(item?.measuredAt || '').slice(0, 10) < measuredDate)
     .sort((a, b) => String(a.measuredAt).localeCompare(String(b.measuredAt)))
     .at(-1)
   if (!previous) return 'insufficient_history'
@@ -183,6 +202,9 @@ function baseResult(measurement, age, limitations, now) {
     standardPackageId: null,
     standardVersion: null,
     ageBasis: age.basis,
+    ageDays: age.ageDays,
+    ageMonths: age.ageMonths,
+    referenceAgeMonths: age.referenceAgeMonths,
     trajectoryStatus: 'insufficient_history',
     dataQuality: 'insufficient',
     limitations: [...age.limitations, ...limitations],
@@ -250,12 +272,17 @@ export function evaluateGrowthMeasurement(measurement, baby, history = [], optio
     result.standardPackageId = WS_T_423_2022.metadata.id
     result.standardVersion = WS_T_423_2022.metadata.version
     result.standardSourceUrl = WS_T_423_2022.metadata.sourceUrl
-    if (age.ageMonths === null || age.ageDays === null || age.ageMonths > 83 || age.ageDays < 0) {
+    if (isPreterm(baby) && age.basis !== 'corrected') {
+      result.limitations.push('早产儿参考需要使用矫正年龄；当前年龄口径不计算足月儿童标准')
+      return result
+    }
+    const standardAgeMonths = age.basis === 'postmenstrual' ? age.referenceAgeMonths : age.ageMonths
+    if (standardAgeMonths === null || age.ageDays === null || standardAgeMonths > 83 || age.ageDays < 0) {
       result.limitations.push('WS/T 423 仅提供未满 84 月龄的整月参考数据')
       return result
     }
     standard = WS_T_423_2022
-    rows = metricRows(standard, measurement.type, baby.sex, age.ageMonths)
+    rows = metricRows(standard, measurement.type, baby.sex, standardAgeMonths)
     if (!rows.percentile || !rows.standardDeviation) {
       result.limitations.push('官方标准缺少对应年龄或指标数据')
       return result
