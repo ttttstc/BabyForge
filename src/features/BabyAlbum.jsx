@@ -15,6 +15,7 @@ function strings(locale) {
     eyebrow: 'Baby album',
     title: 'Little moments, kept close',
     subtitle: 'Choose a small print below and watch it rise into the frame.',
+    privacy: 'Cloud album keeps the original image bytes; EXIF metadata may be visible to household members.',
     select: 'Choose photos',
     readonly: 'View only',
     shelf: 'Photo shelf',
@@ -40,6 +41,7 @@ function strings(locale) {
     eyebrow: '宝宝相册',
     title: '把小小日常，珍藏成成长故事',
     subtitle: '从下方照片架挑一张，看它滑进上方相框。',
+    privacy: '云端相册保留原始图片内容，照片 EXIF 信息可能会被家庭成员看到。',
     select: '选择照片',
     readonly: '只读查看',
     shelf: '照片书架',
@@ -87,15 +89,15 @@ function displayDate(value, locale) {
 function withPhotoUrl(photo, remote, objectUrls) {
   if (remote) return { ...photo, url: photo.contentUrl }
   const url = URL.createObjectURL(photo.blob)
-  objectUrls.current.push(url)
+  objectUrls.current.add(url)
   return { ...photo, url }
 }
 
 export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = false }) {
   const copy = strings(locale)
   const inputRef = useRef(null)
-  const objectUrls = useRef([])
-  const pendingUrls = useRef([])
+  const objectUrls = useRef(new Set())
+  const pendingUrls = useRef(new Set())
   const [photos, setPhotos] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [pending, setPending] = useState([])
@@ -123,11 +125,13 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
   }, [baby.id, remote, copy.loadError])
 
   useEffect(() => {
-    const photosToRelease = objectUrls.current
-    const previewsToRelease = pendingUrls.current
     return () => {
-      photosToRelease.splice(0).forEach((url) => URL.revokeObjectURL(url))
-      previewsToRelease.splice(0).forEach((url) => URL.revokeObjectURL(url))
+      const photosToRelease = objectUrls.current
+      const previewsToRelease = pendingUrls.current
+      objectUrls.current = new Set()
+      pendingUrls.current = new Set()
+      photosToRelease.forEach((url) => URL.revokeObjectURL(url))
+      previewsToRelease.forEach((url) => URL.revokeObjectURL(url))
     }
   }, [])
 
@@ -137,10 +141,10 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
   const dialogLabel = locale === 'en-US' ? `Add ${pending.length} photos` : `添加 ${pending.length} 张照片`
 
   function releasePendingUrls(items) {
-    const released = new Set(items.map((item) => item.previewUrl))
-    released.forEach((url) => URL.revokeObjectURL(url))
-    const remaining = pendingUrls.current.filter((url) => !released.has(url))
-    pendingUrls.current.splice(0, pendingUrls.current.length, ...remaining)
+    items.forEach((item) => {
+      URL.revokeObjectURL(item.previewUrl)
+      pendingUrls.current.delete(item.previewUrl)
+    })
   }
 
   function closePending(force = false) {
@@ -154,17 +158,20 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     const files = Array.from(event.target.files || [])
     event.target.value = ''
     if (!files.length) return
+    // Preserve the picker order: the first uploaded photo is the album’s
+    // default feature, which is part of the album’s empty-to-first-memory flow.
     const valid = files.filter(isSupportedPhoto)
     if (valid.length !== files.length) setError(copy.invalid)
     else setError('')
     if (!valid.length) return
     setPreparing(true)
-    pendingUrls.current.splice(0).forEach((url) => URL.revokeObjectURL(url))
+    pendingUrls.current.forEach((url) => URL.revokeObjectURL(url))
+    pendingUrls.current.clear()
     try {
       const prepared = await Promise.all(valid.map(async (file) => {
         const detected = await detectPhotoTime(file)
         const previewUrl = URL.createObjectURL(file)
-        pendingUrls.current.push(previewUrl)
+        pendingUrls.current.add(previewUrl)
         return { file, previewUrl, ...detected, manualTime: '' }
       }))
       setPending(prepared)
@@ -221,6 +228,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
           <p className="eyebrow"><Sparkles size={13} />{copy.eyebrow}</p>
           <h1 id="baby-album-title">{copy.title}</h1>
           <p>{copy.subtitle}</p>
+          {remote && <small className="album-privacy-note" role="note">{copy.privacy}</small>}
         </div>
         <button className="album-upload-button" type="button" disabled={readOnly || preparing} onClick={() => inputRef.current?.click()}>
           {preparing ? <Clock3 size={17} /> : <ImagePlus size={17} />}

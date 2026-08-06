@@ -132,6 +132,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .timeline-item small { color: var(--muted); font-size: 0.63rem; }
 .timeline-item em { padding: 4px 6px; color: #137e79; border-radius: 6px; background: white; font-size: 0.58rem; font-style: normal; font-weight: 800; }
 .timeline-dot { color: var(--aqua); font-size: 0.62rem; }
+.stage-timeline-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 7px; padding: 8px 7px 0; color: var(--aqua); border: 0; border-top: 1px solid rgba(41, 79, 101, .08); background: transparent; cursor: pointer; font-size: .63rem; font-weight: 800; text-align: left; }
+.stage-timeline-toggle svg { transition: transform .2s ease; }
+.stage-timeline-toggle svg.rotated { transform: rotate(90deg); }
 .scope-warning { margin: 8px 0 0; color: #a65c4e; font-size: 0.68rem; }
 .count-badge { min-width: 20px; height: 20px; display: grid; place-items: center; color: white; border-radius: 50%; background: var(--coral); }
 .attention-card { flex: 1; }
@@ -1448,6 +1451,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .album-header .eyebrow, .album-upload-dialog .eyebrow { display: flex; align-items: center; gap: 5px; color: var(--coral); }
 .album-header h1 { margin-bottom: 5px; font-family: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif; font-size: clamp(1.72rem, 2.4vw, 2.42rem); line-height: 1.05; letter-spacing: -.05em; }
 .album-header > div > p:last-child { margin: 0; color: #83786f; font-size: .68rem; line-height: 1.55; }
+.album-privacy-note { display: block; max-width: 640px; margin-top: 7px; color: #8d6f5d; font-size: .61rem; line-height: 1.45; }
 .album-upload-button {
   flex: 0 0 auto;
   min-height: 39px;

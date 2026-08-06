@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { getAgeDays, getStage, getStages, getTodayPriorities } from '../src/domain/baby.js'
+import { getAgeDays, getStage, getStageLabel, getStageRangeLabel, getStages, getTodayPriorities } from '../src/domain/baby.js'
 import { createObservation } from '../src/domain/observation.js'
 import { buildDoctorSummary } from '../src/domain/doctorSummary.js'
 import { evaluateMedicalTopic } from '../src/domain/safety.js'
@@ -16,6 +16,7 @@ import { safeEventInput } from '../functions/_shared/care.js'
 import { onRequestPost as onEventPost } from '../functions/api/events.js'
 import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
 import { onRequestPost as onPhotoPost } from '../functions/api/photos.js'
+import { onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
@@ -38,11 +39,31 @@ test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getStages().length, 15)
 })
 
-test('today always exposes the three agreed priorities', () => {
+test('today priorities follow the current age stage', () => {
   assert.deepEqual(
     getTodayPriorities().map((item) => item.id),
     ['feeding', 'elimination', 'safe-sleep'],
   )
+  assert.deepEqual(
+    getTodayPriorities('child-5-6-years').map((item) => item.id),
+    ['routine', 'movement', 'independence'],
+  )
+  assert.equal(getTodayPriorities('child-5-6-years').some((item) => item.id === 'safe-sleep'), false)
+})
+
+test('stage labels keep locale fallbacks in the requested language', () => {
+  assert.equal(getStageLabel({ label: '中文' }, 'en-US'), '')
+  assert.equal(getStageRangeLabel({ rangeLabel: '中文范围' }, 'en-US'), '')
+  assert.equal(getStageLabel({ label: '中文', labelEn: 'English' }, 'en-US'), 'English')
+})
+
+test('every 0–6 stage has a concrete caregiver review prompt', () => {
+  getStages().forEach((stage) => {
+    const milestone = getStageMilestones(stage.id)[0]
+    assert.ok(milestone?.title?.zh && milestone?.title?.en)
+    assert.ok(milestone?.detail?.zh && milestone?.detail?.en)
+    assert.ok(milestone?.dueLabel || Number.isFinite(milestone?.dueDay))
+  })
 })
 
 test('observation records preserve facts, units, and parent provenance', () => {
@@ -212,6 +233,7 @@ test('care plan keeps low-burden task feedback, milestones, and growth facts', (
   assert.ok(adminTasks.some((item) => item.id === 'birth-certificate' && item.state === 'due'))
   const adminRecords = upsertAdminTaskRecord([], 'birth-certificate', { status: 'done' }, '2026-08-05T10:00:00.000Z')
   assert.equal(getAdminTasks('newborn-early', 7, adminRecords).find((item) => item.id === 'birth-certificate').status, 'done')
+  assert.deepEqual(getDailyTasks([], new Date('2026-08-05T12:00:00'), 'child-5-6-years').map((item) => item.id), ['routine', 'movement', 'independence'])
 })
 
 test('official growth packages evaluate birth and postnatal measurements deterministically', () => {
@@ -447,6 +469,9 @@ test('album validates raster files and falls back to file time when EXIF is abse
   assert.equal(isSupportedPhoto({ ...photo, size: MAX_PHOTO_BYTES + 1 }), false)
   assert.equal(Date.parse(dateTimeInputToIso('2026-08-06T10:30')) > 0, true)
   assert.deepEqual(await detectPhotoTime(photo), { takenAt: '2026-08-06T02:30:00.000Z', timeSource: 'file' })
+  const uploadFallback = await detectPhotoTime({ ...photo, lastModified: 0 })
+  assert.equal(uploadFallback.timeSource, 'upload')
+  assert.notEqual(uploadFallback.takenAt, '1970-01-01T00:00:00.000Z')
 })
 
 test('guest sessions cannot upload album photos', async () => {
@@ -454,6 +479,23 @@ test('guest sessions cannot upload album photos', async () => {
   const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) }, BABY_PHOTOS: {} }
   const request = new Request('https://babyforge.test/api/photos', { method: 'POST', headers: { cookie: 'babyforge_session=token' } })
   assert.equal((await onPhotoPost({ request, env })).status, 403)
+})
+
+test('detached baby profiles cannot read retained cloud album URLs', async () => {
+  const env = {
+    DB: {
+      prepare: (sql) => ({
+        bind: () => ({
+          first: async () => sql.includes('auth_sessions')
+            ? { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-1', username: 'parent', role: 'admin', display_name: '家长' }
+            : { id: 'photo-1', object_key: 'babies/baby-1/photos/photo-1', content_type: 'image/jpeg', baby_status: 'detached' },
+        }),
+      }),
+    },
+    BABY_PHOTOS: { get: async () => assert.fail('detached photo must not reach R2') },
+  }
+  const request = new Request('https://babyforge.test/api/photos/photo-1', { headers: { cookie: 'babyforge_session=token' } })
+  assert.equal((await onPhotoGet({ request, env, params: { id: 'photo-1' } })).status, 404)
 })
 
 test('quick care records produce a personal 24-hour snapshot', () => {

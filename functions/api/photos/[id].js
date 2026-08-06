@@ -2,7 +2,7 @@ import { json, requireSession } from '../../_shared/auth.js'
 
 async function accessiblePhoto(env, accountId, photoId) {
   return env.DB.prepare(`
-    SELECT p.* FROM baby_photos p
+    SELECT p.*, COALESCE(b.status, 'active') AS baby_status FROM baby_photos p
     JOIN baby_profiles b ON b.id = p.baby_id
     JOIN household_members m ON m.household_id = b.household_id
     WHERE p.id = ? AND m.account_id = ? AND m.active = 1
@@ -15,7 +15,7 @@ export async function onRequestGet({ request, env, params }) {
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
   const photo = await accessiblePhoto(env, auth.session.accountId, params.id)
-  if (!photo) return json({ error: '照片不存在或无权访问' }, 404)
+  if (!photo || photo.baby_status === 'detached') return json({ error: '照片不存在或无权访问' }, 404)
   const object = await env.BABY_PHOTOS.get(photo.object_key)
   if (!object) return json({ error: '照片文件不存在' }, 404)
   const headers = new Headers()

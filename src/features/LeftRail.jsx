@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Baby, BookOpen, CheckCircle2, ChevronRight, CircleAlert, Clock3, HeartPulse, ShieldCheck } from 'lucide-react'
 import { getSexLabel, getStageLabel, getStageRangeLabel, getStages } from '../domain/baby.js'
 import { navigate, ROUTES } from '../app/router.js'
@@ -13,6 +14,14 @@ const FEEDING_LABELS = {
 export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
   const copy = getCopy(locale)
   const stages = getStages()
+  const [showCompleted, setShowCompleted] = useState(false)
+  const activeIndex = stages.findIndex((item) => item.id === stage.id)
+  const completedStages = stages.filter((item) => ageDays > item.max)
+  const hiddenCompletedCount = completedStages.length > 3 ? completedStages.length - 1 : 0
+  const contextCompletedIndex = activeIndex > 0 ? activeIndex - 1 : stage.id === 'out-of-scope' ? stages.length - 1 : -1
+  const visibleStages = showCompleted || hiddenCompletedCount === 0
+    ? stages
+    : stages.filter((item, index) => ageDays <= item.max || index === contextCompletedIndex)
   return (
     <aside className="left-rail">
       <section className="rail-card active-baby-card">
@@ -27,7 +36,7 @@ export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
       <section className="rail-card stage-timeline-card">
         <div className="section-heading"><span>{copy.growthStage}</span><Clock3 size={16} /></div>
         <div className="stage-timeline-list">
-          {stages.map((item) => {
+          {visibleStages.map((item) => {
             const active = stage.id === item.id
             const completed = ageDays > item.max
             return <button className={`timeline-item ${active ? 'active' : ''}`} key={item.id} onClick={() => navigate(ROUTES.stage)} aria-current={active ? 'step' : undefined}>
@@ -37,6 +46,12 @@ export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
             </button>
           })}
         </div>
+        {hiddenCompletedCount > 0 && <button className="stage-timeline-toggle" type="button" aria-expanded={showCompleted} onClick={() => setShowCompleted((current) => !current)}>
+          {showCompleted
+            ? (locale === 'en-US' ? 'Hide completed stages' : '收起已完成阶段')
+            : (locale === 'en-US' ? `Show ${hiddenCompletedCount} completed stages` : `显示 ${hiddenCompletedCount} 个已完成阶段`)}
+          <ChevronRight size={14} className={showCompleted ? 'rotated' : ''} />
+        </button>}
         {stage.id === 'out-of-scope' && <p className="scope-warning">{getStageRangeLabel(stage, locale)}</p>}
       </section>
 

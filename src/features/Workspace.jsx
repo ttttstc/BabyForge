@@ -15,7 +15,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
   const stage = useMemo(() => getStage(ageDays), [ageDays])
   const topicMode = route === ROUTES.jaundice
-  const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs), [state.taskLogs])
+  const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs, undefined, stage.id), [state.taskLogs, stage.id])
   const adminTasks = useMemo(() => getAdminTasks(stage.id, ageDays, state.adminTaskRecords), [stage.id, ageDays, state.adminTaskRecords])
 
   function updatePreference(key, value) {

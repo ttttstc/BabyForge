@@ -257,14 +257,26 @@ export function App() {
     navigate(ROUTES.login)
   }
 
-  function clearWorkspace() {
+  async function clearWorkspace() {
     const babyId = stateRef.current.baby?.id
-    if (babyId) void clearLocalBabyAlbum(babyId).catch(() => {})
+    if (babyId) {
+      try {
+        await clearLocalBabyAlbum(babyId)
+      } catch (error) {
+        console.warn('[BabyForge] Failed to clear local baby album', error)
+        const message = stateRef.current.preferences.locale === 'en-US'
+          ? 'The local album could not be cleared. Your workspace was kept; please try again.'
+          : '本地相册清理失败，工作区未清除，请重试。'
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message)
+        return false
+      }
+    }
     clearState(globalThis.localStorage, session?.username)
     const initial = createInitialState()
     stateRef.current = initial
     setState(initial)
     navigate(session && canEdit(session) ? ROUTES.onboarding : ROUTES.login)
+    return true
   }
 
   if (!session || route === ROUTES.login || (session?.role === 'guest' && !state.baby)) {

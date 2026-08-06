@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased] - 2026-08-07
+
+### Changed
+
+- Today is intentionally album-first: caregivers can keep a visual memory layer in the center while the right rail still retains care records, stage actions, and safety guidance; the empty album keeps a neutral baby illustration so no upload is required.
+- The 0–6 year stage timeline now uses age-appropriate daily care actions and collapses older completed stages behind an explicit toggle. Stage milestones remain lightweight caregiver review prompts, not developmental screening content.
+
+### Fixed
+
+- Preserve the legacy `#/doctor-summary` deep link by routing it to the shared record center after the summary tab was removed.
+- Block direct cloud-photo reads for detached baby profiles, await local album deletion before clearing a workspace, and disclose that Cloudflare R2 keeps original EXIF metadata visible to household members.
+
 ## [0.2.0.0] - 2026-08-06
 
 ### Added

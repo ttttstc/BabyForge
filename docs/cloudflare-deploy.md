@@ -5,6 +5,7 @@
 - Pages 托管 Vite 构建产物和 `public/assets`。
 - Pages Functions 提供 `/api/login`、`/api/logout`、`/api/session`、宝宝档案 `/api/sync`，事件级 `/api/events`、`/api/events/:id`、共享记录人 `/api/actors`，以及相册 `/api/photos`、`/api/photos/:id`。
 - D1 保存账号、会话、家庭成员、宝宝档案、照护数据和照片元数据；R2 保存原始照片文件。
+- Cloudflare 相册目前不做 EXIF 清洗：原始图片中的拍摄时间、设备或定位等元数据可能随文件被家庭成员读取。上传前请先使用系统相册或图片编辑器移除不希望共享的元数据。
 - 知识库仍然随前端版本发布，暂不开放线上编辑。
 
 ## 首次配置
@@ -42,6 +43,6 @@ npm run cloudflare:deploy
 2. 确认 Pages 项目绑定了 `DB` D1 binding。
 3. 确认 Pages 项目绑定了 `BABY_PHOTOS` R2 binding，生产 bucket 为 `babyforge-photos`。
 4. 管理员首次登录并建立宝宝档案后，再用游客账号验证只读权限。
-5. 确认 `POST /api/sync` 和 `POST /api/photos` 对游客返回 `403`，已授权家庭成员才能读取 `/api/photos/:id`。
+5. 确认 `POST /api/sync` 和 `POST /api/photos` 对游客返回 `403`，已授权且未 detached 的家庭成员才能读取 `/api/photos/:id`。
 6. 确认 `POST /api/events`、`PATCH /api/events/:id`、`DELETE /api/events/:id` 对游客返回 `403`，修改携带过期 `version` 时返回 `409`，纠正和作废仍保留原始事件。
 7. 如使用自定义域名，在 Cloudflare 控制台完成域名绑定后再分享链接。

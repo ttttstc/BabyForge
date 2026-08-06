@@ -81,7 +81,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
   const stage = useMemo(() => getStage(ageDays), [ageDays])
   const snapshot = useMemo(() => projectBabyState({ baby: state.baby, events: state.careEvents, concerns: state.concerns }), [state.baby, state.careEvents, state.concerns])
-  const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs), [state.taskLogs])
+  const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs, undefined, stage.id), [state.taskLogs, stage.id])
   const adminTasks = useMemo(() => getAdminTasks(stage.id, ageDays, state.adminTaskRecords), [stage.id, ageDays, state.adminTaskRecords])
   const milestones = useMemo(() => getStageMilestones(stage.id, state.milestoneRecords), [stage.id, state.milestoneRecords])
 

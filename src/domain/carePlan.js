@@ -30,6 +30,101 @@ export const CARE_TASKS = [
   },
 ]
 
+const STAGE_DAILY_TASKS = {
+  infant: [
+    {
+      id: 'feeding',
+      icon: 'feeding',
+      title: { zh: '观察吃奶和进食', en: 'Notice feeding and eating' },
+      action: { zh: '记录进食方式与和平时相比的变化。', en: 'Record how feeding or eating compares with this baby’s usual pattern.' },
+      acceptance: { zh: '完成一次进食观察并留下时间和看到的事实。', en: 'Observe one feed or meal and leave the time and observable facts.' },
+      why: { zh: '持续的照护观察比凭印象回忆更容易交接。', en: 'A concrete observation is easier to hand off than a memory.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'interaction',
+      icon: 'interaction',
+      title: { zh: '留意清醒互动', en: 'Notice awake interaction' },
+      action: { zh: '记录宝宝回应声音、表情和互动的具体片段。', en: 'Record a concrete moment of responding to sounds, faces, or interaction.' },
+      acceptance: { zh: '写下一次互动发生的时间和宝宝的具体回应，不做能力评分。', en: 'Write the time and concrete response without scoring development.' },
+      why: { zh: '具体场景能帮助下一位照护者理解宝宝自己的节律。', en: 'Concrete scenes help the next caregiver understand this baby’s rhythm.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'sleep-rhythm',
+      icon: 'sleep',
+      title: { zh: '记录睡眠节律', en: 'Note the sleep rhythm' },
+      action: { zh: '记下入睡、醒来和需要安抚的时间点。', en: 'Note when the baby fell asleep, woke up, or needed soothing.' },
+      acceptance: { zh: '留下至少一个睡眠片段的时间和照护事实，不解释是否正常。', en: 'Leave one sleep interval with its time and care facts without judging it.' },
+      why: { zh: '按宝宝自己的节律记录，比套用固定标准更有用。', en: 'This baby’s own rhythm is more useful than a fixed standard.' },
+      duration: { zh: '约 1 分钟', en: 'About 1 min' },
+    },
+  ],
+  toddler: [
+    {
+      id: 'meals',
+      icon: 'feeding',
+      title: { zh: '观察一餐进食', en: 'Notice one meal' },
+      action: { zh: '记录孩子吃了什么、如何参与和需要什么支持。', en: 'Record what the child ate, how they joined in, and what support they needed.' },
+      acceptance: { zh: '完成一次进食观察并留下时间和看到的事实。', en: 'Observe one meal and leave the time and observable facts.' },
+      why: { zh: '具体记录方便家庭交接，也避免用印象替代事实。', en: 'Concrete notes make handoffs easier and avoid replacing facts with impressions.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'movement',
+      icon: 'movement',
+      title: { zh: '留出一次主动活动', en: 'Make room for active play' },
+      action: { zh: '记录孩子今天主动移动、游戏或探索的片段。', en: 'Record a moment of active movement, play, or exploration today.' },
+      acceptance: { zh: '留下一个具体活动场景和孩子需要的支持，不做能力评分。', en: 'Leave one concrete activity scene and the support needed without scoring development.' },
+      why: { zh: '保留实际场景，帮助照护者接着支持孩子。', en: 'A real scene helps caregivers continue the right support.' },
+      duration: { zh: '约 5 分钟', en: 'About 5 min' },
+    },
+    {
+      id: 'communication',
+      icon: 'interaction',
+      title: { zh: '记录一次表达', en: 'Record one way of communicating' },
+      action: { zh: '记下孩子用语言、动作或表情表达需要的场景。', en: 'Record a moment when the child used words, gestures, or expressions to communicate.' },
+      acceptance: { zh: '留下发生场景和孩子的表达方式，不做能力评分。', en: 'Leave the scene and the way the child communicated without scoring development.' },
+      why: { zh: '把可复述的场景留给下一位照护者。', en: 'A repeatable scene is easier to share with the next caregiver.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+  ],
+  child: [
+    {
+      id: 'routine',
+      icon: 'routine',
+      title: { zh: '回顾今天的生活节律', en: 'Review today’s routine' },
+      action: { zh: '记录睡眠、进食和活动中最值得交接的一件事。', en: 'Record the one sleep, meal, or activity fact worth handing off.' },
+      acceptance: { zh: '留下一个带时间的生活事实，另一位照护者能按记录复述。', en: 'Leave one timed routine fact another caregiver can repeat.' },
+      why: { zh: '简短交接比事后凭印象回忆更可靠。', en: 'A short handoff is more reliable than recalling the day later.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'movement',
+      icon: 'movement',
+      title: { zh: '安排一次主动活动', en: 'Make room for active play' },
+      action: { zh: '记录孩子今天主动游戏、运动或户外活动的片段。', en: 'Record a moment of active play, movement, or outdoor time today.' },
+      acceptance: { zh: '留下一个具体活动场景和孩子需要的支持，不做能力评分。', en: 'Leave one concrete activity scene and the support needed without scoring development.' },
+      why: { zh: '具体场景能帮助家庭持续提供合适的支持。', en: 'Concrete scenes help the family continue useful support.' },
+      duration: { zh: '约 5 分钟', en: 'About 5 min' },
+    },
+    {
+      id: 'independence',
+      icon: 'independence',
+      title: { zh: '留意一次自主尝试', en: 'Notice one independent attempt' },
+      action: { zh: '记录孩子自己完成日常小事时需要的支持。', en: 'Record what support the child needed while trying a daily task independently.' },
+      acceptance: { zh: '留下一个具体任务和支持方式，不比较或评分。', en: 'Leave one concrete task and support approach without comparing or scoring.' },
+      why: { zh: '把孩子自己的进步和需要交接给下一位照护者。', en: 'Share the child’s own progress and support needs with the next caregiver.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+  ],
+}
+
+function dailyTaskDefinitions(stageId = 'newborn-early') {
+  const group = stageId?.startsWith('infant') ? 'infant' : stageId?.startsWith('toddler') ? 'toddler' : stageId?.startsWith('child') ? 'child' : null
+  return STAGE_DAILY_TASKS[group] || CARE_TASKS
+}
+
 export const STAGE_MILESTONES = {
   'newborn-early': [
     { id: 'first-visit-plan', dueDay: 1, title: { zh: '准备新生儿访视资料', en: 'Prepare newborn visit notes' }, detail: { zh: '把出生信息、喂养方式和想问的问题放在一起。', en: 'Gather birth details, feeding mode, and questions in one place.' } },
@@ -161,9 +256,9 @@ export function localDateKey(value = new Date()) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 10)
 }
 
-export function getDailyTasks(taskLogs = [], date = new Date()) {
+export function getDailyTasks(taskLogs = [], date = new Date(), stageId = 'newborn-early') {
   const dateKey = localDateKey(date)
-  return CARE_TASKS.map((task) => {
+  return dailyTaskDefinitions(stageId).map((task) => {
     const log = taskLogs.find((item) => item.taskId === task.id && item.date === dateKey)
     return { ...task, date: dateKey, status: log?.status || 'pending', log: log || null }
   })

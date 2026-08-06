@@ -24,6 +24,25 @@ const TODAY_PRIORITIES = [
   { id: 'safe-sleep', title: '确认安全睡眠环境', description: '检查睡眠姿势、睡眠表面和周围物品。', assetKey: 'safeSleep' },
 ]
 
+const TODAY_PRIORITIES_BY_STAGE = {
+  newborn: TODAY_PRIORITIES,
+  infant: [
+    { id: 'feeding', title: '观察吃奶和进食', description: '记录进食方式与和平时相比的变化。', assetKey: 'feeding' },
+    { id: 'interaction', title: '留意清醒互动', description: '记录宝宝回应声音、表情和互动的具体片段。', assetKey: 'interaction' },
+    { id: 'sleep-rhythm', title: '记录睡眠节律', description: '记下入睡、醒来和需要安抚的时间点。', assetKey: 'sleep' },
+  ],
+  toddler: [
+    { id: 'meals', title: '观察一餐进食', description: '记录孩子吃了什么、如何参与和需要什么支持。', assetKey: 'feeding' },
+    { id: 'movement', title: '留出一次主动活动', description: '记录孩子今天主动移动、游戏或探索的片段。', assetKey: 'movement' },
+    { id: 'communication', title: '记录一次表达', description: '记下孩子用语言、动作或表情表达需要的场景。', assetKey: 'interaction' },
+  ],
+  child: [
+    { id: 'routine', title: '回顾今天的生活节律', description: '记录睡眠、进食和活动中最值得交接的一件事。', assetKey: 'routine' },
+    { id: 'movement', title: '安排一次主动活动', description: '记录孩子今天主动游戏、运动或户外活动的片段。', assetKey: 'movement' },
+    { id: 'independence', title: '留意一次自主尝试', description: '记录孩子自己完成日常小事时需要的支持。', assetKey: 'independence' },
+  ],
+}
+
 export const SEX_LABELS = { male: '男孩', female: '女孩' }
 
 export function getSexLabel(sex, locale = 'zh-CN') {
@@ -59,11 +78,11 @@ export function getStages() {
 }
 
 export function getStageLabel(stage, locale = 'zh-CN') {
-  return locale === 'en-US' ? stage?.labelEn || stage?.label || '' : stage?.label || ''
+  return locale === 'en-US' ? stage?.labelEn || '' : stage?.label || ''
 }
 
 export function getStageRangeLabel(stage, locale = 'zh-CN') {
-  return locale === 'en-US' ? stage?.rangeLabelEn || stage?.rangeLabel || '' : stage?.rangeLabel || ''
+  return locale === 'en-US' ? stage?.rangeLabelEn || '' : stage?.rangeLabel || ''
 }
 
 export function getStage(ageDays) {
@@ -79,6 +98,14 @@ export function getStage(ageDays) {
   }
 }
 
-export function getTodayPriorities() {
-  return TODAY_PRIORITIES.map((item) => ({ ...item }))
+export function getTodayPriorities(stageOrId = 'newborn-early') {
+  const stageId = typeof stageOrId === 'string' ? stageOrId : stageOrId?.id
+  const group = stageId?.startsWith('newborn')
+    ? 'newborn'
+    : stageId?.startsWith('infant')
+      ? 'infant'
+      : stageId?.startsWith('toddler')
+        ? 'toddler'
+        : 'child'
+  return (TODAY_PRIORITIES_BY_STAGE[group] || TODAY_PRIORITIES).map((item) => ({ ...item }))
 }

@@ -44,7 +44,8 @@ export async function detectPhotoTime(file) {
   } catch {
     // Metadata is optional. Keep upload usable for stripped or unsupported files.
   }
-  const modified = validDate(Number(file?.lastModified) > 0 ? file.lastModified : null)
+  const modifiedValue = Number(file?.lastModified)
+  const modified = modifiedValue > 0 ? validDate(modifiedValue) : null
   if (modified) return { takenAt: modified.toISOString(), timeSource: 'file' }
   return { takenAt: new Date().toISOString(), timeSource: 'upload' }
 }
