@@ -9,25 +9,22 @@ import { ObservationForm } from './ObservationForm.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
 import { CareOverview } from './CareOverview.jsx'
-import { ConcernSupport } from './ConcernSupport.jsx'
 import { QuickRecordPanel } from './QuickRecordPanel.jsx'
 
-export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, growthMeasurements = [], onAddGrowth, observations, onSaveObservation, careEvents = [], concerns = [], onQuickRecord, onCreateConcern, onResolveConcern, questions, onQuestionsChange, sheet, locale = 'zh-CN', readOnly = false }) {
+export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, growthMeasurements = [], onAddGrowth, observations, onSaveObservation, careEvents = [], concerns = [], onQuickRecord, onDeleteQuickRecord, questions, onQuestionsChange, locale = 'zh-CN', readOnly = false }) {
   const copy = getCopy(locale)
-  const [concernOpen, setConcernOpen] = useState(false)
   const stageLabel = stage.id === 'newborn-early' ? copy.newbornEarly : stage.id === 'newborn-adaptation' ? copy.newbornAdaptation : copy.outOfScope
   const stageRange = stage.id === 'newborn-early' ? copy.newbornEarlyRange : stage.id === 'newborn-adaptation' ? copy.newbornAdaptationRange : copy.outOfScope
   if (!topicMode) {
     return (
-      <aside className="context-inspector" data-testid="context-inspector" data-sheet={sheet}>
+      <aside className="context-inspector" data-testid="context-inspector">
         <div className="inspector-hero stage-inspector">
           <p className="eyebrow">{locale === 'en-US' ? 'Current stage' : '当前阶段'}</p>
           <h2>{stageLabel}</h2>
           <p>{stageRange}</p>
         </div>
-        <CareOverview careEvents={careEvents} concerns={concerns} locale={locale} />
-        <QuickRecordPanel locale={locale} onRecord={onQuickRecord} onConcern={() => setConcernOpen(true)} readOnly={readOnly} />
-        <ConcernSupport open={concernOpen} onOpenChange={setConcernOpen} locale={locale} concerns={concerns} onCreate={onCreateConcern} onResolve={onResolveConcern} readOnly={readOnly} />
+        <CareOverview careEvents={careEvents} concerns={concerns} locale={locale} onDeleteQuickRecord={onDeleteQuickRecord} readOnly={readOnly} />
+        <QuickRecordPanel locale={locale} onRecord={onQuickRecord} readOnly={readOnly} />
         <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
         <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={onAdminTaskUpdate} readOnly={readOnly} />
         <section className="inspector-block tone-aqua">
@@ -42,7 +39,7 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
 
   const safety = evaluateMedicalTopic(JAUNDICE_TOPIC)
   return (
-    <aside className="context-inspector" data-testid="context-inspector" data-sheet={sheet}>
+    <aside className="context-inspector" data-testid="context-inspector">
       <div className="inspector-hero topic-inspector">
         <p className="eyebrow">{locale === 'en-US' ? 'Condition learning topic' : '疾病认知专题'}</p>
         <h2>{locale === 'en-US' ? JAUNDICE_TOPIC.titleEn : JAUNDICE_TOPIC.title}</h2>
@@ -88,5 +85,5 @@ function QuickGrowthEntry({ locale, measurements, onAdd, readOnly = false }) {
       setSaving(false)
     }
   }
-  return <section className="inspector-block quick-growth-entry"><div className="inspector-section-title"><Sparkles size={16} /><span>{isEnglish ? 'Quick growth note' : '快速补录成长参数'}</span></div><p>{isEnglish ? 'Optional: save one raw measurement for the stage trend.' : '可选：补录一次原始测量，阶段页会显示趋势。'}</p><form onSubmit={submit}><fieldset disabled={readOnly || saving}><div className="quick-growth-fields"><select value={type} onChange={(event) => setType(event.target.value)} aria-label={isEnglish ? 'Growth type' : '参数类型'}>{GROWTH_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label[locale === 'en-US' ? 'en' : 'zh']}</option>)}</select><label><span className="sr-only">{isEnglish ? 'Value' : '数值'}</span><input inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder={isEnglish ? 'Value' : '数值'} aria-label={isEnglish ? 'Growth value' : '成长数值'} /></label><button className="primary-button compact" type="submit">{saving ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save' : '记录')}</button></div><label><span className="sr-only">{isEnglish ? 'Date' : '日期'}</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} aria-label={isEnglish ? 'Measurement date' : '日期'} /></label></fieldset></form>{measurements.length > 0 && <small>{isEnglish ? `${measurements.length} saved locally` : `已保存 ${measurements.length} 条本地测量`}</small>}{saveError && <p className="save-error" role="alert">{saveError}</p>}</section>
+  return <section className="inspector-block quick-growth-entry"><div className="inspector-section-title"><Sparkles size={16} /><span>{isEnglish ? 'Quick growth note' : '快速补录成长参数'}</span></div><p>{isEnglish ? 'Record one raw measurement; the stage page will show its date and source.' : '补录一次原始测量，阶段页会显示日期和来源。'}</p><form onSubmit={submit}><fieldset disabled={readOnly || saving}><div className="quick-growth-fields"><select value={type} onChange={(event) => setType(event.target.value)} aria-label={isEnglish ? 'Growth type' : '参数类型'}>{GROWTH_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label[locale === 'en-US' ? 'en' : 'zh']}</option>)}</select><label><span className="sr-only">{isEnglish ? 'Value' : '数值'}</span><input inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder={isEnglish ? 'Value' : '数值'} aria-label={isEnglish ? 'Growth value' : '成长数值'} /></label><button className="primary-button compact" type="submit">{saving ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save' : '记录')}</button></div><label><span className="sr-only">{isEnglish ? 'Date' : '日期'}</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} aria-label={isEnglish ? 'Measurement date' : '日期'} /></label></fieldset></form>{measurements.length > 0 && <small>{isEnglish ? `${measurements.length} saved locally` : `已保存 ${measurements.length} 条本地测量`}</small>}{saveError && <p className="save-error" role="alert">{saveError}</p>}</section>
 }

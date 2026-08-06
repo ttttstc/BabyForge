@@ -12,7 +12,7 @@ export function AdminTaskList({ tasks, locale = 'zh-CN', onUpdate, compact = fal
   return (
     <section className={`admin-task-panel ${compact ? 'compact' : ''}`} data-testid="admin-task-list">
       <header className="admin-task-heading">
-        <div><p className="eyebrow">{isEnglish ? 'Standard newborn errands' : '新生儿标准代办'}</p><h2>{isEnglish ? 'Key things to arrange' : '关键事项清单'}</h2></div>
+        <div><p className="eyebrow">{isEnglish ? 'Stage standard tasks' : '本阶段标准待办'}</p><h2>{isEnglish ? 'Key things to arrange' : '关键事项清单'}</h2></div>
         <strong className={pending > 0 ? 'has-pending' : ''}>{pending}</strong>
       </header>
       {!compact && <p className="admin-task-lede">{isEnglish ? 'Timing varies by location. Keep the item pending until the acceptance standard is actually met.' : '时间以当地机构和官方流程为准。只有达到完成标准，才把事项勾为完成。'}</p>}
