@@ -292,8 +292,53 @@ export function migrateLegacyState(state = {}, options = {}) {
   }
 }
 
-export function bridgeLegacyChanges(_previous = {}, next = {}, options = {}) {
-  return migrateLegacyState(next, options)
+function eventPayloadChanged(previous, next) {
+  // Changing the recorder is metadata; it must not rewrite the historical fact.
+  return JSON.stringify(previous?.payload) !== JSON.stringify(next?.payload)
+    || previous?.occurredAt !== next?.occurredAt
+}
+
+export function bridgeLegacyChanges(previous = {}, next = {}, options = {}) {
+  const migrated = migrateLegacyState(next, { ...options, legacyCollections: [] })
+  const previousEvents = new Map((Array.isArray(previous.careEvents) ? previous.careEvents : []).map((event) => [event.id, event]))
+  const events = new Map((Array.isArray(migrated.careEvents) ? migrated.careEvents : []).map((event) => [event.id, event]))
+  const now = options.now || new Date().toISOString()
+  const collections = !Array.isArray(previous.careEvents) || previous.careEvents.length === 0
+    ? LEGACY_COLLECTIONS
+    : LEGACY_COLLECTIONS.filter((collection) => JSON.stringify(previous[collection] || []) !== JSON.stringify(next[collection] || []))
+  for (const collection of collections) {
+    const currentIds = new Set((Array.isArray(next[collection]) ? next[collection] : []).map((record, index) => String(record?.id || `${collection}-${index}`)))
+    for (const [eventId, event] of events) {
+      if (event.status === 'voided' || event.payload?.legacyCollection !== collection) continue
+      if (!currentIds.has(String(event.payload?.legacyId || ''))) {
+        events.set(eventId, {
+          ...event,
+          status: 'voided',
+          updatedAt: now,
+          version: Math.max(1, Number(event.version) || 1) + 1,
+        })
+      }
+    }
+  }
+  for (const generated of legacyEventsFromState(migrated, { ...options, legacyCollections: collections })) {
+    const prior = previousEvents.get(generated.id) || events.get(generated.id)
+    if (!prior) {
+      events.set(generated.id, generated)
+      continue
+    }
+    if (eventPayloadChanged(prior, generated)) {
+      events.set(generated.id, {
+        ...prior,
+        ...generated,
+        version: Math.max(1, Number(prior.version) || 1) + 1,
+        status: 'corrected',
+        createdAt: prior.createdAt || generated.createdAt,
+      })
+    } else {
+      events.set(generated.id, prior)
+    }
+  }
+  return { ...migrated, careEvents: [...events.values()] }
 }
 
 export function mergeCareEvents(local = [], remote = []) {

@@ -8,9 +8,10 @@ import { LoginView } from '../features/LoginView.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
-import { applyCareEventsToLegacy, mergeCareEvents, migrateLegacyState } from '../domain/careEvents.js'
+import { applyCareEventsToLegacy, createCareEvent, mergeCareEvents, migrateLegacyState } from '../domain/careEvents.js'
 import { concernsFromCareEvents } from '../domain/healthSupport.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
+import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -49,6 +50,7 @@ export function App() {
     const eventChanges = changedCareEvents(previous.careEvents || [], next.careEvents || [])
     const nonEventWorkspaceChanged = JSON.stringify(previous.baby || null) !== JSON.stringify(next.baby || null)
       || JSON.stringify(previous.questions || []) !== JSON.stringify(next.questions || [])
+      || JSON.stringify(previous.growthMeasurements || []) !== JSON.stringify(next.growthMeasurements || [])
     stateRef.current = next
     saveState(globalThis.localStorage, next, session?.username)
     setState(next)
@@ -185,7 +187,23 @@ export function App() {
 
   function createBaby(baby) {
     if (readOnly || !session) return
-    commitState((current) => ({ ...current, baby }))
+    const { birthMeasurements = [], ...profile } = baby
+    commitState((current) => {
+      const actor = current.careActors.find((item) => item.id === current.preferences.currentRecorderId) || current.careActors[0]
+      const measurements = birthMeasurements.map((input) => createEvaluatedGrowthMeasurement(input, profile, current.growthMeasurements))
+      const events = measurements.map((measurement) => createCareEvent({
+        id: measurement.id,
+        babyId: profile.id,
+        kind: 'measurement',
+        category: 'growth_measurement',
+        occurredAt: `${measurement.measuredAt}T12:00:00.000Z`,
+        recordedAt: measurement.createdAt,
+        actor,
+        source: 'caregiver',
+        payload: measurement,
+      }))
+      return { ...current, baby: profile, careEvents: [...current.careEvents, ...events] }
+    })
     navigate(ROUTES.today)
   }
 

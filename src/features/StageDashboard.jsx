@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Baby, CalendarDays, Check, ChevronLeft, ChevronRight, CircleHelp, LineChart, Plus, ShieldCheck } from 'lucide-react'
 import { getAgeDays, getStage } from '../domain/baby.js'
-import { GROWTH_TYPES, createGrowthMeasurement, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey } from '../domain/carePlan.js'
+import { GROWTH_TYPES, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey } from '../domain/carePlan.js'
+import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, GROWTH_AGE_BASES, GROWTH_SOURCES } from '../domain/growth.js'
 import { createCareEvent } from '../domain/careEvents.js'
 import { Header } from './Header.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
@@ -29,6 +30,8 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   const [growthType, setGrowthType] = useState('weight')
   const [growthValue, setGrowthValue] = useState('')
   const [growthDate, setGrowthDate] = useState(localDateKey(today))
+  const [growthSource, setGrowthSource] = useState('caregiver_observation')
+  const [growthAgeBasis, setGrowthAgeBasis] = useState(state.baby.growthAgeBasis || 'chronological')
 
   const monthDays = useMemo(() => getMonthDays(calendarCursor.getFullYear(), calendarCursor.getMonth()), [calendarCursor])
   const selectedDateObject = new Date(`${selectedDate}T12:00:00`)
@@ -36,13 +39,10 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   const selectedMeasurements = state.growthMeasurements.filter((item) => item.measuredAt === selectedDate)
   const selectedCareEvents = state.careEvents.filter((item) => String(item.occurredAt || item.createdAt).slice(0, 10) === selectedDate && item.status !== 'voided')
   const completed = milestones.filter((item) => item.status === 'done').length
+  const evaluations = useMemo(() => state.growthMeasurements.map((item) => ({ ...item, evaluation: evaluateGrowthMeasurement(item, state.baby, state.growthMeasurements) })), [state.baby, state.growthMeasurements])
 
-  function recorder() {
-    return state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
-  }
-
-  function appendCareEvent(category, payload, occurredAt = new Date().toISOString()) {
-    return setState((current) => ({ ...current, careEvents: [...current.careEvents, createCareEvent({ babyId: current.baby.id, kind: 'caregiver_observation', category, occurredAt, recordedAt: new Date().toISOString(), actor: recorder(), source: 'caregiver', payload })] }))
+  function appendCareEvent(category, payload, occurredAt = new Date().toISOString(), kind = category === 'growth_measurement' ? 'measurement' : 'caregiver_observation') {
+    return setState((current) => ({ ...current, careEvents: [...current.careEvents, createCareEvent({ id: payload?.id, babyId: current.baby.id, kind, category, occurredAt, recordedAt: new Date().toISOString(), actor: current.careActors.find((actor) => actor.id === current.preferences.currentRecorderId) || current.careActors[0], source: 'caregiver', payload })] }))
   }
 
   function updateMilestone(milestoneId, status) {
@@ -52,8 +52,13 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   function addMeasurement(event) {
     event.preventDefault()
     if (!growthValue.trim()) return
-    const measurement = createGrowthMeasurement({ type: growthType, value: growthValue, measuredAt: growthDate })
-    appendCareEvent('growth_measurement', measurement, `${growthDate}T12:00:00.000Z`).then(() => setGrowthValue('')).catch(() => {})
+    const method = growthType === 'weight' ? 'weight_scale' : growthType === 'length' ? 'lying_length' : 'head_circumference_tape'
+    const measurement = createEvaluatedGrowthMeasurement({ type: growthType, value: growthValue, measuredAt: growthDate, source: growthSource, method, ageBasis: growthAgeBasis }, state.baby, state.growthMeasurements)
+    const save = appendCareEvent('growth_measurement', measurement, `${growthDate}T12:00:00.000Z`, 'measurement')
+    return Promise.resolve(save).then(() => {
+      setGrowthValue('')
+      return measurement
+    })
   }
 
   function updateAdminTask(taskId, input) {
@@ -90,7 +95,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
 
           <CalendarCard locale={locale} monthDays={monthDays} cursor={calendarCursor} selectedDate={selectedDate} onSelect={setSelectedDate} onMove={moveMonth} taskLogs={state.taskLogs} measurements={state.growthMeasurements} careEvents={state.careEvents} calendarEvents={calendarEvents} />
 
-          <GrowthCard locale={locale} measurements={state.growthMeasurements} growthType={growthType} setGrowthType={setGrowthType} growthValue={growthValue} setGrowthValue={setGrowthValue} growthDate={growthDate} setGrowthDate={setGrowthDate} onSubmit={addMeasurement} readOnly={readOnly} />
+          <GrowthCard locale={locale} baby={state.baby} growthAgeBasis={growthAgeBasis} setGrowthAgeBasis={(value) => { setGrowthAgeBasis(value); setState((current) => ({ ...current, baby: { ...current.baby, growthAgeBasis: value } })) }} measurements={state.growthMeasurements} evaluations={evaluations} growthType={growthType} setGrowthType={setGrowthType} growthValue={growthValue} setGrowthValue={setGrowthValue} growthDate={growthDate} setGrowthDate={setGrowthDate} growthSource={growthSource} setGrowthSource={setGrowthSource} onSubmit={addMeasurement} readOnly={readOnly} />
 
           <section className="stage-day-card">
             <header className="dashboard-card-heading"><div><p className="eyebrow">{isEnglish ? 'Selected day' : '选中日期'}</p><h2>{dayTitle(selectedDateObject, locale)}</h2></div><CalendarDays size={18} /></header>
@@ -127,17 +132,30 @@ function CalendarCard({ locale, monthDays, cursor, selectedDate, onSelect, onMov
   </section>
 }
 
-function GrowthCard({ locale, measurements, growthType, setGrowthType, growthValue, setGrowthValue, growthDate, setGrowthDate, onSubmit, readOnly = false }) {
+function GrowthCard({ locale, baby, growthAgeBasis, setGrowthAgeBasis, measurements, evaluations, growthType, setGrowthType, growthValue, setGrowthValue, growthDate, setGrowthDate, growthSource, setGrowthSource, onSubmit, readOnly = false }) {
   const isEnglish = locale === 'en-US'
-  const values = measurements.filter((item) => item.type === growthType).slice(-8)
+  const [entryError, setEntryError] = useState('')
+  const values = measurements.filter((item) => item.type === growthType).sort((a, b) => String(a.measuredAt).localeCompare(String(b.measuredAt))).slice(-8)
   const definition = GROWTH_TYPES.find((item) => item.id === growthType)
   const max = Math.max(...values.map((item) => Number(item.value) || 0), 1)
+  const latest = [...evaluations].filter((item) => item.type === growthType && item.evaluation?.dataQuality === 'sufficient').sort((a, b) => String(a.measuredAt).localeCompare(String(b.measuredAt))).at(-1)
+  const latestAttempt = [...evaluations].filter((item) => item.type === growthType).sort((a, b) => String(a.measuredAt).localeCompare(String(b.measuredAt))).at(-1)
+  const age = getGrowthAgeContext(baby, localDateKey(), growthAgeBasis)
+  const ageLabel = isEnglish ? `${age.ageDays} days · ${age.basis}` : `${age.ageDays} 天 · ${age.basis === 'corrected' ? '矫正年龄' : age.basis === 'postmenstrual' ? '经后年龄' : '实际年龄'}`
   return <section className="growth-card">
     <header className="dashboard-card-heading"><div><p className="eyebrow">{isEnglish ? 'Growth facts' : '成长参数'}</p><h2>{isEnglish ? 'A simple trend, not a score' : '看趋势，不打分'}</h2></div><LineChart size={18} /></header>
     <div className="growth-switcher">{GROWTH_TYPES.map((item) => <button key={item.id} className={growthType === item.id ? 'active' : ''} onClick={() => setGrowthType(item.id)}>{localized(item.label, locale)}</button>)}</div>
     {values.length ? <div className="growth-bars" aria-label={isEnglish ? `${localized(definition.label, locale)} trend` : `${localized(definition.label, locale)}趋势`}>{values.map((item) => <div key={item.id} className="growth-bar-item"><span style={{ height: `${Math.max(12, ((Number(item.value) || 0) / max) * 100)}%` }} /><small>{item.value}</small><em>{item.measuredAt.slice(5)}</em></div>)}</div> : <div className="growth-empty"><LineChart size={24} /><p>{isEnglish ? 'Add one optional measurement to begin.' : '可选地补录一次测量，开始看到自己的时间线。'}</p></div>}
-    <form className="growth-entry" onSubmit={onSubmit}><fieldset disabled={readOnly}><label><span className="sr-only">{isEnglish ? 'Value' : '数值'}</span><input inputMode="decimal" value={growthValue} onChange={(event) => setGrowthValue(event.target.value)} placeholder={isEnglish ? 'Value' : '数值'} aria-label={isEnglish ? 'Growth value' : '成长数值'} /><small>{definition.unit}</small></label><label><span className="sr-only">{isEnglish ? 'Date' : '日期'}</span><input type="date" value={growthDate} onChange={(event) => setGrowthDate(event.target.value)} aria-label={isEnglish ? 'Measurement date' : '测量日期'} /></label><button className="primary-button compact" type="submit"><Plus size={15} />{isEnglish ? 'Add' : '补录'}</button></fieldset></form>
-    <small className="growth-source"><Baby size={13} />{isEnglish ? 'Caregiver-entered · no reference-band interpretation' : '照护者填写 · 不解释参考区间'}</small>
+    <form className="growth-entry" onSubmit={(event) => { const result = onSubmit(event); if (!result) return; void Promise.resolve(result).then((value) => setEntryError(value?.evaluation?.dataQuality === 'sufficient' ? '' : value?.evaluation?.limitations?.[0] || (isEnglish ? 'Verify this measurement before relying on it.' : '请先复核这次测量。'))).catch((error) => setEntryError(error?.message || (isEnglish ? 'Could not save this measurement.' : '这次测量保存失败。'))) }}><fieldset disabled={readOnly}><label><span className="sr-only">{isEnglish ? 'Value' : '数值'}</span><input inputMode="decimal" value={growthValue} onChange={(event) => setGrowthValue(event.target.value)} placeholder={isEnglish ? 'Value' : '数值'} aria-label={isEnglish ? 'Growth value' : '成长数值'} /><small>{definition.unit}</small></label><label><span className="sr-only">{isEnglish ? 'Date' : '日期'}</span><input type="date" value={growthDate} onChange={(event) => setGrowthDate(event.target.value)} aria-label={isEnglish ? 'Measurement date' : '测量日期'} /></label><button className="primary-button compact" type="submit"><Plus size={15} />{isEnglish ? 'Add' : '补录'}</button></fieldset>{entryError && <p className="growth-entry-error" role="alert">{entryError}</p>}</form>
+    <div className="growth-state-summary">
+      <div><span>{isEnglish ? 'Age basis' : '年龄口径'}</span><strong>{ageLabel}</strong></div>
+      <div><span>{isEnglish ? 'Latest reliable measurement' : '最近可靠测量'}</span><strong>{latest ? `${latest.value} ${latest.unit} · ${latest.measuredAt}` : (isEnglish ? 'None yet' : '暂无')}</strong></div>
+      <div><span>{isEnglish ? 'Reference position' : '参考位置'}</span><strong>{latest ? growthReferenceLabel(latest.evaluation, locale) : (isEnglish ? 'Needs a valid measurement' : '需要有效测量')}</strong></div>
+    </div>
+    {latest && <div className="growth-evaluation-note"><strong>{isEnglish ? `${latest.evaluation.standardPackageId} · version ${latest.evaluation.standardVersion}` : `${latest.evaluation.standardPackageId} · 版本 ${latest.evaluation.standardVersion}`}</strong><span>{growthSourceLabel(latest.evaluation.measurementSource, locale)} · {growthTrajectoryLabel(latest.evaluation.trajectoryStatus, locale)}</span>{latest.evaluation.birthSizeCategory && <span>{isEnglish ? `Birth size: ${latest.evaluation.birthSizeCategory}` : `出生时胎龄大小：${latest.evaluation.birthSizeCategory}`}</span>}<a href={latest.evaluation.standardSourceUrl} target="_blank" rel="noreferrer">{isEnglish ? 'Official standard source' : '官方标准来源'}</a></div>}
+    {latestAttempt && latestAttempt.evaluation?.dataQuality !== 'sufficient' && <div className="growth-evaluation-warning" role="alert"><strong>{isEnglish ? 'This entry is not used as a reliable reference yet.' : '这条记录暂不作为可靠参考。'}</strong><span>{latestAttempt.evaluation.limitations?.[0] || (isEnglish ? 'Verify the date, unit, and profile details.' : '请核对日期、单位和档案信息。')}</span>{latestAttempt.evaluation.standardSourceUrl && <a href={latestAttempt.evaluation.standardSourceUrl} target="_blank" rel="noreferrer">{isEnglish ? 'Check the official source' : '查看官方标准来源'}</a>}</div>}
+    <div className="growth-entry-meta"><label><span>{isEnglish ? 'Age basis' : '年龄口径'}</span><select value={growthAgeBasis} onChange={(event) => setGrowthAgeBasis(event.target.value)} disabled={readOnly} aria-label={isEnglish ? 'Growth age basis' : '成长年龄口径'}>{GROWTH_AGE_BASES.map((basis) => <option key={basis} value={basis}>{basis === 'corrected' ? (isEnglish ? 'Corrected age' : '矫正年龄') : basis === 'postmenstrual' ? (isEnglish ? 'Postmenstrual age' : '经后年龄') : (isEnglish ? 'Chronological age' : '实际年龄')}</option>)}</select></label><label><span>{isEnglish ? 'Source' : '来源'}</span><select value={growthSource} onChange={(event) => setGrowthSource(event.target.value)} disabled={readOnly} aria-label={isEnglish ? 'Growth measurement source' : '成长测量来源'}>{GROWTH_SOURCES.map((source) => <option key={source} value={source}>{growthSourceLabel(source, locale)}</option>)}</select></label></div>
+    <small className="growth-source"><Baby size={13} />{isEnglish ? 'Raw input stays traceable; reference position is not a diagnosis.' : '保留原始输入和来源；参考位置不等于诊断。'}</small>
   </section>
 }
 

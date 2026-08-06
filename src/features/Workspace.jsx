@@ -3,7 +3,7 @@ import { Maximize2, Minimize2, PanelBottom } from 'lucide-react'
 import { getAgeDays, getStage } from '../domain/baby.js'
 import { createObservation } from '../domain/observation.js'
 import { getAdminTasks, getDailyTasks } from '../domain/carePlan.js'
-import { createGrowthMeasurement } from '../domain/carePlan.js'
+import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement } from '../domain/growth.js'
 import { createCareEvent, createConcern as createConcernRecord } from '../domain/careEvents.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { ROUTES } from '../app/router.js'
@@ -60,7 +60,10 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
   }
 
   function addGrowth(measurement) {
-    const next = measurement?.id ? measurement : createGrowthMeasurement(measurement || {})
+    const now = new Date().toISOString()
+    const next = measurement?.id
+      ? { ...measurement, evaluation: evaluateGrowthMeasurement(measurement, state.baby, state.growthMeasurements) }
+      : createEvaluatedGrowthMeasurement(measurement || {}, state.baby, state.growthMeasurements)
     const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
     const event = createCareEvent({
       id: next.id,
@@ -68,7 +71,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
       kind: 'measurement',
       category: 'growth_measurement',
       occurredAt: `${next.measuredAt}T12:00:00.000Z`,
-      recordedAt: next.createdAt,
+      recordedAt: now,
       actor: recorder,
       source: 'caregiver',
       payload: next,

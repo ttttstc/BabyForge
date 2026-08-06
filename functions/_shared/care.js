@@ -17,7 +17,7 @@ export class EventInputError extends Error {
 export async function accessibleBaby(env, accountId, babyId) {
   return env.DB.prepare(`
     SELECT b.id, b.household_id AS householdId, b.nickname, b.birth_date AS birthDate,
-      b.gestational_weeks AS gestationalWeeks, b.sex, b.feeding_mode AS feedingMode, b.locale,
+      b.gestational_weeks AS gestationalWeeks, b.gestational_days AS gestationalDays, b.growth_age_basis AS growthAgeBasis, b.birth_multiplicity AS birthMultiplicity, b.sex, b.feeding_mode AS feedingMode, b.locale,
       COALESCE(b.status, 'active') AS status
     FROM baby_profiles b JOIN household_members m ON m.household_id = b.household_id
     WHERE b.id = ? AND m.account_id = ? AND m.active = 1

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ArrowLeft, Baby, Check, Clipboard, FileHeart, LogOut, Printer, RotateCcw, ShieldCheck } from 'lucide-react'
 import { buildDoctorSummary } from '../domain/doctorSummary.js'
 import { getSexLabel } from '../domain/baby.js'
@@ -24,6 +24,27 @@ function recorderFor(summary, collection, record) {
   return summary.careEvents.find((event) => event.id === record.id || (event.payload?.legacyCollection === collection && event.payload?.legacyId === record.id))?.actor?.displayName || summary.careEvents.find((event) => event.id === record.id || (event.payload?.legacyCollection === collection && event.payload?.legacyId === record.id))?.recordedBy?.displayName || ''
 }
 
+function eventRecord(event) {
+  const payload = event?.payload || {}
+  return payload.record && typeof payload.record === 'object' ? payload.record : payload
+}
+
+function summaryFacts(event, locale) {
+  const record = eventRecord(event)
+  const isEnglish = locale === 'en-US'
+  const facts = []
+  if (record.bodyAreas?.length) facts.push([isEnglish ? 'Areas' : '部位', record.bodyAreas.map((area) => label(AREA_LABELS[area], locale, area)).join(isEnglish ? ', ' : '、')])
+  if (record.symptoms?.length) facts.push([isEnglish ? 'Symptoms' : '表现', record.symptoms.map((symptom) => label(SYMPTOM_LABELS[symptom], locale, symptom)).join(isEnglish ? ', ' : '、')])
+  if (record.feedingChange) facts.push([isEnglish ? 'Feeding' : '吃奶', label(FEEDING_LABELS[record.feedingChange], locale, record.feedingChange)])
+  if (record.alertness) facts.push([isEnglish ? 'Alertness' : '精神状态', label(ALERTNESS_LABELS[record.alertness], locale, record.alertness)])
+  if (record.eliminationNotes) facts.push([isEnglish ? 'Urine / stool notes' : '尿便备注', record.eliminationNotes])
+  if (record.symptomNotes) facts.push([isEnglish ? 'Notes' : '备注', record.symptomNotes])
+  if (record.temperatureValue) facts.push([isEnglish ? 'Temperature' : '体温', `${record.temperatureValue} ${record.temperatureUnit || ''}`.trim()])
+  if (record.bilirubinValue) facts.push([isEnglish ? 'Bilirubin' : '胆红素', `${record.bilirubinValue} ${record.bilirubinUnit || ''}`.trim()])
+  if (record.value !== undefined && record.unit) facts.push([isEnglish ? 'Value' : '数值', `${record.value} ${record.unit}`])
+  return facts
+}
+
 function formatSummaryText(summary, locale) {
   const isEnglish = locale === 'en-US'
   const lines = [
@@ -41,6 +62,7 @@ function formatSummaryText(summary, locale) {
       if (item.correctedFromId) lines.push(`${isEnglish ? 'Corrects event' : '纠正事件'}: ${item.correctedFromId}`)
       lines.push(`${isEnglish ? 'Recorded at' : '录入时间'}: ${item.recordedAt || item.updatedAt}`)
       lines.push(`${isEnglish ? 'Actor / source' : '记录人 / 来源'}: ${item.actor?.displayName || item.recordedBy?.displayName || (isEnglish ? 'caregiver' : '照护者')} / ${item.source || 'unknown'}`)
+      summaryFacts(item, locale).forEach(([name, value]) => lines.push(`${name}: ${value}`))
       lines.push('')
       return
     }
@@ -110,7 +132,7 @@ export function DoctorSummaryView({ state, onBack, onClear, onLogout, readOnly =
       <article className="summary-sheet">
         <div className="summary-title-row"><div><p className="eyebrow">{isEnglish ? 'Parent-entered facts' : '家长记录整理'}</p><h1>{isEnglish ? 'Care summary' : '就医沟通摘要'}</h1><p>{isEnglish ? 'Generated' : '生成于'} {new Date(summary.generatedAt).toLocaleString(isEnglish ? 'en-US' : 'zh-CN')}</p></div><span className="summary-icon"><FileHeart size={30} /></span></div>
         <section className="summary-baby"><span className="large-avatar">{summary.baby.nickname.slice(0, 1)}</span><div><h2>{summary.baby.nickname}</h2><p>{isEnglish ? (summary.baby.sex === 'male' ? 'Boy' : summary.baby.sex === 'female' ? 'Girl' : 'Sex not set') : getSexLabel(summary.baby.sex)} · {isEnglish ? 'Birth date' : '出生日期'}: {summary.baby.birthDate} · {summary.baby.gestationalWeeks} {isEnglish ? 'weeks' : '周出生'}</p></div><span className="provenance">{isEnglish ? 'Parent entered' : '家长填写'}</span></section>
-        <section className="summary-section"><h2>{isEnglish ? 'Observation timeline' : '观察时间线'}</h2>{summary.timeline.length === 0 ? <p className="empty-summary">{isEnglish ? 'No observations saved yet.' : '尚未保存观察记录。'}</p> : summary.timeline.map((item, index) => item.kind ? <article className="timeline-record" key={item.id}><span className="record-number">{index + 1}</span><div><h3>{eventTitle(item, locale)}</h3><dl><dt>{isEnglish ? 'Kind / category' : '类型 / 类别'}</dt><dd>{eventKindLabel(item, locale)} / {eventCategoryLabel(item, locale)}</dd><dt>{isEnglish ? 'Occurred / recorded' : '发生 / 录入'}</dt><dd>{item.occurredAt} / {item.recordedAt}</dd><dt>{isEnglish ? 'Actor / source' : '记录人 / 来源'}</dt><dd>{item.actor?.displayName || '—'} / {item.source || 'unknown'}</dd></dl><span className="provenance">{isEnglish ? 'Raw CareEvent' : '原始 CareEvent'} · {item.status}{item.correctedFromId ? ` · ${isEnglish ? 'corrects' : '纠正'} ${item.correctedFromId}` : ''}</span></div></article> : <article className="timeline-record" key={item.id}><span className="record-number">{index + 1}</span><div><h3>{item.firstNoticedAt ? new Date(item.firstNoticedAt).toLocaleString(isEnglish ? 'en-US' : 'zh-CN') : (isEnglish ? 'First noticed time not provided' : '未填写首次发现时间')}</h3><dl>
+        <section className="summary-section"><h2>{isEnglish ? 'Observation timeline' : '观察时间线'}</h2>{summary.timeline.length === 0 ? <p className="empty-summary">{isEnglish ? 'No observations saved yet.' : '尚未保存观察记录。'}</p> : summary.timeline.map((item, index) => item.kind ? <article className="timeline-record" key={item.id}><span className="record-number">{index + 1}</span><div><h3>{eventTitle(item, locale)}</h3><dl><dt>{isEnglish ? 'Kind / category' : '类型 / 类别'}</dt><dd>{eventKindLabel(item, locale)} / {eventCategoryLabel(item, locale)}</dd><dt>{isEnglish ? 'Occurred / recorded' : '发生 / 录入'}</dt><dd>{item.occurredAt} / {item.recordedAt}</dd><dt>{isEnglish ? 'Actor / source' : '记录人 / 来源'}</dt><dd>{item.actor?.displayName || '—'} / {item.source || 'unknown'}</dd>{summaryFacts(item, locale).map(([name, value]) => <Fragment key={`${item.id}-${name}`}><dt>{name}</dt><dd>{value}</dd></Fragment>)}</dl><span className="provenance">{isEnglish ? 'Raw CareEvent' : '原始 CareEvent'} · {item.status}{item.correctedFromId ? ` · ${isEnglish ? 'corrects' : '纠正'} ${item.correctedFromId}` : ''}</span></div></article> : <article className="timeline-record" key={item.id}><span className="record-number">{index + 1}</span><div><h3>{item.firstNoticedAt ? new Date(item.firstNoticedAt).toLocaleString(isEnglish ? 'en-US' : 'zh-CN') : (isEnglish ? 'First noticed time not provided' : '未填写首次发现时间')}</h3><dl>
           {item.bodyAreas?.length > 0 && <><dt>{isEnglish ? 'Areas' : '观察部位'}</dt><dd>{item.bodyAreas.map((area) => label(AREA_LABELS[area], locale, area)).join(isEnglish ? ', ' : '、')}</dd></>}
           {item.symptoms?.length > 0 && <><dt>{isEnglish ? 'Symptoms' : '观察表现'}</dt><dd>{item.symptoms.map((symptom) => label(SYMPTOM_LABELS[symptom], locale, symptom)).join(isEnglish ? ', ' : '、')}</dd></>}
           {item.feedingChange && <><dt>{isEnglish ? 'Feeding' : '吃奶变化'}</dt><dd>{label(FEEDING_LABELS[item.feedingChange], locale, item.feedingChange)}</dd></>}

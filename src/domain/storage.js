@@ -8,7 +8,10 @@ export const STORAGE_VERSION = 4
 function migrateBaby(baby) {
   if (!baby) return null
   const sex = baby.sex === 'male' || baby.sex === 'female' ? baby.sex : null
-  return { ...baby, sex }
+  const gestationalDays = Number(baby.gestationalDays)
+  const growthAgeBasis = ['chronological', 'corrected', 'postmenstrual'].includes(baby.growthAgeBasis) ? baby.growthAgeBasis : 'chronological'
+  const birthMultiplicity = baby.birthMultiplicity === 'multiple' ? 'multiple' : 'singleton'
+  return { ...baby, sex, gestationalDays: Number.isInteger(gestationalDays) && gestationalDays >= 0 && gestationalDays <= 6 ? gestationalDays : 0, growthAgeBasis, birthMultiplicity }
 }
 
 export function createInitialState() {
