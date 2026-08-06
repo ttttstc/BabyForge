@@ -21,7 +21,7 @@ MVP 只验证一条完整路径：
 | 路由 | 页面 | 关键行为 |
 | --- | --- | --- |
 | `#/login` | 登录 | 管理员/照护者可编辑，游客只读 |
-| `#/onboarding` | 首次建档 | 昵称、出生日期、孕周、性别、喂养方式 |
+| `#/onboarding` | 首次建档 | 昵称、出生日期、孕周（含余天）、单胎/多胎、可选出生测量、性别、喂养方式 |
 | `#/today` | 今天工作台 | 日龄、当前阶段、三项重点、主题入口 |
 | `#/stage/newborn` | 新生儿阶段 | 里程碑、日历、代办和成长事实 |
 | `#/topic/pediatric-diseases` | 常见儿科病 | 疾病分类、器官模型、病例弹窗和双语内容 |
@@ -62,8 +62,28 @@ MVP 只验证一条完整路径：
 ### BabyProfile
 
 ```text
-id, nickname, birthDate, gestationalWeeks, sex, feedingMode, locale
+id, nickname, birthDate, gestationalWeeks, gestationalDays, birthMultiplicity,
+growthAgeBasis, sex, feedingMode, locale
 ```
+
+### GrowthMeasurement
+
+```text
+id, type, value, unit, measuredAt, source, method, ageBasis, evaluation
+```
+
+成长测量只保存事实输入和可追溯评估结果。`source` 取 `birth_record | clinical |
+caregiver_observation | standardized_screening`；`ageBasis` 取
+`chronological | corrected | postmenstrual`。出生记录使用 WS/T 800—2022 的 24–42 周
+单胎数据，出生后整月测量使用 WS/T 423—2022 的未满 84 月龄数据。评估结果保留标准
+ID、版本、官方来源 URL、输入记录 ID、年龄口径、评估时间、数据质量和限制；不完整或
+超出标准范围时显示限制，不插值生成不存在的官方参考数据。
+
+早产儿默认使用矫正年龄；未选择矫正年龄时不套用足月儿童的 WS/T 423 参考。经后年龄
+会作为输入口径和展示年龄保存，但 WS/T 423 仍按出生后整月选择官方标准。同步保存时，
+当前成长测量集合是该账号的完整状态，已移除的旧记录会同步为删除。
+
+官方来源： [WS/T 423—2022 PDF](https://www.nhc.gov.cn/wjw/c100311/202211/923e7646561d4b88b72da9097d4da4d5/files/1743494775650_75549.pdf)、[WS/T 800—2022 PDF](https://www.nhc.gov.cn/wjw/c100311/202208/07787ef64ba34fe1bc8bbdae9fd0d4e5/files/1743494772822_91366.pdf)。
 
 ### ObservationRecord
 
@@ -102,6 +122,8 @@ id, generatedAt, baby, timeline, questions, disclaimer
 ## 6. 内容来源与状态
 
 - 国家卫生健康委《0–3 岁儿童健康管理服务规范》。
+- 国家卫生健康委 WS/T 423—2022《7 岁以下儿童生长标准》。
+- 国家卫生健康委 WS/T 800—2022《早产儿保健工作规范》。
 - WHO `Caring for a newborn`。
 - AAP 2022 新生儿高胆红素血症临床实践指南。
 

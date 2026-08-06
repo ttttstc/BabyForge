@@ -11,6 +11,7 @@ import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, bridgeLegacyChanges, mergeCareEvents } from '../domain/careEvents.js'
 import { concernsFromCareEvents } from '../domain/healthSupport.js'
 import { changedCareEvents, flushCareEventOutbox, mergePulledState, pullCareActors, pullCareEvents, enqueueCareEvent } from '../domain/eventSync.js'
+import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -49,6 +50,7 @@ export function App() {
     const eventChanges = changedCareEvents(previous.careEvents || [], next.careEvents || [])
     const nonEventWorkspaceChanged = JSON.stringify(previous.baby || null) !== JSON.stringify(next.baby || null)
       || JSON.stringify(previous.questions || []) !== JSON.stringify(next.questions || [])
+      || JSON.stringify(previous.growthMeasurements || []) !== JSON.stringify(next.growthMeasurements || [])
     stateRef.current = next
     saveState(globalThis.localStorage, next, session?.username)
     setState(next)
@@ -185,7 +187,9 @@ export function App() {
 
   function createBaby(baby) {
     if (readOnly || !session) return
-    commitState((current) => ({ ...current, baby }))
+    const { birthMeasurements = [], ...profile } = baby
+    const measurements = birthMeasurements.map((input) => createEvaluatedGrowthMeasurement(input, profile, []))
+    commitState((current) => ({ ...current, baby: profile, growthMeasurements: [...current.growthMeasurements, ...measurements] }))
     navigate(ROUTES.today)
   }
 

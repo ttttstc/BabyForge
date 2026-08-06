@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0.0] - 2026-08-06
+
+### Added
+
+- Record birth weight, length, head circumference, gestational age, and measurement source.
+- Show a compact personal growth state with age-basis and reference context.
+- Compare measurements with versioned WS/T 423—2022 and WS/T 800—2022 reference data.
+
+### Changed
+
+- Keep age basis, standard version, input provenance, and evaluation time with growth results.
+- Keep incomplete, preterm, and multiple-birth cases explicit instead of fabricating a trend or reference position.
+
 ## [0.1.0.0] - 2026-08-06
 
 ### Added

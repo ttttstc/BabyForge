@@ -63,6 +63,9 @@ input, select { min-height: 45px; padding: 0 13px; }
 textarea { resize: vertical; padding: 11px 13px; }
 input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shadow: 0 0 0 4px rgba(38, 175, 166, 0.1); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid.three { grid-template-columns: repeat(3, 1fr); }
+.birth-measurement-fields { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255, 255, 255, .42); }
+.birth-measurement-fields legend { padding: 0 5px; color: var(--muted); font-size: .68rem; font-weight: 700; }
 .sex-field { margin: 0; padding: 0; border: 0; }
 .sex-field legend { margin-bottom: 8px; color: #344f61; font-size: 0.72rem; font-weight: 800; }
 .sex-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -333,6 +336,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .story-points { max-width: 100%; }
   .story-points li { font-size: 0.68rem; }
   .form-grid { grid-template-columns: 1fr; }
+  .form-grid.three { grid-template-columns: 1fr; }
   .sex-options { grid-template-columns: 1fr; }
   .brand-button { min-width: 0; }
   .brand-icon { width: 34px; height: 34px; }
@@ -673,6 +677,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .growth-entry label:first-child small { position: absolute; top: 10px; right: 7px; color: var(--muted); font-size: .55rem; }
 .growth-entry .primary-button { min-height: 34px; padding: 0 10px; font-size: .6rem; }
 .growth-source { display: flex; align-items: center; gap: 4px; margin-top: 10px; color: var(--muted); font-size: .55rem; }
+.growth-state-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 13px; }
+.growth-state-summary > div { display: grid; gap: 4px; min-width: 0; padding: 9px; border-radius: 11px; background: rgba(255, 255, 255, .38); }
+.growth-state-summary span, .growth-entry-meta span { color: var(--muted); font-size: .52rem; }
+.growth-state-summary strong { overflow: hidden; color: var(--ink); font-size: .62rem; text-overflow: ellipsis; white-space: nowrap; }
+.growth-evaluation-note { display: grid; gap: 3px; margin-top: 8px; padding: 9px 10px; border-left: 3px solid var(--sage); color: var(--muted); background: rgba(216, 232, 220, .35); font-size: .56rem; line-height: 1.4; }
+.growth-evaluation-note strong { color: var(--ink); font-size: .59rem; }
+.growth-evaluation-note a, .growth-evaluation-warning a { color: var(--ink); text-decoration: underline; }
+.growth-evaluation-warning, .growth-entry-error { display: grid; gap: 3px; margin-top: 8px; color: #8a4f2c; font-size: .56rem; line-height: 1.4; }
+.growth-evaluation-warning { padding: 9px 10px; border-left: 3px solid #c98252; background: rgba(255, 232, 210, .52); }
+.growth-evaluation-warning strong { color: #713d24; font-size: .59rem; }
+.growth-entry-error { padding: 0 4px; }
+.growth-entry-meta { display: flex; justify-content: flex-end; margin-top: 8px; }
+.growth-entry-meta label { display: grid; grid-template-columns: auto 132px; align-items: center; gap: 6px; }
+.growth-entry-meta select { min-height: 29px; padding: 0 7px; font-size: .56rem; }
 .stage-day-card { min-height: 170px; }
 .stage-day-card .dashboard-card-heading > svg { margin-top: 9px; }
 .selected-day-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 13px 0; }
@@ -973,6 +991,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .settings-section-heading h2 { margin: 0 0 4px; font-size: 1.16rem; }
 .settings-section-heading p { margin: 0; color: var(--muted); font-size: .68rem; line-height: 1.5; }
 .locale-options { display: grid; grid-template-columns: repeat(2, minmax(190px, 1fr)); gap: 10px; margin-top: 17px; }
+.settings-growth-form { display: grid; gap: 14px; margin-top: 17px; }
+.settings-growth-form .birth-measurement-fields { margin: 0; }
 .locale-options label { position: relative; cursor: pointer; }
 .locale-options input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .locale-options span { min-height: 64px; display: grid; align-content: center; gap: 4px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 251, 244, .48); }
@@ -1196,6 +1216,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .milestone-card { grid-template-columns: 34px minmax(0, 1fr); }
   .milestone-card select { grid-column: 2; width: 100%; }
   .growth-entry, .quick-growth-fields { grid-template-columns: 1fr 1fr; }
+  .growth-state-summary { grid-template-columns: 1fr; }
+  .growth-entry-meta { justify-content: stretch; }
+  .growth-entry-meta label { grid-template-columns: auto 1fr; width: 100%; }
   .growth-entry .primary-button, .quick-growth-fields .primary-button { grid-column: 1 / -1; width: 100%; }
   .pediatric-shell { height: auto; min-height: 100vh; overflow: visible; padding-bottom: 8px; }
   .pediatric-workspace { height: auto; min-height: calc(100vh - 112px); display: block; }
