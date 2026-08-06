@@ -105,6 +105,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .sync-status { display: inline-flex; align-items: center; min-height: 28px; padding: 0 8px; color: #7b746d; border-radius: 999px; background: rgba(255, 255, 255, .62); font-size: .61rem; font-weight: 700; white-space: nowrap; }
 .sync-status.online { color: #28786c; background: #e6f5ee; }
 .sync-status.offline { color: #9b604e; border: 1px solid rgba(235, 124, 107, .34); background: #fff0e9; cursor: pointer; }
+.save-error { margin: 8px 0 0; color: #9b604e; font-size: .68rem; line-height: 1.4; }
 .research-pill, .education-badge { display: inline-flex; align-items: center; gap: 5px; color: #896024; border: 1px solid rgba(240, 189, 69, 0.34); border-radius: 999px; background: var(--gold-soft); font-size: 0.66rem; font-weight: 800; }
 .research-pill { padding: 7px 9px; }
 .workspace-grid { height: calc(100vh - 72px); display: grid; grid-template-columns: 278px minmax(430px, 1fr) 366px; gap: 12px; padding: 12px; }

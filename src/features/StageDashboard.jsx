@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Baby, CalendarDays, Check, ChevronLeft, ChevronRight, CircleHelp, LineChart, Plus, ShieldCheck } from 'lucide-react'
 import { getAgeDays, getStage } from '../domain/baby.js'
-import { GROWTH_TYPES, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey, upsertAdminTaskRecord, upsertMilestoneRecord } from '../domain/carePlan.js'
+import { GROWTH_TYPES, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey } from '../domain/carePlan.js'
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, GROWTH_AGE_BASES, GROWTH_SOURCES } from '../domain/growth.js'
+import { createCareEvent } from '../domain/careEvents.js'
 import { Header } from './Header.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
 import { eventTitle } from '../domain/careSummary.js'
@@ -40,22 +41,28 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   const completed = milestones.filter((item) => item.status === 'done').length
   const evaluations = useMemo(() => state.growthMeasurements.map((item) => ({ ...item, evaluation: evaluateGrowthMeasurement(item, state.baby, state.growthMeasurements) })), [state.baby, state.growthMeasurements])
 
+  function appendCareEvent(category, payload, occurredAt = new Date().toISOString(), kind = category === 'growth_measurement' ? 'measurement' : 'caregiver_observation') {
+    return setState((current) => ({ ...current, careEvents: [...current.careEvents, createCareEvent({ id: payload?.id, babyId: current.baby.id, kind, category, occurredAt, recordedAt: new Date().toISOString(), actor: current.careActors.find((actor) => actor.id === current.preferences.currentRecorderId) || current.careActors[0], source: 'caregiver', payload })] }))
+  }
+
   function updateMilestone(milestoneId, status) {
-    setState((current) => ({ ...current, milestoneRecords: upsertMilestoneRecord(current.milestoneRecords, milestoneId, { status }) }))
+    return appendCareEvent('milestone', { milestoneId, status })
   }
 
   function addMeasurement(event) {
     event.preventDefault()
     if (!growthValue.trim()) return
     const method = growthType === 'weight' ? 'weight_scale' : growthType === 'length' ? 'lying_length' : 'head_circumference_tape'
-    const measurement = createEvaluatedGrowthMeasurement({ type: growthType, value: growthValue, measuredAt: growthDate, source: growthSource, method }, state.baby, state.growthMeasurements)
-    setState((current) => ({ ...current, growthMeasurements: [...current.growthMeasurements, measurement] }))
-    setGrowthValue('')
-    return measurement
+    const measurement = createEvaluatedGrowthMeasurement({ type: growthType, value: growthValue, measuredAt: growthDate, source: growthSource, method, ageBasis: growthAgeBasis }, state.baby, state.growthMeasurements)
+    const save = appendCareEvent('growth_measurement', measurement, `${growthDate}T12:00:00.000Z`, 'measurement')
+    return Promise.resolve(save).then(() => {
+      setGrowthValue('')
+      return measurement
+    })
   }
 
   function updateAdminTask(taskId, input) {
-    setState((current) => ({ ...current, adminTaskRecords: upsertAdminTaskRecord(current.adminTaskRecords, taskId, input) }))
+    return appendCareEvent('admin_task', { taskId, ...input })
   }
 
   function moveMonth(offset) {
@@ -139,7 +146,7 @@ function GrowthCard({ locale, baby, growthAgeBasis, setGrowthAgeBasis, measureme
     <header className="dashboard-card-heading"><div><p className="eyebrow">{isEnglish ? 'Growth facts' : '成长参数'}</p><h2>{isEnglish ? 'A simple trend, not a score' : '看趋势，不打分'}</h2></div><LineChart size={18} /></header>
     <div className="growth-switcher">{GROWTH_TYPES.map((item) => <button key={item.id} className={growthType === item.id ? 'active' : ''} onClick={() => setGrowthType(item.id)}>{localized(item.label, locale)}</button>)}</div>
     {values.length ? <div className="growth-bars" aria-label={isEnglish ? `${localized(definition.label, locale)} trend` : `${localized(definition.label, locale)}趋势`}>{values.map((item) => <div key={item.id} className="growth-bar-item"><span style={{ height: `${Math.max(12, ((Number(item.value) || 0) / max) * 100)}%` }} /><small>{item.value}</small><em>{item.measuredAt.slice(5)}</em></div>)}</div> : <div className="growth-empty"><LineChart size={24} /><p>{isEnglish ? 'Add one optional measurement to begin.' : '可选地补录一次测量，开始看到自己的时间线。'}</p></div>}
-    <form className="growth-entry" onSubmit={(event) => { const result = onSubmit(event); setEntryError(result?.evaluation?.dataQuality === 'sufficient' ? '' : result?.evaluation?.limitations?.[0] || (isEnglish ? 'Verify this measurement before relying on it.' : '请先复核这次测量。')) }}><fieldset disabled={readOnly}><label><span className="sr-only">{isEnglish ? 'Value' : '数值'}</span><input inputMode="decimal" value={growthValue} onChange={(event) => setGrowthValue(event.target.value)} placeholder={isEnglish ? 'Value' : '数值'} aria-label={isEnglish ? 'Growth value' : '成长数值'} /><small>{definition.unit}</small></label><label><span className="sr-only">{isEnglish ? 'Date' : '日期'}</span><input type="date" value={growthDate} onChange={(event) => setGrowthDate(event.target.value)} aria-label={isEnglish ? 'Measurement date' : '测量日期'} /></label><button className="primary-button compact" type="submit"><Plus size={15} />{isEnglish ? 'Add' : '补录'}</button></fieldset>{entryError && <p className="growth-entry-error" role="alert">{entryError}</p>}</form>
+    <form className="growth-entry" onSubmit={(event) => { const result = onSubmit(event); if (!result) return; void Promise.resolve(result).then((value) => setEntryError(value?.evaluation?.dataQuality === 'sufficient' ? '' : value?.evaluation?.limitations?.[0] || (isEnglish ? 'Verify this measurement before relying on it.' : '请先复核这次测量。'))).catch((error) => setEntryError(error?.message || (isEnglish ? 'Could not save this measurement.' : '这次测量保存失败。'))) }}><fieldset disabled={readOnly}><label><span className="sr-only">{isEnglish ? 'Value' : '数值'}</span><input inputMode="decimal" value={growthValue} onChange={(event) => setGrowthValue(event.target.value)} placeholder={isEnglish ? 'Value' : '数值'} aria-label={isEnglish ? 'Growth value' : '成长数值'} /><small>{definition.unit}</small></label><label><span className="sr-only">{isEnglish ? 'Date' : '日期'}</span><input type="date" value={growthDate} onChange={(event) => setGrowthDate(event.target.value)} aria-label={isEnglish ? 'Measurement date' : '测量日期'} /></label><button className="primary-button compact" type="submit"><Plus size={15} />{isEnglish ? 'Add' : '补录'}</button></fieldset>{entryError && <p className="growth-entry-error" role="alert">{entryError}</p>}</form>
     <div className="growth-state-summary">
       <div><span>{isEnglish ? 'Age basis' : '年龄口径'}</span><strong>{ageLabel}</strong></div>
       <div><span>{isEnglish ? 'Latest reliable measurement' : '最近可靠测量'}</span><strong>{latest ? `${latest.value} ${latest.unit} · ${latest.measuredAt}` : (isEnglish ? 'None yet' : '暂无')}</strong></div>

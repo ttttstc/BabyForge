@@ -1,23 +1,30 @@
-import { enqueueOutbox, readOutbox, removeOutbox } from './localDb.js'
 import { createCareEvent, createCarePlanItem, createConcern, mergeCareEvents } from './careEvents.js'
 
-async function request(path, options = {}, fetchImpl = globalThis.fetch) {
-  if (typeof fetchImpl !== 'function') throw new Error('同步服务不可用')
-  const response = await fetchImpl(path, { credentials: 'include', ...options })
-  if (!response.ok) throw new Error('线上同步暂时失败')
-  return response.status === 204 ? null : response.json()
+export class CareEventSyncError extends Error {
+  constructor(message, status, payload) {
+    super(message)
+    this.name = 'CareEventSyncError'
+    this.status = status
+    this.payload = payload
+  }
 }
 
-export async function pullCareEvents(babyId, since, fetchImpl = globalThis.fetch) {
-  if (!babyId) return { events: [], carePlanItems: [], concerns: [], pulledAt: null }
-  const params = new URLSearchParams({ babyId: String(babyId) })
-  if (since) params.set('since', since)
-  const payload = await request(`/api/events?${params.toString()}`, {}, fetchImpl)
+async function request(path, options = {}, fetchImpl = globalThis.fetch) {
+  if (typeof fetchImpl !== 'function') throw new CareEventSyncError('同步服务不可用', 0, null)
+  const response = await fetchImpl(path, { credentials: 'include', ...options })
+  if (response.ok) return response.status === 204 ? null : response.json()
+  let payload = null
+  try { payload = await response.json() } catch { /* text body is not needed by callers */ }
+  throw new CareEventSyncError(payload?.error || '线上同步暂时失败', response.status, payload)
+}
+
+export async function pullCareEvents(babyId, fetchImpl = globalThis.fetch) {
+  if (!babyId) return { events: [], carePlanItems: [], concerns: [] }
+  const payload = await request(`/api/events?babyId=${encodeURIComponent(babyId)}&includeVoided=true`, {}, fetchImpl)
   return {
     events: Array.isArray(payload?.events) ? payload.events.map((event) => createCareEvent(event)) : [],
     carePlanItems: Array.isArray(payload?.carePlanItems) ? payload.carePlanItems : [],
     concerns: Array.isArray(payload?.concerns) ? payload.concerns : [],
-    pulledAt: payload?.pulledAt || new Date().toISOString(),
   }
 }
 
@@ -36,44 +43,51 @@ export async function createCareActor(babyId, actor, fetchImpl = globalThis.fetc
   return payload?.actor || null
 }
 
-async function sendOutboxItem(item, fetchImpl) {
-  const event = item.event
-  if (!event?.id) return
-  if (item.operation === 'create') {
-    await request('/api/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ event }) }, fetchImpl)
-  } else if (item.operation === 'void') {
-    await request(`/api/events/${encodeURIComponent(event.id)}`, { method: 'DELETE' }, fetchImpl)
-  } else {
-    await request(`/api/events/${encodeURIComponent(event.id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ event }) }, fetchImpl)
+export async function sendCareEvent(event, operation = 'create', fetchImpl = globalThis.fetch) {
+  if (operation === 'void') {
+    return request(`/api/events/${encodeURIComponent(event.id)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ version: event.expectedVersion || event.version }),
+    }, fetchImpl)
   }
+  if (operation === 'correct' || operation === 'patch') {
+    return request(`/api/events/${encodeURIComponent(event.correctedFromId || event.id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ event: { ...event, version: event.expectedVersion || event.version } }),
+    }, fetchImpl)
+  }
+  return request('/api/events', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ event }),
+  }, fetchImpl)
 }
 
-export async function enqueueCareEvent(event, operation, owner) {
-  return enqueueOutbox({ event, operation, queuedAt: new Date().toISOString() }, owner)
-}
-
-export async function flushCareEventOutbox(owner, fetchImpl = globalThis.fetch) {
-  const pending = await readOutbox(owner)
-  let sent = 0
-  for (const item of pending) {
-    try {
-      await sendOutboxItem(item, fetchImpl)
-      await removeOutbox(item.event.id, owner)
-      sent += 1
-    } catch {
-      break
-    }
+export async function syncCareEventChanges(changes = [], fetchImpl = globalThis.fetch) {
+  const completed = []
+  for (const change of changes) {
+    await sendCareEvent({ ...change.event, expectedVersion: change.expectedVersion }, change.operation, fetchImpl)
+    completed.push(change)
   }
-  return { sent, pending: Math.max(0, pending.length - sent) }
+  return completed
 }
 
 export function changedCareEvents(previous = [], next = []) {
   const previousById = new Map(previous.map((event) => [event.id, event]))
   return next.flatMap((event) => {
     const prior = previousById.get(event.id)
-    if (!prior) return [{ event, operation: 'create' }]
+    // A local correction is represented by a corrected tombstone plus a new
+    // replacement event. The replacement carries the API write; the tombstone
+    // is produced by that same correction request and must not be sent twice.
+    if (event.status === 'corrected' && !event.correctedFromId) return []
+    if (!prior) {
+      const correctedOriginal = event.correctedFromId ? previousById.get(event.correctedFromId) : null
+      return [{ event, expectedVersion: correctedOriginal?.version, operation: event.correctedFromId ? 'correct' : 'create' }]
+    }
     if (prior.updatedAt === event.updatedAt && prior.version === event.version && prior.status === event.status) return []
-    return [{ event, operation: event.status === 'voided' ? 'void' : 'patch' }]
+    return [{ event, expectedVersion: prior.version, operation: event.status === 'voided' ? 'void' : event.status === 'corrected' ? 'correct' : 'patch' }]
   })
 }
 
@@ -87,18 +101,25 @@ function mergeRecords(local = [], incoming = [], normalize = (item) => item) {
 }
 
 export function mergePulledState(state, payload, { since = null } = {}) {
-  const incremental = Boolean(since)
   return {
     ...state,
     careEvents: mergeCareEvents(state.careEvents || [], payload?.events || []),
-    // A full pull is authoritative even when a collection is empty. An
-    // incremental pull contains only changed rows and must merge by id.
-    carePlanItems: incremental
+    carePlanItems: since
       ? mergeRecords(state.carePlanItems || [], payload?.carePlanItems || [], (item) => createCarePlanItem(item))
       : (Array.isArray(payload?.carePlanItems) ? payload.carePlanItems.map((item) => createCarePlanItem(item)) : []),
-    concerns: incremental
+    concerns: since
       ? mergeRecords(state.concerns || [], payload?.concerns || [], (item) => createConcern(item))
       : (Array.isArray(payload?.concerns) ? payload.concerns.map((item) => createConcern(item)) : []),
-    syncMeta: { ...(state.syncMeta || {}), status: 'online', lastPulledAt: payload?.pulledAt || new Date().toISOString() },
+    syncMeta: { ...(state.syncMeta || {}), status: 'online' },
+  }
+}
+
+// Kept for imports from callers that still pass a cursor during migration.
+export function mergeIncrementalRecords(state, payload) {
+  return {
+    ...state,
+    careEvents: mergeCareEvents(state.careEvents || [], payload?.events || []),
+    carePlanItems: mergeRecords(state.carePlanItems || [], payload?.carePlanItems || [], (item) => createCarePlanItem(item)),
+    concerns: mergeRecords(state.concerns || [], payload?.concerns || [], (item) => createConcern(item)),
   }
 }

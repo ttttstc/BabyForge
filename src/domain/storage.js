@@ -28,7 +28,7 @@ export function createInitialState() {
     careEvents: [],
     carePlanItems: [],
     concerns: [],
-    syncMeta: { status: 'idle', lastPulledAt: null, legacyEventsQueued: false },
+    syncMeta: { status: 'idle' },
     preferences: { sceneMode: '3d', performanceMode: 'balanced', locale: 'zh-CN', currentRecorderId: DEFAULT_RECORDERS[0].id },
   }
 }

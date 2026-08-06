@@ -64,9 +64,9 @@ export function evaluateSupport({ topicId, facts = [] } = {}) {
 export function concernsFromCareEvents(events = [], existing = []) {
   const byId = new Map(existing.map((concern) => [concern.id, concern]))
   for (const event of events) {
-    const concernId = event?.relatedConcernId
     const payload = event?.payload || {}
-    if (!concernId || event.status === 'voided') continue
+    const concernId = event?.relatedConcernId || payload.concernId
+    if (!concernId || event.status !== 'active') continue
     if (payload.supportStatus === 'closed') {
       const prior = byId.get(concernId)
       if (prior) byId.set(concernId, { ...prior, status: 'closed', updatedAt: event.updatedAt || prior.updatedAt })

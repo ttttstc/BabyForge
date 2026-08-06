@@ -3,7 +3,7 @@
 当前部署形态是 Cloudflare Pages + Pages Functions + D1：
 
 - Pages 托管 Vite 构建产物和 `public/assets`。
-- Pages Functions 提供 `/api/login`、`/api/logout`、`/api/session`、兼容旧数据的 `/api/sync`，以及事件级 `/api/events`、`/api/events/:id` 和共享记录人 `/api/actors`。
+- Pages Functions 提供 `/api/login`、`/api/logout`、`/api/session`、宝宝档案 `/api/sync`，以及事件级 `/api/events`、`/api/events/:id` 和共享记录人 `/api/actors`。
 - D1 保存账号、会话、家庭成员、宝宝档案、照护事件、计划项、关注事项、记录人和事件修订历史。
 - 知识库仍然随前端版本发布，暂不开放线上编辑。
 
@@ -40,5 +40,5 @@ npm run cloudflare:deploy
 2. 确认 Pages 项目绑定了 `DB` D1 binding。
 3. 管理员首次登录并建立宝宝档案后，再用游客账号验证只读权限。
 4. 确认 `POST /api/sync` 对游客返回 `403`。
-5. 确认 `POST /api/events`、`PATCH /api/events/:id`、`DELETE /api/events/:id` 对游客返回 `403`，同一事件修改后修订历史仍可查询。
+5. 确认 `POST /api/events`、`PATCH /api/events/:id`、`DELETE /api/events/:id` 对游客返回 `403`，修改携带过期 `version` 时返回 `409`，纠正和作废仍保留原始事件。
 6. 如使用自定义域名，在 Cloudflare 控制台完成域名绑定后再分享链接。

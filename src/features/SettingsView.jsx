@@ -2,6 +2,16 @@ import { ArrowLeft, Globe2, LogOut, RotateCcw, Settings2, ShieldCheck } from 'lu
 import { getCopy, LOCALE_OPTIONS } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { createEvaluatedGrowthMeasurement, GROWTH_AGE_BASES } from '../domain/growth.js'
+import { createCareEvent, correctCareEvent, voidCareEvent } from '../domain/careEvents.js'
+
+function measurementPayload(event) {
+  const payload = event?.payload || {}
+  return payload.record && typeof payload.record === 'object' ? payload.record : payload
+}
+
+function measurementInputChanged(previous, next) {
+  return ['type', 'value', 'unit', 'measuredAt', 'source', 'method', 'ageBasis', 'note'].some((key) => previous?.[key] !== next?.[key])
+}
 
 export function SettingsView({ state, setState, onClear, onLogout, readOnly = false }) {
   const locale = state.preferences.locale
@@ -18,19 +28,43 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
     const gestationalDays = Number(data.get('gestationalDays') || 0)
     if (!Number.isFinite(gestationalWeeks) || gestationalWeeks < 20 || gestationalWeeks > 44 || !Number.isInteger(gestationalDays) || gestationalDays < 0 || gestationalDays > 6) return
     setState((current) => {
+      const now = new Date().toISOString()
       const birthDate = current.baby.birthDate
-      const existingBirth = new Map(current.growthMeasurements
-        .filter((item) => item.source === 'birth_record' && String(item.measuredAt).slice(0, 10) === String(birthDate).slice(0, 10))
-        .map((item) => [item.type, item]))
       const birthInputs = [
         ['weight', data.get('birthWeight'), 'kg', 'weight_scale'],
         ['length', data.get('birthLength'), 'cm', 'lying_length'],
         ['headCircumference', data.get('birthHeadCircumference'), 'cm', 'head_circumference_tape'],
       ]
-      const nonBirth = current.growthMeasurements.filter((item) => !(String(item.measuredAt).slice(0, 10) === String(birthDate).slice(0, 10) && item.source === 'birth_record'))
       const profile = { ...current.baby, gestationalWeeks, gestationalDays, growthAgeBasis: data.get('growthAgeBasis'), birthMultiplicity: data.get('birthMultiplicity') }
-      const birthMeasurements = birthInputs.filter(([, value]) => String(value || '').trim()).map(([type, value, unit, method]) => createEvaluatedGrowthMeasurement({ id: existingBirth.get(type)?.id, type, value: String(value).trim(), unit, measuredAt: birthDate, method, source: 'birth_record' }, profile, nonBirth))
-      return { ...current, baby: profile, growthMeasurements: [...nonBirth, ...birthMeasurements] }
+      const profileChanged = ['gestationalWeeks', 'gestationalDays', 'growthAgeBasis', 'birthMultiplicity'].some((key) => current.baby?.[key] !== profile[key])
+      const birthEvents = current.careEvents.filter((event) => {
+        const measurement = measurementPayload(event)
+        return event.status === 'active' && event.category === 'growth_measurement' && measurement.source === 'birth_record' && String(measurement.measuredAt).slice(0, 10) === String(birthDate).slice(0, 10)
+      })
+      const existingByType = new Map(birthEvents.map((event) => [measurementPayload(event).type, event]))
+      const nonBirth = current.growthMeasurements.filter((item) => !(String(item.measuredAt).slice(0, 10) === String(birthDate).slice(0, 10) && item.source === 'birth_record'))
+      const actor = current.careActors.find((item) => item.id === current.preferences.currentRecorderId) || current.careActors[0]
+      const birthMeasurements = birthInputs.filter(([, value]) => String(value || '').trim()).map(([type, value, unit, method]) => {
+        const prior = existingByType.get(type)
+        return createEvaluatedGrowthMeasurement({ id: prior ? measurementPayload(prior).id || prior.id : undefined, type, value: String(value).trim(), unit, measuredAt: birthDate, method, source: 'birth_record' }, profile, nonBirth)
+      })
+      const eventsById = new Map(current.careEvents.map((event) => [event.id, event]))
+      for (const measurement of birthMeasurements) {
+        const prior = existingByType.get(measurement.type)
+        if (!prior) {
+          const event = createCareEvent({ id: measurement.id, babyId: profile.id, kind: 'measurement', category: 'growth_measurement', occurredAt: `${birthDate}T12:00:00.000Z`, recordedAt: now, actor, source: 'caregiver', payload: measurement })
+          eventsById.set(event.id, event)
+        } else if (profileChanged || measurementInputChanged(measurementPayload(prior), measurement)) {
+          const corrected = correctCareEvent([...eventsById.values()], prior.id, { kind: 'measurement', category: 'growth_measurement', occurredAt: `${birthDate}T12:00:00.000Z`, recordedAt: now, actor, source: 'caregiver', payload: measurement }, { now })
+          eventsById.clear()
+          corrected.forEach((event) => eventsById.set(event.id, event))
+        }
+      }
+      const retainedTypes = new Set(birthMeasurements.map((measurement) => measurement.type))
+      for (const prior of birthEvents) {
+        if (!retainedTypes.has(measurementPayload(prior).type)) eventsById.set(prior.id, voidCareEvent(prior, { now }))
+      }
+      return { ...current, baby: profile, careEvents: [...eventsById.values()] }
     })
   }
 

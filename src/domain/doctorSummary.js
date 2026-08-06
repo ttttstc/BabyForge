@@ -2,13 +2,14 @@ import { getRecentCareEvents } from './careSummary.js'
 
 export function buildDoctorSummary(baby, observations = [], questions = [], generatedAt = new Date().toISOString(), extras = {}) {
   const careEvents = Array.isArray(extras.careEvents) ? extras.careEvents : []
+  const timeline = careEvents.length
+    ? careEvents.filter((event) => event.status !== 'voided').sort((a, b) => String(a.occurredAt || a.createdAt).localeCompare(String(b.occurredAt || b.createdAt)))
+    : [...observations].sort((a, b) => String(a.firstNoticedAt || a.createdAt).localeCompare(String(b.firstNoticedAt || b.createdAt)))
   return {
     id: `summary-${generatedAt}`,
     generatedAt,
     baby: { ...baby, provenance: 'parent-entered' },
-    timeline: [...observations].sort((a, b) =>
-      String(a.firstNoticedAt || a.createdAt).localeCompare(String(b.firstNoticedAt || b.createdAt)),
-    ),
+    timeline,
     questions: questions.filter(Boolean),
     taskLogs: Array.isArray(extras.taskLogs) ? extras.taskLogs : [],
     growthMeasurements: Array.isArray(extras.growthMeasurements) ? extras.growthMeasurements : [],
