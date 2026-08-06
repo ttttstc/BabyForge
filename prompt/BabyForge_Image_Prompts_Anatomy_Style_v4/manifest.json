@@ -1,0 +1,217 @@
+{
+  "project": "BabyForge",
+  "style_version": "anatomy-specimen-3d-v4-hunyuan3d-multiview",
+  "source_style_reference": "thebuggeddev/anatomy",
+  "global_style_file": "00-babyforge-visual-style-system.md",
+  "global_negative_file": "00-global-negative-prompt.md",
+  "assets": [
+    {
+      "id": "01-newborn-stage-fallback-boy",
+      "file": "01-newborn-stage-fallback-boy.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "01-newborn-stage-fallback-girl",
+      "file": "01-newborn-stage-fallback-girl.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "02-feeding-observation-boy",
+      "file": "02-feeding-observation-boy.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "02-feeding-observation-girl",
+      "file": "02-feeding-observation-girl.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "04-safe-sleep-boy",
+      "file": "04-safe-sleep-boy.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "04-safe-sleep-girl",
+      "file": "04-safe-sleep-girl.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "05-jaundice-body-location",
+      "file": "05-jaundice-body-location.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "06-jaundice-mechanism",
+      "file": "06-jaundice-mechanism.md",
+      "size": "1536x1024",
+      "reference": null,
+      "hunyuan3d_input": false
+    },
+    {
+      "id": "07-newborn-boy-front",
+      "file": "07-newborn-boy-front.md",
+      "size": "1536x1536",
+      "reference": null,
+      "view": "front",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "07-newborn-girl-front",
+      "file": "07-newborn-girl-front.md",
+      "size": "1536x1536",
+      "reference": null,
+      "view": "front",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "08-newborn-boy-left",
+      "file": "08-newborn-boy-left.md",
+      "size": "1536x1536",
+      "reference": "07-newborn-boy-front",
+      "view": "left",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "08-newborn-girl-left",
+      "file": "08-newborn-girl-left.md",
+      "size": "1536x1536",
+      "reference": "07-newborn-girl-front",
+      "view": "left",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "09-newborn-boy-right",
+      "file": "09-newborn-boy-right.md",
+      "size": "1536x1536",
+      "reference": "07-newborn-boy-front",
+      "view": "right",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "09-newborn-girl-right",
+      "file": "09-newborn-girl-right.md",
+      "size": "1536x1536",
+      "reference": "07-newborn-girl-front",
+      "view": "right",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "10-liver-front",
+      "file": "10-liver-front.md",
+      "size": "1536x1536",
+      "reference": null,
+      "view": "front",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "10-newborn-boy-back",
+      "file": "10-newborn-boy-back.md",
+      "size": "1536x1536",
+      "reference": "07-newborn-boy-front",
+      "view": "back",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "10-newborn-girl-back",
+      "file": "10-newborn-girl-back.md",
+      "size": "1536x1536",
+      "reference": "07-newborn-girl-front",
+      "view": "back",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "11-liver-left",
+      "file": "11-liver-left.md",
+      "size": "1536x1536",
+      "reference": "10-liver-front",
+      "view": "left",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "12-liver-right",
+      "file": "12-liver-right.md",
+      "size": "1536x1536",
+      "reference": "10-liver-front",
+      "view": "right",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "13-liver-back",
+      "file": "13-liver-back.md",
+      "size": "1536x1536",
+      "reference": "10-liver-front",
+      "view": "back",
+      "hunyuan3d_input": true
+    },
+    {
+      "id": "14-liver-hero",
+      "file": "14-liver-hero.md",
+      "size": "1536x1536",
+      "reference": "10-liver-front",
+      "view": "hero",
+      "hunyuan3d_input": false
+    }
+  ],
+  "generation_order": [
+    "07-newborn-boy-front",
+    "08-newborn-boy-left",
+    "09-newborn-boy-right",
+    "10-newborn-boy-back",
+    "07-newborn-girl-front",
+    "08-newborn-girl-left",
+    "09-newborn-girl-right",
+    "10-newborn-girl-back",
+    "10-liver-front",
+    "11-liver-left",
+    "12-liver-right",
+    "13-liver-back",
+    "14-liver-hero",
+    "01-02-04 scene assets + 05 neutral observation + 06 neutral mechanism"
+  ],
+  "color_tokens": {
+    "canvas": "#F7F0E7",
+    "warm_white": "#F7F4EE",
+    "coral": "#EB7C6B",
+    "liver_coral": "#B86858",
+    "cyan_blue": "#6393D8",
+    "sage": "#769D74",
+    "warm_gold": "#F2A33B",
+    "lavender": "#8D6BCC"
+  },
+  "hunyuan3d_guide_file": "00-hunyuan3d-input-guide.md",
+  "model_groups": {
+    "newborn_boy": {
+      "front": "07-newborn-boy-front",
+      "back": "10-newborn-boy-back",
+      "left": "08-newborn-boy-left",
+      "right": "09-newborn-boy-right"
+    },
+    "newborn_girl": {
+      "front": "07-newborn-girl-front",
+      "back": "10-newborn-girl-back",
+      "left": "08-newborn-girl-left",
+      "right": "09-newborn-girl-right"
+    },
+    "neonatal_liver": {
+      "front": "10-liver-front",
+      "back": "13-liver-back",
+      "left": "11-liver-left",
+      "right": "12-liver-right",
+      "hero": "14-liver-hero"
+    }
+  }
+}
