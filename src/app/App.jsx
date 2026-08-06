@@ -12,6 +12,7 @@ import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
+import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -258,6 +259,8 @@ export function App() {
   }
 
   function clearWorkspace() {
+    const babyId = stateRef.current.baby?.id
+    if (babyId) void clearLocalBabyAlbum(babyId).catch(() => {})
     clearState(globalThis.localStorage, session?.username)
     const initial = createInitialState()
     stateRef.current = initial
@@ -289,5 +292,5 @@ export function App() {
     return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
   }
 
-  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />
 }

@@ -15,9 +15,11 @@ import { coalesceOutboxItem } from '../src/domain/localDb.js'
 import { safeEventInput } from '../functions/_shared/care.js'
 import { onRequestPost as onEventPost } from '../functions/api/events.js'
 import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
+import { onRequestPost as onPhotoPost } from '../functions/api/photos.js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -428,6 +430,23 @@ test('guest sessions are denied by every event write endpoint', async () => {
   assert.equal((await onEventPost({ request: request('POST', {}), env })).status, 403)
   assert.equal((await onEventPatch({ request: request('PATCH', {}), env, params: { id: 'event-1' } })).status, 403)
   assert.equal((await onEventDelete({ request: request('DELETE'), env, params: { id: 'event-1' } })).status, 403)
+})
+
+test('album validates raster files and falls back to file time when EXIF is absent', async () => {
+  const lastModified = Date.parse('2026-08-06T02:30:00.000Z')
+  const photo = { name: 'first-day.jpg', type: 'image/jpeg', size: 1024, lastModified }
+  assert.equal(isSupportedPhoto(photo), true)
+  assert.equal(isSupportedPhoto({ ...photo, name: 'unsafe.svg', type: 'image/svg+xml' }), false)
+  assert.equal(isSupportedPhoto({ ...photo, size: MAX_PHOTO_BYTES + 1 }), false)
+  assert.equal(Date.parse(dateTimeInputToIso('2026-08-06T10:30')) > 0, true)
+  assert.deepEqual(await detectPhotoTime(photo), { takenAt: '2026-08-06T02:30:00.000Z', timeSource: 'file' })
+})
+
+test('guest sessions cannot upload album photos', async () => {
+  const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
+  const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) }, BABY_PHOTOS: {} }
+  const request = new Request('https://babyforge.test/api/photos', { method: 'POST', headers: { cookie: 'babyforge_session=token' } })
+  assert.equal((await onPhotoPost({ request, env })).status, 403)
 })
 
 test('quick care records produce a personal 24-hour snapshot', () => {

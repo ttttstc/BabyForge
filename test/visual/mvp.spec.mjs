@@ -51,9 +51,37 @@ test('parent creates a profile and sees the newborn workspace', async ({ page })
   await expect(page.getByText('新生儿早期', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('男孩', { exact: true }).first()).toBeVisible()
   await expect(page.getByTestId('care-task-list').locator('[data-task-id]')).toHaveCount(3)
-  await expect(page.getByTestId('stage-surface')).toBeVisible()
+  await expect(page.getByTestId('baby-album')).toBeVisible()
+  await expect(page.getByTestId('album-empty')).toBeVisible()
   await page.getByRole('button', { name: '阶段', exact: true }).click()
   await expect(page.locator('.growth-empty')).toBeVisible()
+})
+
+test('parent uploads, switches, and reloads album photos', async ({ page }) => {
+  await createBaby(page)
+  await page.getByTestId('album-upload-input').setInputFiles([
+    'public/assets/login/login-hero.png',
+    'public/assets/login/login-hero-mobile.png',
+  ])
+  const dialog = page.getByRole('dialog', { name: '添加 2 张照片' })
+  await expect(dialog).toBeVisible()
+  await dialog.locator('input[type="datetime-local"]').nth(1).fill('2026-08-06T10:30')
+  await dialog.getByRole('button', { name: /保存照片/ }).click()
+
+  await expect(page.getByTestId('album-shelf-photo')).toHaveCount(2)
+  await expect(page.locator('.album-photo-feature figcaption small')).toHaveText('login-hero.png')
+  const featureBox = await page.locator('.album-photo-feature').boundingBox()
+  const shelfBox = await page.locator('.album-shelf-section').boundingBox()
+  const thumbnailBox = await page.getByTestId('album-shelf-photo').first().boundingBox()
+  expect(featureBox.y).toBeLessThan(shelfBox.y)
+  expect(thumbnailBox.width).toBeLessThan(90)
+  await page.getByTestId('album-shelf-photo').nth(1).click()
+  await expect(page.locator('.album-photo-feature figcaption small')).toHaveText('login-hero-mobile.png')
+  await expect(page.locator('.album-photo-feature')).toHaveCSS('animation-name', 'album-photo-rise')
+
+  await page.reload()
+  await expect(page.getByTestId('album-shelf-photo')).toHaveCount(2)
+  await expect(page.locator('.album-photo-feature figcaption small')).toHaveText('login-hero.png')
 })
 
 test('parent records a growth fact with its source and reference context', async ({ page }) => {
@@ -121,14 +149,13 @@ test('birth measurements persist through onboarding and growth profile settings'
   await expect(page.locator('.growth-state-summary strong').nth(1)).toContainText('暂无')
 })
 
-test('girl profile persists and selects the girl visual set', async ({ page }) => {
+test('girl profile persists with the shared album experience', async ({ page }) => {
   await createBaby(page, 6, 'female')
   await page.reload()
-  await page.getByRole('button', { name: '2D' }).click()
 
   await expect(page.getByText('女孩', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText(/女孩外观模型暂未就绪/)).toBeVisible()
-  await expect(page.getByTestId('2d-fallback').locator('img')).toHaveCount(0)
+  await expect(page.getByTestId('baby-album')).toBeVisible()
+  await expect(page.getByRole('button', { name: '2D' })).toHaveCount(0)
 })
 
 test('guest account can view the workspace but cannot edit records', async ({ page }) => {
@@ -149,7 +176,7 @@ test('guest account can view the workspace but cannot edit records', async ({ pa
   await expect(page.getByRole('button', { name: '保存事实' })).toHaveCount(0)
 })
 
-test('workspace shows text guidance when WebGL is unavailable', async ({ page }) => {
+test('today album does not depend on WebGL', async ({ page }) => {
   await page.addInitScript(() => {
     const getContext = HTMLCanvasElement.prototype.getContext
     HTMLCanvasElement.prototype.getContext = function patched(type, ...args) {
@@ -159,9 +186,9 @@ test('workspace shows text guidance when WebGL is unavailable', async ({ page })
   })
   await page.reload()
   await createBaby(page)
-  await expect(page.getByTestId('2d-fallback')).toBeVisible()
-  await expect(page.getByTestId('2d-fallback').locator('img')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '3D' })).toBeDisabled()
+  await expect(page.getByTestId('baby-album')).toBeVisible()
+  await expect(page.getByTestId('stage-surface')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '3D' })).toHaveCount(0)
 })
 
 test('common pediatric education advances through anatomy steps and records raw facts', async ({ page }) => {
@@ -257,9 +284,9 @@ test('onboarding keeps the approved visual direction', async ({ page }) => {
   await expect(page).toHaveScreenshot('onboarding.png', { animations: 'disabled' })
 })
 
-test('desktop 2D mode does not render a preview image', async ({ page }) => {
+test('desktop today route uses the album instead of the old viewer', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await createBaby(page)
-  await page.getByRole('button', { name: '2D' }).click()
-  await expect(page.getByTestId('2d-fallback').locator('img')).toHaveCount(0)
+  await expect(page.getByTestId('baby-album')).toBeVisible()
+  await expect(page.getByTestId('stage-surface')).toHaveCount(0)
 })
