@@ -1,4 +1,4 @@
-import { Baby, CalendarRange, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
+import { Baby, CalendarRange, ClipboardPlus, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
@@ -7,6 +7,7 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
   const copy = getCopy(locale)
   const items = [
     { route: ROUTES.today, label: copy.nav.today, icon: House },
+    { route: ROUTES.records, label: copy.nav.records, icon: ClipboardPlus },
     { route: ROUTES.stage, label: copy.nav.stage, icon: CalendarRange },
     { route: ROUTES.pediatric, label: copy.nav.pediatric, icon: Stethoscope },
     { route: ROUTES.summary, label: copy.nav.summary, icon: FileHeart },

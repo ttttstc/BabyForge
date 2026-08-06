@@ -4,6 +4,7 @@ export const ROUTES = {
   login: '#/login',
   onboarding: '#/onboarding',
   today: '#/today',
+  records: '#/records',
   stage: '#/stage/newborn',
   jaundice: '#/topic/jaundice',
   pediatric: '#/topic/pediatric-diseases',

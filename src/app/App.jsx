@@ -5,6 +5,7 @@ import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
 import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
+import { RecordCenter } from '../features/RecordCenter.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
@@ -277,6 +278,10 @@ export function App() {
 
   if (route === ROUTES.settings) {
     return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} />
+  }
+
+  if (route === ROUTES.records) {
+    return <RecordCenter state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.pediatric) {

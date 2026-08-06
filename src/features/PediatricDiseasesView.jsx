@@ -25,13 +25,10 @@ import {
   ZoomIn,
 } from 'lucide-react'
 import { getAgeDays } from '../domain/baby.js'
-import { createObservation } from '../domain/observation.js'
-import { createCareEvent } from '../domain/careEvents.js'
 import { getCopy } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { anatomyArt, ANATOMY_RESOURCES, getAnatomyHotspots, getAnatomyResource, getPediatricDisease, PEDIATRIC_DISEASES, localized } from '../content/pediatricDiseases.js'
 import { Header } from './Header.jsx'
-import { ObservationForm } from './ObservationForm.jsx'
 
 const AnatomyViewerModule = () => import('../viewer/AnatomyModelCanvas.jsx')
 const AnatomyModelCanvas = lazy(() => AnatomyViewerModule().then((module) => ({ default: module.AnatomyModelCanvas })))
@@ -158,25 +155,6 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
     setResetToken((value) => value + 1)
   }
 
-  function saveObservation(input) {
-    const now = new Date().toISOString()
-    const observation = createObservation({ ...input, topicId: disease.id }, { now })
-    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
-    return setState((current) => ({
-      ...current,
-      careEvents: [...current.careEvents, createCareEvent({
-        babyId: current.baby.id,
-        kind: 'caregiver_observation',
-        category: disease.id,
-        occurredAt: input.firstNoticedAt || now,
-        recordedAt: now,
-        actor: recorder,
-        source: 'caregiver',
-        payload: observation,
-      })],
-    }))
-  }
-
   function handleTool(tool) {
     if (tool === 'rotate') setAutoRotate((value) => !value)
     if (tool === 'zoom') setZoomToken((value) => value + 1)
@@ -277,7 +255,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
           <section className="pediatric-note pediatric-medical-note"><Stethoscope size={16} /><p><b>{locale === 'en-US' ? 'How to use this guide' : '使用说明'}</b>{locale === 'en-US' ? 'Review the signs and body structures together. The guide does not diagnose or grade urgency.' : '结合表现与身体结构查看信息。本指南不提供诊断或就医分级。'}</p></section>
           <section className="pediatric-condition-list"><header><div><FileText size={16} /><h3>{locale === 'en-US' ? 'Common conditions' : '本分类常见疾病'}</h3></div><span>{disease.cases.length}</span></header><p>{locale === 'en-US' ? 'Review signs, possible causes, usual care, and facts to record for each condition.' : '逐项查看常见表现、可能成因、通常处理和需要记录的事实。'}</p><div className="pediatric-case-list">{disease.cases.map((caseItem) => <button key={caseItem.id} onClick={() => setModal({ type: 'case', item: caseItem })}><span><strong>{localized(caseItem.title, locale)}</strong><small>{localized(caseItem.summary, locale)}</small></span><ChevronRight size={15} /></button>)}</div></section>
           <div className="pediatric-learning-actions"><button onClick={() => setModal({ type: 'lesson' })}><BookOpen size={14} />{locale === 'en-US' ? 'Lesson' : '课程'}</button><button onClick={() => setModal({ type: 'animation' })}><Play size={14} />{locale === 'en-US' ? 'Animation' : '动画'}</button><button onClick={() => setModal({ type: 'quiz' })}><CircleHelp size={14} />{locale === 'en-US' ? 'Quiz' : '测验'}</button></div>
-          <ObservationForm variant="pediatric" locale={locale} observationCount={state.observations.length} onSave={saveObservation} questions={state.questions} onQuestionsChange={(questions) => setState((current) => ({ ...current, questions }))} readOnly={readOnly} />
+          <button className="record-center-cta pediatric-record-cta" type="button" onClick={() => navigate(ROUTES.records)}><span><strong>{locale === 'en-US' ? 'Record this in the center' : '去记录中心录入这次观察'}</strong><small>{locale === 'en-US' ? 'Keep timing, symptoms, measurements, and questions together.' : '把时间、表现、测量和咨询问题放在同一处。'}</small></span><ArrowRight size={16} /></button>
           <button className="summary-cta pediatric-summary-cta" onClick={() => navigate(ROUTES.summary)}>{copy.generateSummary}<ArrowRight size={17} /></button>
           <div className="pediatric-source-note"><ShieldCheck size={15} /><span>{copy.studyOnly} · {copy.noDiagnosis}</span></div>
         </aside>
