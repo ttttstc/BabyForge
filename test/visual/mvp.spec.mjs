@@ -60,7 +60,8 @@ test('girl profile persists and selects the girl visual set', async ({ page }) =
   await page.getByRole('button', { name: '2D' }).click()
 
   await expect(page.getByText('女孩', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText(/女孩图片正在准备/)).toBeVisible()
+  await expect(page.getByText(/女孩外观模型暂未就绪/)).toBeVisible()
+  await expect(page.getByTestId('2d-fallback').locator('img')).toHaveCount(0)
 })
 
 test('guest account can view the workspace but cannot edit records', async ({ page }) => {
@@ -75,7 +76,7 @@ test('guest account can view the workspace but cannot edit records', async ({ pa
   await expect(page.getByTestId('care-task-list').locator('button').first()).toBeDisabled()
 })
 
-test('workspace falls back to the 2D education layer when WebGL is unavailable', async ({ page }) => {
+test('workspace shows text guidance when WebGL is unavailable', async ({ page }) => {
   await page.addInitScript(() => {
     const getContext = HTMLCanvasElement.prototype.getContext
     HTMLCanvasElement.prototype.getContext = function patched(type, ...args) {
@@ -86,6 +87,7 @@ test('workspace falls back to the 2D education layer when WebGL is unavailable',
   await page.reload()
   await createBaby(page)
   await expect(page.getByTestId('2d-fallback')).toBeVisible()
+  await expect(page.getByTestId('2d-fallback').locator('img')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '3D' })).toBeDisabled()
 })
 
@@ -176,9 +178,9 @@ test('onboarding keeps the approved visual direction', async ({ page }) => {
   await expect(page).toHaveScreenshot('onboarding.png', { animations: 'disabled' })
 })
 
-test('desktop 2D workspace keeps the three-column visual baseline', async ({ page }) => {
+test('desktop 2D mode does not render a preview image', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await createBaby(page)
   await page.getByRole('button', { name: '2D' }).click()
-  await expect(page).toHaveScreenshot('workspace-2d.png', { animations: 'disabled' })
+  await expect(page.getByTestId('2d-fallback').locator('img')).toHaveCount(0)
 })

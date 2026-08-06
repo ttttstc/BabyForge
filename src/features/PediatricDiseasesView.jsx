@@ -179,7 +179,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
     }
   }
 
-  const fallback = <div className="pediatric-model-fallback"><Art organId={resource.id} asset="organ" alt={`${localized(resource.title, locale)} anatomy`} /><span>{localized(resource.title, locale)} · {locale === 'en-US' ? '2D reference' : '二维结构图'}</span></div>
+  const fallback = <div className="pediatric-model-fallback"><Box size={34} aria-hidden="true" /><span>{localized(resource.title, locale)} · {locale === 'en-US' ? 'Model unavailable' : '模型暂不可用'}</span></div>
 
   return (
     <main className="app-shell pediatric-shell">
@@ -229,7 +229,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
             {!webglAvailable ? fallback : <>
               {!modelReady && fallback}
               <AnatomyErrorBoundary key={resource.id} fallback={null}>
-                <Suspense fallback={<div className="pediatric-loading"><span>{locale === 'en-US' ? 'Loading anatomy…' : '正在加载器官模型…'}</span><small>{locale === 'en-US' ? 'The 2D reference remains available.' : '二维结构图可先用于查看。'}</small></div>}>
+                <Suspense fallback={<div className="pediatric-loading"><span>{locale === 'en-US' ? 'Loading anatomy…' : '正在加载器官模型…'}</span><small>{locale === 'en-US' ? 'The model will appear here when ready.' : '模型就绪后将在这里显示。'}</small></div>}>
                   <AnatomyModelCanvas resource={resource} hotspots={resourceHotspots} selectedHotspotId={selectedHotspot?.id} onSelectHotspot={setSelectedHotspot} locale={locale} settings={viewerSettings} onReady={handleModelReady} />
                 </Suspense>
               </AnatomyErrorBoundary>
