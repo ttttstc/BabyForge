@@ -73,12 +73,12 @@ export function concernsFromCareEvents(events = [], existing = []) {
       continue
     }
     const prior = byId.get(concernId)
-    const topic = findTopicById(payload.supportTopic)
+    const topic = findTopicById(payload.supportTopic || payload.topicId)
     const title = topic?.title || payload.supportTitle || { zh: '未分类的关注', en: 'Unclassified concern' }
     const next = {
       id: concernId,
       babyId: event.babyId || null,
-      topicId: payload.supportTopic || null,
+      topicId: payload.supportTopic || payload.topicId || null,
       title,
       status: 'open',
       createdAt: event.createdAt || event.occurredAt,

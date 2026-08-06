@@ -404,6 +404,19 @@ test('incremental pulls merge collections while full pulls can clear them', () =
   assert.deepEqual(incremental.concerns.map((item) => item.id), ['old-concern'])
 })
 
+test('pulled concern events use the canonical concern category and rebuild the concern row', () => {
+  const concernEvent = createCareEvent({
+    id: 'concern-open-event',
+    babyId: 'baby-1',
+    category: 'concern_open',
+    payload: { concernId: 'concern-1', topicId: 'jaundice', supportTopic: 'jaundice', supportTitle: { zh: '黄疸观察有变化', en: 'Jaundice observation changed' }, notes: '记录了观察变化' },
+  })
+  const merged = mergePulledState({ careEvents: [], carePlanItems: [], concerns: [], syncMeta: {} }, { events: [concernEvent], carePlanItems: [], concerns: [] })
+  assert.equal(merged.careEvents[0].category, 'concern_open')
+  assert.equal(merged.concerns[0].topicId, 'jaundice')
+  assert.equal(merged.concerns[0].status, 'open')
+})
+
 test('guest sessions are denied by every event write endpoint', async () => {
   const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
   const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) } }

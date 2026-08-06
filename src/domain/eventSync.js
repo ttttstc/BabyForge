@@ -1,4 +1,5 @@
 import { createCareEvent, createCarePlanItem, createConcern, mergeCareEvents } from './careEvents.js'
+import { concernsFromCareEvents } from './healthSupport.js'
 
 export class CareEventSyncError extends Error {
   constructor(message, status, payload) {
@@ -101,25 +102,31 @@ function mergeRecords(local = [], incoming = [], normalize = (item) => item) {
 }
 
 export function mergePulledState(state, payload, { since = null } = {}) {
+  const careEvents = mergeCareEvents(state.careEvents || [], payload?.events || [])
+  const concerns = since
+    ? mergeRecords(state.concerns || [], payload?.concerns || [], (item) => createConcern(item))
+    : (Array.isArray(payload?.concerns) ? payload.concerns.map((item) => createConcern(item)) : [])
   return {
     ...state,
-    careEvents: mergeCareEvents(state.careEvents || [], payload?.events || []),
+    careEvents,
     carePlanItems: since
       ? mergeRecords(state.carePlanItems || [], payload?.carePlanItems || [], (item) => createCarePlanItem(item))
       : (Array.isArray(payload?.carePlanItems) ? payload.carePlanItems.map((item) => createCarePlanItem(item)) : []),
-    concerns: since
-      ? mergeRecords(state.concerns || [], payload?.concerns || [], (item) => createConcern(item))
-      : (Array.isArray(payload?.concerns) ? payload.concerns.map((item) => createConcern(item)) : []),
+    // The event log is authoritative for concern lifecycle; the API concern
+    // rows only hydrate details that are not present in the event payload.
+    concerns: concernsFromCareEvents(careEvents, concerns),
     syncMeta: { ...(state.syncMeta || {}), status: 'online' },
   }
 }
 
 // Kept for imports from callers that still pass a cursor during migration.
 export function mergeIncrementalRecords(state, payload) {
+  const careEvents = mergeCareEvents(state.careEvents || [], payload?.events || [])
+  const concerns = mergeRecords(state.concerns || [], payload?.concerns || [], (item) => createConcern(item))
   return {
     ...state,
-    careEvents: mergeCareEvents(state.careEvents || [], payload?.events || []),
+    careEvents,
     carePlanItems: mergeRecords(state.carePlanItems || [], payload?.carePlanItems || [], (item) => createCarePlanItem(item)),
-    concerns: mergeRecords(state.concerns || [], payload?.concerns || [], (item) => createConcern(item)),
+    concerns: concernsFromCareEvents(careEvents, concerns),
   }
 }

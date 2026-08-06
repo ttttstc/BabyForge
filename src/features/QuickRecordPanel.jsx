@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Baby, CheckCircle2, Clock3, Droplets, NotebookPen, Utensils } from 'lucide-react'
+import { Baby, CheckCircle2, CircleAlert, Clock3, Droplets, NotebookPen, Utensils } from 'lucide-react'
 import { occurredAtErrorMessage, validateOccurredAt } from '../domain/careEvents.js'
 
 const RECORDS = [
@@ -26,7 +26,7 @@ function eventInput({ category, payload, occurredAt }) {
   return { kind: 'caregiver_observation', category, occurredAt: occurredAt ? isoDateTimeValue(occurredAt, recordedAt) : recordedAt, recordedAt, source: 'caregiver', payload }
 }
 
-export function QuickRecordPanel({ baby = null, locale = 'zh-CN', onRecord, readOnly = false }) {
+export function QuickRecordPanel({ baby = null, locale = 'zh-CN', onRecord, onConcern, readOnly = false, includeDiapers = true }) {
   const [bottleOpen, setBottleOpen] = useState(false)
   const [amount, setAmount] = useState('')
   // The time field is intentionally seeded on mount and is not persisted between sessions.
@@ -37,6 +37,7 @@ export function QuickRecordPanel({ baby = null, locale = 'zh-CN', onRecord, read
   const isEnglish = locale === 'en-US'
   const minOccurredAt = baby?.birthDate ? `${String(baby.birthDate).slice(0, 10)}T00:00` : undefined
   const [maxOccurredAt] = useState(() => formatDateTimeLocal(new Date(Date.now() + 60_000)))
+  const visibleRecords = includeDiapers ? RECORDS : RECORDS.filter((item) => item.type !== 'diaper')
 
   function selectedOccurredAt() {
     return timeEdited ? occurredAt : formatDateTimeLocal()
@@ -99,13 +100,14 @@ export function QuickRecordPanel({ baby = null, locale = 'zh-CN', onRecord, read
   }
 
   return <section className="quick-record-panel inspector-block" data-testid="quick-record-panel">
-    <header className="quick-record-heading"><div><p className="eyebrow">{isEnglish ? 'Quick record' : '快捷记录'}</p><h2>{isEnglish ? 'Quick records' : '快捷记录'}</h2></div><Clock3 size={18} /></header>
+    <header className="quick-record-heading"><div><p className="eyebrow">{isEnglish ? 'Quick record' : '快捷记录'}</p><h2>{isEnglish ? 'Save the fact first' : '先保存关键事实'}</h2></div><Clock3 size={18} /></header>
     <p className="quick-record-lede">{isEnglish ? 'One tap saves the time and current recorder. Add detail only when it changes the next step.' : '一次点击保存发生时间和当前记录人。只有会改变下一步的信息才需要补充。'}</p>
     <label className="quick-record-time"><span>{isEnglish ? 'Event time' : '发生时间'}</span><input type="datetime-local" value={occurredAt} min={minOccurredAt} max={maxOccurredAt} onChange={(event) => { setOccurredAt(event.target.value); setTimeEdited(true); setSaveError('') }} disabled={readOnly || saving} aria-label={isEnglish ? 'Event time' : '发生时间'} data-testid="quick-record-time" /><small>{isEnglish ? 'Defaults to now; change it when backfilling an earlier record.' : '默认当前时间；补录之前的记录时再修改。'}</small></label>
     <div className="quick-record-grid">
-      {RECORDS.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" disabled={readOnly || saving} data-testid={`quick-record-${item.id}`} onClick={() => record(item)}><Icon size={17} /><span>{item.label[isEnglish ? 'en' : 'zh']}</span></button> })}
+      {visibleRecords.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" disabled={readOnly || saving} data-testid={`quick-record-${item.id}`} onClick={() => record(item)}><Icon size={17} /><span>{item.label[isEnglish ? 'en' : 'zh']}</span></button> })}
     </div>
     {!bottleOpen && saveError && <p className="save-error" role="alert">{saveError}</p>}
     {bottleOpen && <form className="quick-bottle-form" onSubmit={submitBottle}><label>{isEnglish ? 'Actual amount taken (mL)' : '实际喝下奶量（mL）'}<input autoFocus inputMode="decimal" type="number" min="0" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} aria-label={isEnglish ? 'Actual amount in milliliters' : '实际喝下奶量'} /></label><div><button type="button" className="secondary-button compact" onClick={() => setBottleOpen(false)}>{isEnglish ? 'Cancel' : '取消'}</button><button type="submit" className="primary-button compact" disabled={saving}>{saving ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save feed' : '保存瓶喂')}</button></div>{saveError && <p className="save-error" role="alert">{saveError}</p>}</form>}
+    <button type="button" className="quick-concern-button" disabled={readOnly} data-testid="discover-abnormal" onClick={onConcern}><CircleAlert size={17} /><span>{isEnglish ? 'I noticed a change' : '发现异常'}</span></button>
   </section>
 }

@@ -7,6 +7,7 @@ const EVENT_LABELS = {
   temperature: { zh: '体温', en: 'Temperature' },
   growth_measurement: { zh: '成长测量', en: 'Growth measurement' },
   symptom_observation: { zh: '异常观察', en: 'Observation' },
+  concern_open: { zh: '关注事项', en: 'Follow-up concern' },
   care_action: { zh: '照护记录', en: 'Care action' },
   health_visit: { zh: '就诊', en: 'Health visit' },
   vaccination: { zh: '疫苗', en: 'Vaccination' },
@@ -73,7 +74,7 @@ export function eventTitle(event, locale = 'zh-CN') {
     if (kind === 'both') return isEnglish ? 'Urine and stool' : '尿和便'
   }
   if (category === 'temperature' && event.payload?.value) return `${label} ${event.payload.value} ${event.payload.unit || '°C'}`
-  if (category === 'symptom_observation' && event.payload?.supportTitle) {
+  if ((category === 'symptom_observation' || category === 'concern_open') && event.payload?.supportTitle) {
     const title = event.payload.supportTitle?.[isEnglish ? 'en' : 'zh'] || event.payload.supportTitle
     return `${isEnglish ? 'Concern' : '关注'}：${title}`
   }
