@@ -3,7 +3,7 @@ import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
 
-export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle' }) {
+export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
   const copy = getCopy(locale)
   const items = [
     { route: ROUTES.today, label: copy.nav.today, icon: House },
@@ -36,7 +36,7 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
             {careActors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
           </select>
         </label>
-        <span className={`sync-status ${syncStatus}`} aria-live="polite">{syncStatus === 'offline' ? (locale === 'en-US' ? 'Offline · saved locally' : '离线 · 已保存本地') : syncStatus === 'online' ? (locale === 'en-US' ? 'Synced' : '已同步') : (locale === 'en-US' ? 'Local first' : '本地优先')}</span>
+        {syncStatus === 'offline' ? <button type="button" className="sync-status offline" onClick={onSyncRetry} aria-live="polite">{locale === 'en-US' ? 'Offline · Retry' : '离线 · 点击重试'}</button> : <span className={`sync-status ${syncStatus}`} aria-live="polite">{syncStatus === 'online' ? (locale === 'en-US' ? 'Synced' : '已同步') : (locale === 'en-US' ? 'Local first' : '本地优先')}</span>}
         <span className={`role-pill ${role === 'guest' ? 'guest' : role === 'caregiver' ? 'caregiver' : 'admin'}`}>
           {role === 'guest'
             ? (locale === 'en-US' ? 'Guest · read only' : '游客 · 只读')

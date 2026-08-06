@@ -15,6 +15,8 @@ import { coalesceOutboxItem } from '../src/domain/localDb.js'
 import { safeEventInput } from '../functions/_shared/care.js'
 import { onRequestPost as onEventPost } from '../functions/api/events.js'
 import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
+import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
+import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -272,4 +274,31 @@ test('guest sessions are denied by every event write endpoint', async () => {
   assert.equal((await onEventPost({ request: request('POST', {}), env })).status, 403)
   assert.equal((await onEventPatch({ request: request('PATCH', {}), env, params: { id: 'event-1' } })).status, 403)
   assert.equal((await onEventDelete({ request: request('DELETE'), env, params: { id: 'event-1' } })).status, 403)
+})
+
+test('quick care records produce a personal 24-hour snapshot', () => {
+  const events = [
+    { id: 'feed-1', type: 'bottle_feeding', status: 'active', occurredAt: '2026-08-05T08:00:00Z', payload: { amountMl: 60 } },
+    { id: 'urine-1', type: 'diaper', status: 'active', occurredAt: '2026-08-05T09:00:00Z', payload: { kind: 'urine' } },
+    { id: 'old-1', type: 'diaper', status: 'active', occurredAt: '2026-08-03T09:00:00Z', payload: { kind: 'stool' } },
+  ]
+  const snapshot = getCareSnapshot(events, [], new Date('2026-08-05T12:00:00Z'))
+  assert.equal(snapshot.metrics.feedingCount, 1)
+  assert.equal(snapshot.metrics.bottleMl, 60)
+  assert.equal(snapshot.metrics.wetDiaperCount, 1)
+  assert.equal(eventTitle(events[0], 'zh-CN'), '瓶喂 60 mL')
+})
+
+test('guided support uses deterministic next steps without diagnosing', () => {
+  assert.equal(evaluateSupport({ topicId: 'breathing', facts: ['blue-color'] }).actionLevel, 'urgent-support')
+  assert.equal(evaluateSupport({ topicId: 'feeding-change', facts: [] }).actionLevel, 'observe-and-recheck')
+  assert.match(evaluateSupport({ topicId: 'feeding-change', facts: [] }).action.zh, /记录时间/)
+})
+
+test('support concerns can be reconstructed from synced care events', () => {
+  const event = { id: 'concern-event', babyId: 'baby-1', relatedConcernId: 'concern-1', status: 'active', createdAt: '2026-08-05T10:00:00Z', updatedAt: '2026-08-05T10:00:00Z', payload: { supportTopic: 'jaundice' } }
+  const open = concernsFromCareEvents([event])
+  assert.equal(open[0].status, 'open')
+  const closed = concernsFromCareEvents([{ ...event, id: 'close-event', payload: { supportStatus: 'closed' } }], open)
+  assert.equal(closed[0].status, 'closed')
 })

@@ -4,6 +4,7 @@ import { getAgeDays, getStage } from '../domain/baby.js'
 import { GROWTH_TYPES, createGrowthMeasurement, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey, upsertAdminTaskRecord, upsertMilestoneRecord } from '../domain/carePlan.js'
 import { Header } from './Header.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
+import { eventTitle } from '../domain/careSummary.js'
 
 function localized(value, locale) {
   return value?.[locale === 'en-US' ? 'en' : 'zh'] || value?.zh || value || ''
@@ -32,6 +33,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   const selectedDateObject = new Date(`${selectedDate}T12:00:00`)
   const selectedLogs = state.taskLogs.filter((item) => item.date === selectedDate)
   const selectedMeasurements = state.growthMeasurements.filter((item) => item.measuredAt === selectedDate)
+  const selectedCareEvents = state.careEvents.filter((item) => String(item.occurredAt || item.createdAt).slice(0, 10) === selectedDate && item.status !== 'voided')
   const completed = milestones.filter((item) => item.status === 'done').length
 
   function updateMilestone(milestoneId, status) {
@@ -56,7 +58,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
 
   return (
     <main className="app-shell stage-dashboard-shell">
-      <Header route={ROUTES_STAGE} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} />
+      <Header route={ROUTES_STAGE} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="stage-dashboard">
         <header className="stage-dashboard-hero">
           <div><p className="eyebrow">{isEnglish ? 'Milestone workspace · 0–28 days' : '阶段里程碑工作台 · 0–28 天'}</p><h1>{localized(stage.label, locale)}</h1><p>{localized(stage.rangeLabel, locale)} · {isEnglish ? 'Turn a newborn stage into a few doable care steps.' : '把阶段目标变成少数几件今天能完成的照护动作。'}</p></div>
@@ -78,14 +80,14 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
 
           <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={updateAdminTask} readOnly={readOnly} />
 
-          <CalendarCard locale={locale} monthDays={monthDays} cursor={calendarCursor} selectedDate={selectedDate} onSelect={setSelectedDate} onMove={moveMonth} taskLogs={state.taskLogs} measurements={state.growthMeasurements} calendarEvents={calendarEvents} />
+          <CalendarCard locale={locale} monthDays={monthDays} cursor={calendarCursor} selectedDate={selectedDate} onSelect={setSelectedDate} onMove={moveMonth} taskLogs={state.taskLogs} measurements={state.growthMeasurements} careEvents={state.careEvents} calendarEvents={calendarEvents} />
 
           <GrowthCard locale={locale} measurements={state.growthMeasurements} growthType={growthType} setGrowthType={setGrowthType} growthValue={growthValue} setGrowthValue={setGrowthValue} growthDate={growthDate} setGrowthDate={setGrowthDate} onSubmit={addMeasurement} readOnly={readOnly} />
 
           <section className="stage-day-card">
             <header className="dashboard-card-heading"><div><p className="eyebrow">{isEnglish ? 'Selected day' : '选中日期'}</p><h2>{dayTitle(selectedDateObject, locale)}</h2></div><CalendarDays size={18} /></header>
-            <div className="selected-day-grid"><div><span>{isEnglish ? 'Care actions' : '照护事项'}</span><strong>{selectedLogs.filter((item) => item.status === 'done').length} / {selectedLogs.length || 3}</strong></div><div><span>{isEnglish ? 'Measurements' : '成长测量'}</span><strong>{selectedMeasurements.length}</strong></div></div>
-            {selectedLogs.length === 0 && selectedMeasurements.length === 0 ? <p className="empty-dashboard">{isEnglish ? 'No extra records for this day. Today’s checklist stays lightweight.' : '这一天暂无补充记录。今日清单保持轻量即可。'}</p> : <ul className="selected-day-list">{selectedLogs.map((item) => <li key={item.id}><Check size={14} />{item.taskId} · {item.status === 'done' ? (isEnglish ? 'done' : '已完成') : item.status}</li>)}{selectedMeasurements.map((item) => <li key={item.id}><LineChart size={14} />{item.type}: {item.value} {item.unit}</li>)}</ul>}
+            <div className="selected-day-grid"><div><span>{isEnglish ? 'Care actions' : '照护事项'}</span><strong>{selectedLogs.filter((item) => item.status === 'done').length} / {selectedLogs.length || 3}</strong></div><div><span>{isEnglish ? 'Care records' : '关键记录'}</span><strong>{selectedCareEvents.length}</strong></div><div><span>{isEnglish ? 'Measurements' : '成长测量'}</span><strong>{selectedMeasurements.length}</strong></div></div>
+            {selectedLogs.length === 0 && selectedMeasurements.length === 0 && selectedCareEvents.length === 0 ? <p className="empty-dashboard">{isEnglish ? 'No extra records for this day. Today’s checklist stays lightweight.' : '这一天暂无补充记录。今日清单保持轻量即可。'}</p> : <ul className="selected-day-list">{selectedLogs.map((item) => <li key={item.id}><Check size={14} />{item.taskId} · {item.status === 'done' ? (isEnglish ? 'done' : '已完成') : item.status}</li>)}{selectedCareEvents.map((item) => <li key={item.id}><Baby size={14} />{eventTitle(item, locale)} · {item.recordedBy?.displayName || (isEnglish ? 'caregiver' : '照护者')}</li>)}{selectedMeasurements.map((item) => <li key={item.id}><LineChart size={14} />{item.type}: {item.value} {item.unit}</li>)}</ul>}
           </section>
         </div>
         <div className="stage-boundary-note"><ShieldCheck size={16} /><span>{isEnglish ? 'No health score or developmental conclusion is produced. Measurements stay as caregiver-entered facts.' : '不生成健康评分或发育结论。成长测量只作为照护者填写的原始事实保存。'}</span><CircleHelp size={15} /></div>
@@ -94,7 +96,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   )
 }
 
-function CalendarCard({ locale, monthDays, cursor, selectedDate, onSelect, onMove, taskLogs, measurements, calendarEvents }) {
+function CalendarCard({ locale, monthDays, cursor, selectedDate, onSelect, onMove, taskLogs, measurements, careEvents = [], calendarEvents }) {
   const isEnglish = locale === 'en-US'
   const today = localDateKey()
   const dayLabels = isEnglish ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['日', '一', '二', '三', '四', '五', '六']
@@ -107,9 +109,10 @@ function CalendarCard({ locale, monthDays, cursor, selectedDate, onSelect, onMov
     <div className="calendar-grid">{monthDays.map(({ date, key, inMonth }) => {
       const hasLog = taskLogs.some((item) => item.date === key)
       const hasMeasurement = measurements.some((item) => item.measuredAt === key)
+      const hasCareEvent = careEvents.some((item) => item.status !== 'voided' && String(item.occurredAt || item.createdAt).slice(0, 10) === key)
       const events = eventsByDate.get(key) || []
       const markerLabel = events.map((event) => localized(event.title, locale)).join('、')
-      return <button key={key} className={`calendar-day ${inMonth ? '' : 'muted'} ${key === today ? 'today' : ''} ${key === selectedDate ? 'selected' : ''}`} onClick={() => onSelect(key)} aria-label={`${key}${markerLabel ? ` · ${markerLabel}` : ''}`}><span>{date.getDate()}</span><i className="calendar-markers">{events.slice(0, 3).map((event) => <b key={event.id} className={`calendar-marker ${event.kind} ${event.status === 'done' ? 'done' : ''}`} aria-hidden="true" />)}{!events.length && (hasLog || hasMeasurement) && <b className="calendar-marker record" aria-hidden="true" />}</i></button>
+      return <button key={key} className={`calendar-day ${inMonth ? '' : 'muted'} ${key === today ? 'today' : ''} ${key === selectedDate ? 'selected' : ''}`} onClick={() => onSelect(key)} aria-label={`${key}${markerLabel ? ` · ${markerLabel}` : ''}`}><span>{date.getDate()}</span><i className="calendar-markers">{events.slice(0, 3).map((event) => <b key={event.id} className={`calendar-marker ${event.kind} ${event.status === 'done' ? 'done' : ''}`} aria-hidden="true" />)}{!events.length && (hasLog || hasMeasurement || hasCareEvent) && <b className="calendar-marker record" aria-hidden="true" />}</i></button>
     })}</div>
     <p className="calendar-legend"><span><b className="calendar-marker admin" /> {isEnglish ? 'care task' : '照护代办'}</span><span><b className="calendar-marker milestone" /> {isEnglish ? 'milestone' : '里程碑'}</span><span><b className="calendar-marker anniversary" /> {isEnglish ? 'anniversary' : '纪念日'}</span><span><b className="calendar-marker record" /> {isEnglish ? 'record' : '已有记录'}</span></p>
     {selectedEvents.length > 0 && <div className="calendar-event-list"><strong>{isEnglish ? 'Selected date' : '当天事项'}</strong>{selectedEvents.map((event) => <div key={event.id} className={event.status === 'done' ? 'done' : ''}><span className={`calendar-marker ${event.kind} ${event.status === 'done' ? 'done' : ''}`} /><p><b>{localized(event.title, locale)}</b><small>{localized(event.detail, locale)}</small></p></div>)}</div>}

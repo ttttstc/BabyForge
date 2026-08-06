@@ -4,6 +4,8 @@ import { getAgeDays, getStage } from '../domain/baby.js'
 import { createObservation } from '../domain/observation.js'
 import { getAdminTasks, getDailyTasks, updateTaskLog, upsertAdminTaskRecord } from '../domain/carePlan.js'
 import { createGrowthMeasurement } from '../domain/carePlan.js'
+import { createCareEvent, createConcern as createConcernRecord } from '../domain/careEvents.js'
+import { topicById } from '../domain/healthSupport.js'
 import { ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { LeftRail } from './LeftRail.jsx'
@@ -41,13 +43,47 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     setState((current) => ({ ...current, adminTaskRecords: upsertAdminTaskRecord(current.adminTaskRecords, taskId, input) }))
   }
 
+  function recordCareEvent(input) {
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    const event = createCareEvent({ ...input, babyId: state.baby.id, source: 'caregiver_entered', recordedBy: recorder })
+    setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
+    return event
+  }
+
+  function createSupportConcern(input) {
+    const topic = topicById(input.topicId)
+    const concern = { ...createConcernRecord({ babyId: state.baby.id, topicId: input.topicId, title: topic.title, status: 'open' }), plan: input.plan || null, facts: input.facts || [], notes: input.notes || '' }
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    const event = createCareEvent({
+      babyId: state.baby.id,
+      type: 'symptom_observation',
+      source: 'caregiver_entered',
+      recordedBy: recorder,
+      relatedConcernId: concern.id,
+      payload: { supportTopic: input.topicId, supportTitle: topic.title, facts: input.facts || [], notes: input.notes || '', plan: input.plan || null },
+    })
+    setState((current) => ({ ...current, concerns: [...current.concerns, concern], careEvents: [...current.careEvents, event] }))
+    return concern
+  }
+
+  function resolveSupportConcern(concernId) {
+    const now = new Date().toISOString()
+    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
+    const concern = state.concerns.find((item) => item.id === concernId)
+    setState((current) => ({
+      ...current,
+      concerns: current.concerns.map((item) => item.id === concernId ? { ...item, status: 'closed', updatedAt: now } : item),
+      careEvents: [...current.careEvents, createCareEvent({ babyId: state.baby.id, type: 'care_action', source: 'caregiver_entered', recordedBy: recorder, relatedConcernId: concernId, payload: { supportStatus: 'closed', supportTitle: concern?.title || '' } })],
+    }))
+  }
+
   if (route === ROUTES.stage) {
     return <StageDashboard state={state} setState={setState} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} />
   }
 
   return (
     <main className="app-shell">
-      <Header route={route} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => updatePreference('currentRecorderId', value)} syncStatus={state.syncMeta?.status} />
+      <Header route={route} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => updatePreference('currentRecorderId', value)} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="workspace-grid">
         <LeftRail baby={state.baby} ageDays={ageDays} stage={stage} locale={state.preferences.locale} />
         <StageSurface
@@ -76,6 +112,11 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
           onAddGrowth={addGrowth}
           observations={state.observations}
           onSaveObservation={saveObservation}
+          careEvents={state.careEvents}
+          concerns={state.concerns}
+          onQuickRecord={recordCareEvent}
+          onCreateConcern={createSupportConcern}
+          onResolveConcern={resolveSupportConcern}
           questions={state.questions}
           onQuestionsChange={(questions) => setState((current) => ({ ...current, questions }))}
           sheet={sheet}

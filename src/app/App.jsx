@@ -9,6 +9,7 @@ import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, bridgeLegacyChanges, mergeCareEvents } from '../domain/careEvents.js'
+import { concernsFromCareEvents } from '../domain/healthSupport.js'
 import { changedCareEvents, flushCareEventOutbox, mergePulledState, pullCareActors, pullCareEvents, enqueueCareEvent } from '../domain/eventSync.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
@@ -89,6 +90,7 @@ export function App() {
       const payload = await pullCareEvents(babyId, since)
       let next = mergePulledState(current, payload, { since })
       next = { ...next, careEvents: mergeCareEvents(current.careEvents || [], payload.events || []) }
+      next = { ...next, concerns: concernsFromCareEvents(next.careEvents, next.concerns || []) }
       next = applyCareEventsToLegacy(next, next.careEvents)
       try {
         const actors = await pullCareActors(babyId)
@@ -170,11 +172,14 @@ export function App() {
     const onOnline = () => sync()
     globalThis.addEventListener?.('focus', onFocus)
     globalThis.addEventListener?.('online', onOnline)
+    const onManualRetry = () => sync()
+    globalThis.addEventListener?.('babyforge:sync-retry', onManualRetry)
     sync()
     return () => {
       globalThis.clearInterval?.(timer)
       globalThis.removeEventListener?.('focus', onFocus)
       globalThis.removeEventListener?.('online', onOnline)
+      globalThis.removeEventListener?.('babyforge:sync-retry', onManualRetry)
     }
   }, [session?.mode, session?.username, state.baby?.id])
 
@@ -260,7 +265,7 @@ export function App() {
   }
 
   if (route === ROUTES.summary) {
-    return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.pediatric)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
+    return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
   }
 
   return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
