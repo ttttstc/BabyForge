@@ -9,22 +9,37 @@ export const ROUTES = {
   jaundice: '#/topic/jaundice',
   pediatric: '#/topic/pediatric-diseases',
   settings: '#/settings',
-  summary: '#/doctor-summary',
+}
+
+const LEGACY_ROUTE_ALIASES = {
+  '#/doctor-summary': ROUTES.records,
 }
 
 export function navigate(route) {
   window.location.hash = route.slice(1)
 }
 
-function hashRoute() {
+function rawHashRoute() {
   return (window.location.hash || ROUTES.onboarding).split('?')[0]
+}
+
+function hashRoute() {
+  const rawRoute = rawHashRoute()
+  return LEGACY_ROUTE_ALIASES[rawRoute] || rawRoute
 }
 
 export function useHashRoute() {
   const [route, setRoute] = useState(hashRoute)
 
   useEffect(() => {
-    const update = () => setRoute(hashRoute())
+    const update = () => {
+      const nextRoute = hashRoute()
+      if (rawHashRoute() !== nextRoute) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextRoute}`)
+      }
+      setRoute(nextRoute)
+    }
+    update()
     window.addEventListener('hashchange', update)
     return () => window.removeEventListener('hashchange', update)
   }, [])

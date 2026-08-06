@@ -3,7 +3,7 @@ import { AlertCircle, ArrowRight, BookOpenCheck, ExternalLink, HeartHandshake, S
 import { evaluateMedicalTopic } from '../domain/safety.js'
 import { JAUNDICE_TOPIC } from '../content/jaundice.js'
 import { navigate, ROUTES } from '../app/router.js'
-import { getCopy } from '../domain/i18n.js'
+import { getStageLabel, getStageRangeLabel } from '../domain/baby.js'
 import { CareTaskList } from './CareTaskList.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
 import { CareOverview } from './CareOverview.jsx'
@@ -11,10 +11,9 @@ import { ConcernSupport } from './ConcernSupport.jsx'
 import { QuickRecordPanel } from './QuickRecordPanel.jsx'
 
 export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, baby = null, careEvents = [], concerns = [], onQuickRecord, onDeleteQuickRecord, onCreateConcern, onResolveConcern, locale = 'zh-CN', readOnly = false }) {
-  const copy = getCopy(locale)
   const [concernOpen, setConcernOpen] = useState(false)
-  const stageLabel = stage.id === 'newborn-early' ? copy.newbornEarly : stage.id === 'newborn-adaptation' ? copy.newbornAdaptation : copy.outOfScope
-  const stageRange = stage.id === 'newborn-early' ? copy.newbornEarlyRange : stage.id === 'newborn-adaptation' ? copy.newbornAdaptationRange : copy.outOfScope
+  const stageLabel = getStageLabel(stage, locale)
+  const stageRange = getStageRangeLabel(stage, locale)
   if (!topicMode) {
     return (
       <aside className="context-inspector" data-testid="context-inspector">
@@ -33,7 +32,6 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
           <div className="inspector-section-title"><ShieldCheck size={18} /><span>{locale === 'en-US' ? 'How to use this information' : '信息使用说明'}</span></div>
           <p>{locale === 'en-US' ? 'This helps you understand and record. It does not judge normality or provide a health score.' : '这里帮助你理解和记录，不判断宝宝是否正常，也不给健康评分。'}</p>
         </section>
-        <button className="summary-cta" onClick={() => navigate(ROUTES.summary)}>{copy.generateSummary}<ArrowRight size={17} /></button>
       </aside>
     )
   }
@@ -53,7 +51,6 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
       </section>
       {safety.status === 'unavailable' && <section className="safety-gate"><ShieldCheck size={19} /><div><strong>{locale === 'en-US' ? 'For care conversations' : '用于照护沟通'}</strong><p>{locale === 'en-US' ? 'The workspace records observations but does not provide a diagnosis, severity label, or care level. If you are worried, contact a pediatric clinician or local medical service.' : '工作台只整理观察，不提供诊断、严重度标签或就医等级。如果你担心宝宝，请联系儿科专业人员或当地医疗服务。'}</p></div></section>}
       <RecordsLink locale={locale} topic="illness" />
-      <button className="summary-cta" onClick={() => navigate(ROUTES.summary)}>{copy.generateSummary}<ArrowRight size={17} /></button>
       <section className="source-panel">
         <div className="inspector-section-title"><BookOpenCheck size={17} /><span>{locale === 'en-US' ? 'Sources' : '内容依据'}</span></div>
         <p>{locale === 'en-US' ? 'Version' : '版本'}：{JAUNDICE_TOPIC.contentVersion}</p>

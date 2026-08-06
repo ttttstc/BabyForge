@@ -1,4 +1,4 @@
-import { Baby, CalendarRange, ClipboardPlus, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
+import { Baby, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
@@ -10,7 +10,6 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
     { route: ROUTES.records, label: copy.nav.records, icon: ClipboardPlus },
     { route: ROUTES.stage, label: copy.nav.stage, icon: CalendarRange },
     { route: ROUTES.pediatric, label: copy.nav.pediatric, icon: Stethoscope },
-    { route: ROUTES.summary, label: copy.nav.summary, icon: FileHeart },
   ]
 
   return (
@@ -32,8 +31,8 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
       </nav>
       <div className="header-actions">
         <label className="recorder-picker">
-          <span>{locale === 'en-US' ? 'Entered by' : '记录人'}</span>
-          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current recorder' : '当前记录人'}>
+          <span>{locale === 'en-US' ? 'Current role' : '当前角色'}</span>
+          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current role' : '当前角色'}>
             {careActors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
           </select>
         </label>

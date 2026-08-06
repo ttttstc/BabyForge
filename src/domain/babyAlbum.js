@@ -1,0 +1,138 @@
+import exifr from 'exifr'
+
+export const MAX_PHOTO_BYTES = 12 * 1024 * 1024
+
+const DB_NAME = 'babyforge-album'
+const DB_VERSION = 1
+const PHOTO_STORE = 'photos'
+const PHOTO_TYPES = new Set([
+  'image/avif',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
+const PHOTO_EXTENSION = /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i
+
+function validDate(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export function isSupportedPhoto(file) {
+  return Boolean(file && file.size > 0 && file.size <= MAX_PHOTO_BYTES && (PHOTO_TYPES.has(file.type) || (!file.type && PHOTO_EXTENSION.test(file.name))))
+}
+
+export function dateTimeInputValue(value) {
+  const date = validDate(value)
+  if (!date) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+export function dateTimeInputToIso(value) {
+  return validDate(value)?.toISOString() || ''
+}
+
+export async function detectPhotoTime(file) {
+  try {
+    const metadata = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate', 'DateTimeDigitized'])
+    const captured = validDate(metadata?.DateTimeOriginal || metadata?.CreateDate || metadata?.DateTimeDigitized)
+    if (captured) return { takenAt: captured.toISOString(), timeSource: 'exif' }
+  } catch {
+    // Metadata is optional. Keep upload usable for stripped or unsupported files.
+  }
+  const modifiedValue = Number(file?.lastModified)
+  const modified = modifiedValue > 0 ? validDate(modifiedValue) : null
+  if (modified) return { takenAt: modified.toISOString(), timeSource: 'file' }
+  return { takenAt: new Date().toISOString(), timeSource: 'upload' }
+}
+
+function openAlbumDatabase() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null)
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION)
+    request.onupgradeneeded = () => {
+      if (request.result.objectStoreNames.contains(PHOTO_STORE)) return
+      const store = request.result.createObjectStore(PHOTO_STORE, { keyPath: 'id' })
+      store.createIndex('babyId', 'babyId')
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function listLocalPhotos(babyId) {
+  const db = await openAlbumDatabase()
+  if (!db) return []
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PHOTO_STORE, 'readonly')
+    const request = transaction.objectStore(PHOTO_STORE).index('babyId').getAll(String(babyId))
+    request.onsuccess = () => resolve((request.result || []).sort((left, right) => left.createdAt.localeCompare(right.createdAt)))
+    request.onerror = () => reject(request.error)
+    transaction.oncomplete = () => db.close()
+  })
+}
+
+async function saveLocalPhoto({ babyId, file, takenAt, timeSource }) {
+  const db = await openAlbumDatabase()
+  if (!db) throw new Error('当前浏览器不支持本地相册存储')
+  const record = {
+    id: `photo-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`,
+    babyId: String(babyId),
+    fileName: file.name,
+    contentType: file.type || 'application/octet-stream',
+    sizeBytes: file.size,
+    takenAt,
+    timeSource,
+    createdAt: new Date().toISOString(),
+    blob: file.slice(0, file.size, file.type),
+  }
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(PHOTO_STORE, 'readwrite')
+    transaction.objectStore(PHOTO_STORE).put(record)
+    transaction.oncomplete = () => { db.close(); resolve() }
+    transaction.onerror = () => { db.close(); reject(transaction.error) }
+  })
+  return record
+}
+
+async function responsePayload(response) {
+  let payload = null
+  try { payload = await response.json() } catch { /* A proxy may return a non-JSON error page. */ }
+  if (!response.ok) throw new Error(payload?.error || '相册服务暂不可用')
+  return payload
+}
+
+export async function listBabyPhotos(babyId, { remote = false } = {}) {
+  if (!remote) return listLocalPhotos(babyId)
+  const response = await fetch(`/api/photos?babyId=${encodeURIComponent(babyId)}`, { credentials: 'include' })
+  return (await responsePayload(response)).photos || []
+}
+
+export async function uploadBabyPhoto(input, { remote = false } = {}) {
+  if (!remote) return saveLocalPhoto(input)
+  const form = new FormData()
+  form.append('babyId', input.babyId)
+  form.append('photo', input.file, input.file.name)
+  form.append('takenAt', input.takenAt)
+  form.append('timeSource', input.timeSource)
+  const response = await fetch('/api/photos', { method: 'POST', credentials: 'include', body: form })
+  return (await responsePayload(response)).photo
+}
+
+export async function clearLocalBabyAlbum(babyId) {
+  const db = await openAlbumDatabase()
+  if (!db || !babyId) return
+  const records = await listLocalPhotos(babyId)
+  if (!records.length) { db.close(); return }
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(PHOTO_STORE, 'readwrite')
+    const store = transaction.objectStore(PHOTO_STORE)
+    records.forEach((record) => store.delete(record.id))
+    transaction.oncomplete = () => { db.close(); resolve() }
+    transaction.onerror = () => { db.close(); reject(transaction.error) }
+  })
+}

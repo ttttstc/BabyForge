@@ -101,7 +101,7 @@ export function QuickRecordPanel({ baby = null, locale = 'zh-CN', onRecord, onCo
 
   return <section className="quick-record-panel inspector-block" data-testid="quick-record-panel">
     <header className="quick-record-heading"><div><p className="eyebrow">{isEnglish ? 'Quick record' : '快捷记录'}</p><h2>{isEnglish ? 'Save the fact first' : '先保存关键事实'}</h2></div><Clock3 size={18} /></header>
-    <p className="quick-record-lede">{isEnglish ? 'One tap saves the time and current recorder. Add detail only when it changes the next step.' : '一次点击保存发生时间和当前记录人。只有会改变下一步的信息才需要补充。'}</p>
+    <p className="quick-record-lede">{isEnglish ? 'One tap saves the time and current role. Add detail only when it changes the next step.' : '一次点击保存发生时间和当前角色。只有会改变下一步的信息才需要补充。'}</p>
     <label className="quick-record-time"><span>{isEnglish ? 'Event time' : '发生时间'}</span><input type="datetime-local" value={occurredAt} min={minOccurredAt} max={maxOccurredAt} onChange={(event) => { setOccurredAt(event.target.value); setTimeEdited(true); setSaveError('') }} disabled={readOnly || saving} aria-label={isEnglish ? 'Event time' : '发生时间'} data-testid="quick-record-time" /><small>{isEnglish ? 'Defaults to now; change it when backfilling an earlier record.' : '默认当前时间；补录之前的记录时再修改。'}</small></label>
     <div className="quick-record-grid">
       {visibleRecords.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" disabled={readOnly || saving} data-testid={`quick-record-${item.id}`} onClick={() => record(item)}><Icon size={17} /><span>{item.label[isEnglish ? 'en' : 'zh']}</span></button> })}

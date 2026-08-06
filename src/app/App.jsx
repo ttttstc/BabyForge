@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Onboarding } from '../features/Onboarding.jsx'
 import { Workspace } from '../features/Workspace.jsx'
-import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
 import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
@@ -12,6 +11,7 @@ import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
+import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -257,12 +257,26 @@ export function App() {
     navigate(ROUTES.login)
   }
 
-  function clearWorkspace() {
+  async function clearWorkspace() {
+    const babyId = stateRef.current.baby?.id
+    if (babyId) {
+      try {
+        await clearLocalBabyAlbum(babyId)
+      } catch (error) {
+        console.warn('[BabyForge] Failed to clear local baby album', error)
+        const message = stateRef.current.preferences.locale === 'en-US'
+          ? 'The local album could not be cleared. Your workspace was kept; please try again.'
+          : '本地相册清理失败，工作区未清除，请重试。'
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message)
+        return false
+      }
+    }
     clearState(globalThis.localStorage, session?.username)
     const initial = createInitialState()
     stateRef.current = initial
     setState(initial)
     navigate(session && canEdit(session) ? ROUTES.onboarding : ROUTES.login)
+    return true
   }
 
   if (!session || route === ROUTES.login || (session?.role === 'guest' && !state.baby)) {
@@ -285,9 +299,5 @@ export function App() {
     return <PediatricDiseasesView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
-  if (route === ROUTES.summary) {
-    return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
-  }
-
-  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />
 }
