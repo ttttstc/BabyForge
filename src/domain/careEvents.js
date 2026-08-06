@@ -24,6 +24,12 @@ export const CARE_EVENT_TYPES = Object.freeze([
 export const CARE_EVENT_STATUSES = Object.freeze(['active', 'corrected', 'voided'])
 export const CARE_EVENT_SOURCES = Object.freeze(['caregiver', 'clinical_record', 'device_import', 'unknown'])
 
+const OCCURRED_AT_ERROR_MESSAGES = Object.freeze({
+  invalid: { zh: '发生时间无效，请重新选择。', en: 'Choose a valid event time.' },
+  before_birth: { zh: '发生时间不能早于宝宝出生日期。', en: 'The event time cannot be before the baby’s birth date.' },
+  future: { zh: '发生时间不能晚于当前时间。', en: 'The event time cannot be in the future.' },
+})
+
 export const DEFAULT_RECORDERS = Object.freeze([
   { id: 'parent-mother', displayName: '妈妈', presetId: 'parent-mother' },
   { id: 'parent-father', displayName: '爸爸', presetId: 'parent-father' },
@@ -65,6 +71,23 @@ function kindForType(type) {
 
 function normalizeSource(value) {
   return SOURCE_ALIASES[value] || (CARE_EVENT_SOURCES.includes(value) ? value : 'unknown')
+}
+
+export function validateOccurredAt(value, { birthDate = null, now = new Date(), futureSkewMs = 60_000 } = {}) {
+  const occurredAt = new Date(value)
+  if (Number.isNaN(occurredAt.getTime())) return 'invalid'
+  const current = now instanceof Date ? now : new Date(now)
+  if (Number.isNaN(current.getTime())) return 'invalid'
+  if (birthDate) {
+    const birthStart = new Date(`${String(birthDate).slice(0, 10)}T00:00:00`)
+    if (!Number.isNaN(birthStart.getTime()) && occurredAt.getTime() < birthStart.getTime()) return 'before_birth'
+  }
+  if (occurredAt.getTime() > current.getTime() + futureSkewMs) return 'future'
+  return null
+}
+
+export function occurredAtErrorMessage(code, locale = 'zh-CN') {
+  return OCCURRED_AT_ERROR_MESSAGES[code]?.[locale === 'en-US' ? 'en' : 'zh'] || OCCURRED_AT_ERROR_MESSAGES.invalid.zh
 }
 
 export function normalizeRecorder(value, fallback = DEFAULT_RECORDERS[0]) {

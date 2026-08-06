@@ -74,7 +74,7 @@ test('today quick records form a low-burden care loop', async ({ page }) => {
   await page.getByRole('button', { name: '保存瓶喂' }).click()
   await expect(page.getByText('瓶喂 60 mL', { exact: true }).first()).toBeVisible()
   page.once('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: '删除瓶喂 60 mL' }).click()
+  await page.getByRole('button', { name: '撤销瓶喂 60 mL' }).click()
   await expect(page.getByText('瓶喂 60 mL', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '生成就医摘要' }).click()
   await expect(page).toHaveURL(/#\/doctor-summary$/)

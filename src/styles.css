@@ -800,7 +800,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .stage-board-card { grid-row: auto; }
   .growth-card { order: -1; }
   .stage-calendar-card { order: 2; }
-  .growth-card { order: 3; }
   .stage-day-card { order: 4; }
 }
 

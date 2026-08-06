@@ -9,7 +9,7 @@ import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
 import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
-import { applyCareEventsToLegacy, bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState } from '../src/domain/careEvents.js'
+import { applyCareEventsToLegacy, bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState, occurredAtErrorMessage, validateOccurredAt } from '../src/domain/careEvents.js'
 import { changedCareEvents, mergePulledState } from '../src/domain/eventSync.js'
 import { coalesceOutboxItem } from '../src/domain/localDb.js'
 import { safeEventInput } from '../functions/_shared/care.js'
@@ -366,6 +366,14 @@ test('server revision wins over a future-dated local clock at the same version',
   const local = createCareEvent({ id: 'event-clock', version: 2, updatedAt: '2099-01-01T00:00:00Z', payload: { value: 'local' } })
   const remote = { ...local, updatedAt: '2026-08-05T10:00:00Z', payload: { value: 'server' } }
   assert.equal(mergeCareEvents([local], [remote])[0].payload.value, 'server')
+})
+
+test('care event time validation bounds quick-record backfills', () => {
+  const now = new Date('2026-08-06T10:00:00.000Z')
+  assert.equal(validateOccurredAt('2026-08-01T09:00:00', { birthDate: '2026-08-01', now }), null)
+  assert.equal(validateOccurredAt('2026-07-31T23:59:00', { birthDate: '2026-08-01', now }), 'before_birth')
+  assert.equal(validateOccurredAt('2026-08-06T10:02:00Z', { birthDate: '2026-08-01', now }), 'future')
+  assert.equal(occurredAtErrorMessage('future', 'zh-CN'), '发生时间不能晚于当前时间。')
 })
 
 test('legacy event application merges fields and removes voided records', () => {

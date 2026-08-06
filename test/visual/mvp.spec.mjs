@@ -234,7 +234,12 @@ test('mobile workspace scrolls to the details below the stage', async ({ page })
   await page.setViewportSize({ width: 390, height: 844 })
   await createBaby(page)
   await expect(page.getByTestId('mobile-sheet-controls')).toHaveCount(0)
-  await expect(page.getByTestId('context-inspector')).toBeVisible()
+  const inspector = page.getByTestId('context-inspector')
+  await expect(inspector).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const element = document.querySelector('[data-testid="context-inspector"]')
+    return element ? element.getBoundingClientRect().top + window.scrollY : 0
+  })).toBeGreaterThan(500)
 })
 
 test('onboarding keeps the approved visual direction', async ({ page }) => {

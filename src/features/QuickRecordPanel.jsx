@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Baby, CheckCircle2, Clock3, Droplets, NotebookPen, Utensils } from 'lucide-react'
+import { occurredAtErrorMessage, validateOccurredAt } from '../domain/careEvents.js'
 
 const RECORDS = [
   { id: 'breastfeeding', type: 'breastfeeding', label: { zh: '亲喂', en: 'Breastfeed' }, icon: Utensils },
@@ -9,7 +10,7 @@ const RECORDS = [
   { id: 'both', type: 'diaper', kind: 'both', label: { zh: '尿和便', en: 'Urine + stool' }, icon: CheckCircle2 },
 ]
 
-function localDateTimeValue(value = new Date()) {
+function formatDateTimeLocal(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value)
   const offset = date.getTimezoneOffset() * 60_000
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
@@ -20,28 +21,35 @@ function isoDateTimeValue(value, fallback = new Date().toISOString()) {
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString()
 }
 
-function eventInput(category, payload, occurredAtValue) {
+function eventInput({ category, payload, occurredAt }) {
   const recordedAt = new Date().toISOString()
-  const occurredAt = occurredAtValue ? isoDateTimeValue(occurredAtValue, recordedAt) : recordedAt
-  return { kind: 'caregiver_observation', category, occurredAt, recordedAt, source: 'caregiver', payload }
+  return { kind: 'caregiver_observation', category, occurredAt: occurredAt ? isoDateTimeValue(occurredAt, recordedAt) : recordedAt, recordedAt, source: 'caregiver', payload }
 }
 
-export function QuickRecordPanel({ locale = 'zh-CN', onRecord, readOnly = false }) {
+export function QuickRecordPanel({ baby = null, locale = 'zh-CN', onRecord, readOnly = false }) {
   const [bottleOpen, setBottleOpen] = useState(false)
   const [amount, setAmount] = useState('')
-  const [occurredAt, setOccurredAt] = useState(() => localDateTimeValue())
+  // The time field is intentionally seeded on mount and is not persisted between sessions.
+  const [occurredAt, setOccurredAt] = useState(() => formatDateTimeLocal())
   const [timeEdited, setTimeEdited] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
   const isEnglish = locale === 'en-US'
+  const minOccurredAt = baby?.birthDate ? `${String(baby.birthDate).slice(0, 10)}T00:00` : undefined
+  const [maxOccurredAt] = useState(() => formatDateTimeLocal(new Date(Date.now() + 60_000)))
 
   function selectedOccurredAt() {
-    return timeEdited ? occurredAt : localDateTimeValue()
+    return timeEdited ? occurredAt : formatDateTimeLocal()
   }
 
   function resetOccurredAt() {
-    setOccurredAt(localDateTimeValue())
+    setOccurredAt(formatDateTimeLocal())
     setTimeEdited(false)
+  }
+
+  function validateSelectedTime(value) {
+    const code = validateOccurredAt(value, { birthDate: baby?.birthDate })
+    return code ? occurredAtErrorMessage(code, locale) : ''
   }
 
   async function record(item) {
@@ -50,9 +58,15 @@ export function QuickRecordPanel({ locale = 'zh-CN', onRecord, readOnly = false 
       return
     }
     setSaveError('')
+    const selectedTime = selectedOccurredAt()
+    const timeError = validateSelectedTime(selectedTime)
+    if (timeError) {
+      setSaveError(timeError)
+      return
+    }
     setSaving(true)
     try {
-      await onRecord?.(eventInput(item.type, item.kind ? { kind: item.kind } : { mode: 'breastfeeding' }, selectedOccurredAt()))
+      await onRecord?.(eventInput({ category: item.type, payload: item.kind ? { kind: item.kind } : { mode: 'breastfeeding' }, occurredAt: selectedTime }))
       resetOccurredAt()
     } catch (error) {
       setSaveError(error?.message || (isEnglish ? 'Save failed. Retry.' : '保存失败，请重试。'))
@@ -65,9 +79,15 @@ export function QuickRecordPanel({ locale = 'zh-CN', onRecord, readOnly = false 
     event.preventDefault()
     if (!amount.trim()) return
     setSaveError('')
+    const selectedTime = selectedOccurredAt()
+    const timeError = validateSelectedTime(selectedTime)
+    if (timeError) {
+      setSaveError(timeError)
+      return
+    }
     setSaving(true)
     try {
-      await onRecord?.(eventInput('bottle_feeding', { amountMl: Number(amount), unit: 'mL' }, selectedOccurredAt()))
+      await onRecord?.(eventInput({ category: 'bottle_feeding', payload: { amountMl: Number(amount), unit: 'mL' }, occurredAt: selectedTime }))
       setAmount('')
       setBottleOpen(false)
       resetOccurredAt()
@@ -81,7 +101,7 @@ export function QuickRecordPanel({ locale = 'zh-CN', onRecord, readOnly = false 
   return <section className="quick-record-panel inspector-block" data-testid="quick-record-panel">
     <header className="quick-record-heading"><div><p className="eyebrow">{isEnglish ? 'Quick record' : '快捷记录'}</p><h2>{isEnglish ? 'Quick records' : '快捷记录'}</h2></div><Clock3 size={18} /></header>
     <p className="quick-record-lede">{isEnglish ? 'One tap saves the time and current recorder. Add detail only when it changes the next step.' : '一次点击保存发生时间和当前记录人。只有会改变下一步的信息才需要补充。'}</p>
-    <label className="quick-record-time"><span>{isEnglish ? 'Event time' : '发生时间'}</span><input type="datetime-local" value={occurredAt} onChange={(event) => { setOccurredAt(event.target.value); setTimeEdited(true) }} disabled={readOnly || saving} aria-label={isEnglish ? 'Event time' : '发生时间'} data-testid="quick-record-time" /><small>{isEnglish ? 'Defaults to now; change it when backfilling an earlier record.' : '默认当前时间；补录之前的记录时再修改。'}</small></label>
+    <label className="quick-record-time"><span>{isEnglish ? 'Event time' : '发生时间'}</span><input type="datetime-local" value={occurredAt} min={minOccurredAt} max={maxOccurredAt} onChange={(event) => { setOccurredAt(event.target.value); setTimeEdited(true); setSaveError('') }} disabled={readOnly || saving} aria-label={isEnglish ? 'Event time' : '发生时间'} data-testid="quick-record-time" /><small>{isEnglish ? 'Defaults to now; change it when backfilling an earlier record.' : '默认当前时间；补录之前的记录时再修改。'}</small></label>
     <div className="quick-record-grid">
       {RECORDS.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" disabled={readOnly || saving} data-testid={`quick-record-${item.id}`} onClick={() => record(item)}><Icon size={17} /><span>{item.label[isEnglish ? 'en' : 'zh']}</span></button> })}
     </div>

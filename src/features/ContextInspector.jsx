@@ -11,7 +11,7 @@ import { AdminTaskList } from './AdminTaskList.jsx'
 import { CareOverview } from './CareOverview.jsx'
 import { QuickRecordPanel } from './QuickRecordPanel.jsx'
 
-export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, growthMeasurements = [], onAddGrowth, observations, onSaveObservation, careEvents = [], concerns = [], onQuickRecord, onDeleteQuickRecord, questions, onQuestionsChange, locale = 'zh-CN', readOnly = false }) {
+export function ContextInspector({ baby = null, topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, growthMeasurements = [], onAddGrowth, observations, onSaveObservation, careEvents = [], concerns = [], onQuickRecord, onDeleteQuickRecord, questions, onQuestionsChange, locale = 'zh-CN', readOnly = false }) {
   const copy = getCopy(locale)
   const stageLabel = stage.id === 'newborn-early' ? copy.newbornEarly : stage.id === 'newborn-adaptation' ? copy.newbornAdaptation : copy.outOfScope
   const stageRange = stage.id === 'newborn-early' ? copy.newbornEarlyRange : stage.id === 'newborn-adaptation' ? copy.newbornAdaptationRange : copy.outOfScope
@@ -24,7 +24,7 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
           <p>{stageRange}</p>
         </div>
         <CareOverview careEvents={careEvents} concerns={concerns} locale={locale} onDeleteQuickRecord={onDeleteQuickRecord} readOnly={readOnly} />
-        <QuickRecordPanel locale={locale} onRecord={onQuickRecord} readOnly={readOnly} />
+        <QuickRecordPanel baby={baby} locale={locale} onRecord={onQuickRecord} readOnly={readOnly} />
         <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
         <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={onAdminTaskUpdate} readOnly={readOnly} />
         <section className="inspector-block tone-aqua">

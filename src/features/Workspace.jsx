@@ -3,7 +3,7 @@ import { getAgeDays, getStage } from '../domain/baby.js'
 import { createObservation } from '../domain/observation.js'
 import { getAdminTasks, getDailyTasks } from '../domain/carePlan.js'
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement } from '../domain/growth.js'
-import { createCareEvent, voidCareEvent } from '../domain/careEvents.js'
+import { createCareEvent, occurredAtErrorMessage, validateOccurredAt, voidCareEvent } from '../domain/careEvents.js'
 import { ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { LeftRail } from './LeftRail.jsx'
@@ -100,16 +100,21 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     const category = String(canonicalInput.category || type || '').trim()
     if (!category) throw new Error('事件必须提供 category')
     const now = new Date().toISOString()
-    const event = createCareEvent({ ...canonicalInput, babyId: state.baby.id, kind: canonicalInput.kind || 'caregiver_observation', category, occurredAt: canonicalInput.occurredAt || now, recordedAt: canonicalInput.recordedAt || now, source: 'caregiver', actor: recorder })
+    const occurredAt = canonicalInput.occurredAt || now
+    const timeError = validateOccurredAt(occurredAt, { birthDate: state.baby.birthDate })
+    if (timeError) throw new Error(occurredAtErrorMessage(timeError, state.preferences.locale))
+    const event = createCareEvent({ ...canonicalInput, babyId: state.baby.id, kind: canonicalInput.kind || 'caregiver_observation', category, occurredAt, recordedAt: canonicalInput.recordedAt || now, source: 'caregiver', actor: recorder })
     return setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
   }
 
   function deleteQuickRecord(eventId) {
     if (readOnly) return Promise.resolve(false)
+    const event = state.careEvents.find((item) => item.id === eventId)
+    if (!event || event.status !== 'active' || !['breastfeeding', 'bottle_feeding', 'diaper'].includes(event.category)) return Promise.resolve(false)
     const now = new Date().toISOString()
     return setState((current) => {
-      const event = current.careEvents.find((item) => item.id === eventId)
-      if (!event || event.status !== 'active' || !['breastfeeding', 'bottle_feeding', 'diaper'].includes(event.category)) return current
+      const currentEvent = current.careEvents.find((item) => item.id === eventId)
+      if (!currentEvent || currentEvent.status !== 'active' || !['breastfeeding', 'bottle_feeding', 'diaper'].includes(currentEvent.category)) return current
       return { ...current, careEvents: current.careEvents.map((item) => item.id === eventId ? voidCareEvent(item, { now }) : item) }
     })
   }
@@ -134,6 +139,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
           onPerformanceModeChange={(value) => updatePreference('performanceMode', value)}
         />
         <ContextInspector
+          baby={state.baby}
           topicMode={topicMode}
           stage={stage}
           tasks={dailyTasks}
