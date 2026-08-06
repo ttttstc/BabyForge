@@ -43,6 +43,45 @@ export const STAGE_MILESTONES = {
     { id: 'health-visit-questions', dueDay: 21, title: { zh: '准备儿童保健问题', en: 'Prepare health-visit questions' }, detail: { zh: '从记录中挑出最想向专业人员确认的三件事。', en: 'Choose up to three questions from your records.' } },
     { id: 'adaptation-review', dueDay: 28, title: { zh: '完成 0–28 天回顾', en: 'Review the first 28 days' }, detail: { zh: '查看阶段事项、成长测量和观察时间线。', en: 'Review stage tasks, measurements, and the observation timeline.' } },
   ],
+  'infant-1-2-months': [
+    { id: 'infant-1-2-month-review', dueDay: 45, dueLabel: { zh: '1–2 个月阶段', en: 'Months 1–2' }, title: { zh: '回顾 1–2 个月观察', en: 'Review months 1–2 observations' }, detail: { zh: '整理吃奶、睡眠和清醒互动中的稳定事实，不与同龄宝宝比较。', en: 'Gather steady facts about feeding, sleep, and awake interaction without comparing babies.' } },
+  ],
+  'infant-2-3-months': [
+    { id: 'infant-2-3-month-interaction', dueDay: 75, dueLabel: { zh: '2–3 个月阶段', en: 'Months 2–3' }, title: { zh: '记录清醒互动节律', en: 'Notice awake interaction rhythms' }, detail: { zh: '记录宝宝何时更容易清醒、回应和休息，留给照护者交接。', en: 'Notice when the baby is more ready to be awake, respond, and rest for caregiver handoffs.' } },
+  ],
+  'infant-3-4-months': [
+    { id: 'infant-3-4-month-movement', dueDay: 105, dueLabel: { zh: '3–4 个月阶段', en: 'Months 3–4' }, title: { zh: '观察动作变化', en: 'Observe movement changes' }, detail: { zh: '记录抬头、伸手和身体转动等看到的动作变化，不做能力评分。', en: 'Record observed changes such as head control, reaching, and turning without scoring development.' } },
+  ],
+  'infant-4-6-months': [
+    { id: 'infant-4-6-month-exploration', dueDay: 150, dueLabel: { zh: '4–6 个月阶段', en: 'Months 4–6' }, title: { zh: '记录新的探索事实', en: 'Record new exploration facts' }, detail: { zh: '把伸手、抓握、声音和新的进食事实分开记录，保留发生时间。', en: 'Record reaching, grasping, sounds, and new feeding facts separately with their dates.' } },
+  ],
+  'infant-6-9-months': [
+    { id: 'infant-6-9-month-safety', dueDay: 225, dueLabel: { zh: '6–9 个月阶段', en: 'Months 6–9' }, title: { zh: '检查移动空间安全', en: 'Check the moving space' }, detail: { zh: '随着翻身、爬行或坐起变化，重新检查地面、家具和可触及物品。', en: 'As rolling, crawling, or sitting changes, recheck floors, furniture, and reachable objects.' } },
+  ],
+  'infant-9-12-months': [
+    { id: 'infant-9-12-month-communication', dueDay: 315, dueLabel: { zh: '9–12 个月阶段', en: 'Months 9–12' }, title: { zh: '整理声音和手势互动', en: 'Review sounds and gestures' }, detail: { zh: '记录宝宝用声音、表情或手势表达需求的具体场景。', en: 'Record concrete moments when the baby uses sounds, expressions, or gestures to communicate.' } },
+  ],
+  'toddler-12-15-months': [
+    { id: 'toddler-12-15-month-review', dueDay: 410, dueLabel: { zh: '12–15 个月阶段', en: 'Months 12–15' }, title: { zh: '完成一岁后成长回顾', en: 'Review the first year after birth' }, detail: { zh: '把移动、沟通、进食和日常照护中最有变化的事实整理出来。', en: 'Gather the biggest changes in movement, communication, feeding, and daily care.' } },
+  ],
+  'toddler-15-18-months': [
+    { id: 'toddler-15-18-month-independence', dueDay: 500, dueLabel: { zh: '15–18 个月阶段', en: 'Months 15–18' }, title: { zh: '记录自主尝试', en: 'Record independent attempts' }, detail: { zh: '记录宝宝尝试自己走、拿、吃或表达时需要什么支持。', en: 'Record what support the baby needs while trying to walk, hold, eat, or communicate independently.' } },
+  ],
+  'toddler-18-24-months': [
+    { id: 'toddler-18-24-month-handoff', dueDay: 620, dueLabel: { zh: '18–24 个月阶段', en: 'Months 18–24' }, title: { zh: '更新日常照护交接', en: 'Refresh the daily care handoff' }, detail: { zh: '把睡眠、进食、情绪和安抚方式更新成全家都能复述的事实。', en: 'Update sleep, feeding, emotions, and soothing facts so every caregiver can repeat them.' } },
+  ],
+  'child-2-3-years': [
+    { id: 'child-2-3-year-review', dueDay: 820, dueLabel: { zh: '2–3 岁阶段', en: 'Years 2–3' }, title: { zh: '回顾两岁阶段变化', en: 'Review the second-year changes' }, detail: { zh: '整理语言、游戏、生活自理和家庭节律中的具体变化。', en: 'Gather concrete changes in language, play, self-care, and family routines.' } },
+  ],
+  'child-3-4-years': [
+    { id: 'child-3-4-year-observation', dueDay: 1180, dueLabel: { zh: '3–4 岁阶段', en: 'Years 3–4' }, title: { zh: '观察游戏、表达和自理', en: 'Observe play, expression, and self-care' }, detail: { zh: '用具体场景记录孩子如何游戏、表达想法和完成日常小事。', en: 'Use concrete scenes to record play, expression, and everyday self-care.' } },
+  ],
+  'child-4-5-years': [
+    { id: 'child-4-5-year-routine', dueDay: 1540, dueLabel: { zh: '4–5 岁阶段', en: 'Years 4–5' }, title: { zh: '整理情绪和日常节律', en: 'Review emotions and routines' }, detail: { zh: '记录触发情绪变化的场景、有效的安抚方式和一天的主要节律。', en: 'Record situations linked to emotional changes, helpful soothing, and the day’s main routines.' } },
+  ],
+  'child-5-6-years': [
+    { id: 'child-5-6-year-review', dueDay: 1900, dueLabel: { zh: '5–6 岁阶段', en: 'Years 5–6' }, title: { zh: '完成入学前成长回顾', en: 'Complete a pre-school-age review' }, detail: { zh: '整理生活自理、沟通、游戏和家庭需要继续支持的事实。', en: 'Gather facts about self-care, communication, play, and support the family wants to continue.' } },
+  ],
 }
 
 // Administrative and preventive-care tasks are kept separate from daily

@@ -9,7 +9,6 @@ export const ROUTES = {
   jaundice: '#/topic/jaundice',
   pediatric: '#/topic/pediatric-diseases',
   settings: '#/settings',
-  summary: '#/doctor-summary',
 }
 
 export function navigate(route) {

@@ -125,6 +125,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .baby-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .baby-facts span { padding: 5px 8px; color: #587181; border-radius: 8px; background: #f0f5f4; font-size: 0.65rem; }
 .timeline-item { width: 100%; display: grid; grid-template-columns: 21px 1fr auto; align-items: center; gap: 7px; padding: 9px 7px; text-align: left; border: 0; border-radius: 11px; background: transparent; cursor: pointer; }
+.stage-timeline-list { display: grid; gap: 2px; max-height: min(56vh, 610px); overflow-y: auto; padding-right: 3px; scrollbar-width: thin; }
 .timeline-item:hover, .timeline-item.active { background: var(--aqua-soft); }
 .timeline-item > span:nth-child(2) { display: grid; }
 .timeline-item strong { font-size: 0.76rem; }
@@ -421,7 +422,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .research-pill, .education-badge { color: #775731; border-color: rgba(197, 154, 94, .28); background: var(--gold-soft); }
 .icon-button { border: 1px solid var(--line); background: rgba(255, 251, 244, .54); }
 .icon-button:hover { color: var(--coral); border-color: rgba(235, 124, 107, .42); background: rgba(255, 251, 244, .9); }
-.workspace-grid { height: calc(100vh - 80px); grid-template-columns: 278px minmax(430px, 1fr) 400px; gap: 18px; padding: 0; }
+.workspace-grid { height: calc(100vh - 80px); grid-template-columns: 310px minmax(500px, 1fr) 440px; gap: 18px; padding: 0; }
 .rail-card, .context-inspector, .stage-surface { border-color: var(--line); border-radius: 26px; background: var(--paper); box-shadow: var(--shadow); }
 .left-rail { gap: 14px; }
 .rail-card { padding: 17px; }
@@ -760,16 +761,24 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .record-number { background: var(--sage); }
 .summary-disclaimer { color: #6f542b; background: var(--gold-soft); }
 
+@media (max-width: 1300px) {
+  .workspace-grid { grid-template-columns: 300px minmax(380px, 1fr) 410px; }
+}
+
 @media (max-width: 1180px) {
   .app-header { grid-template-columns: minmax(190px, 1fr) auto auto; }
   .app-header nav { grid-column: 2; }
   .baby-chip { display: none; }
-  .workspace-grid { grid-template-columns: 240px minmax(390px, 1fr) 360px; }
+  .workspace-grid { grid-template-columns: 280px minmax(400px, 1fr) 400px; }
+}
+
+@media (max-width: 1100px) {
+  .workspace-grid { grid-template-columns: 220px minmax(320px, 1fr) 360px; gap: 10px; }
 }
 
 @media (max-width: 960px) {
   .app-shell { padding-inline: 14px; }
-  .workspace-grid { grid-template-columns: 200px minmax(330px, 1fr) 350px; gap: 10px; }
+  .workspace-grid { grid-template-columns: 220px minmax(320px, 1fr) 360px; gap: 10px; }
   .stage-toolbar { width: 62px; left: 12px; }
   .stage-toolbar button { min-height: 44px; font-size: .56rem; }
   .scene-progress { padding-left: 88px; }
@@ -817,7 +826,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 /* Common pediatric conditions: anatomy resources wrapped in BabyForge's
    observation and safety workflow. */
 .pediatric-shell { overflow: hidden; }
-.pediatric-workspace { min-height: 0; height: calc(100vh - 80px); display: grid; grid-template-columns: 250px minmax(500px, 1fr) 380px; gap: 16px; position: relative; }
+.pediatric-workspace { min-height: 0; height: calc(100vh - 80px); display: grid; grid-template-columns: 280px minmax(500px, 1fr) 420px; gap: 16px; position: relative; }
 .pediatric-library, .pediatric-viewer-shell, .pediatric-info-panel { min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow); }
 .pediatric-library { padding: 15px; display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
 .pediatric-panel-heading, .pediatric-resource-heading { display: flex; align-items: center; justify-content: space-between; color: #8d847c; font-size: .64rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -1062,14 +1071,22 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .observation-fields, .growth-entry fieldset, .quick-growth-entry fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .observation-fields:disabled, .growth-entry fieldset:disabled, .quick-growth-entry fieldset:disabled { opacity: .72; }
 
+@media (max-width: 1300px) {
+  .pediatric-workspace { grid-template-columns: 270px minmax(420px, 1fr) 400px; }
+}
+
 @media (max-width: 1180px) {
-  .pediatric-workspace { grid-template-columns: 220px minmax(430px, 1fr) 340px; gap: 11px; }
+  .pediatric-workspace { grid-template-columns: 250px minmax(430px, 1fr) 390px; gap: 11px; }
   .header-actions .icon-button { padding-inline: 8px; font-size: .64rem; }
   .header-actions .language-button { display: none; }
 }
 
+@media (max-width: 1100px) {
+  .pediatric-workspace { grid-template-columns: 200px minmax(350px, 1fr) 340px; gap: 10px; }
+}
+
 @media (max-width: 960px) {
-  .pediatric-workspace { grid-template-columns: 190px minmax(390px, 1fr) 320px; }
+  .pediatric-workspace { grid-template-columns: 200px minmax(350px, 1fr) 340px; gap: 10px; }
   .pediatric-viewer-tools { left: 10px; }
   .pediatric-view-caption { left: 84px; }
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Activity, ArrowLeft, Baby, Check, ChevronRight, CircleHelp, ClipboardList, Clock3, FileText, HeartPulse, Pill, Plus, Save, ShieldCheck, Thermometer, Utensils, X } from 'lucide-react'
-import { getAgeDays, getStage } from '../domain/baby.js'
+import { getAgeDays, getStage, getStageLabel, getStageRangeLabel } from '../domain/baby.js'
 import { createCareEvent, createConcern as createConcernRecord, correctCareEvent, voidCareEvent } from '../domain/careEvents.js'
 import { createEvaluatedGrowthMeasurement, GROWTH_AGE_BASES, GROWTH_SOURCES, growthSourceLabel } from '../domain/growth.js'
 import { GROWTH_TYPES, getAdminTasks, getDailyTasks, getStageMilestones, localDateKey } from '../domain/carePlan.js'
@@ -120,7 +120,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
     return commitWithFeedback((current) => {
       if (!current.baby?.id) throw new Error(isEnglish ? 'A baby profile is required.' : '请先建立宝宝档案。')
       const actor = input.actor || actorFor(current)
-      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose a recorder first.' : '请先选择记录人。')
+      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose the current role first.' : '请先选择当前角色。')
       const now = input.recordedAt || new Date().toISOString()
       const event = createCareEvent({
         ...input,
@@ -158,7 +158,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
       const existingByType = new Map(birthEvents.filter((event) => String(measurementPayload(event).measuredAt).slice(0, 10) === String(birthDate).slice(0, 10)).map((event) => [measurementPayload(event).type, event]))
       const nonBirth = (current.growthMeasurements || []).filter((item) => item.source !== 'birth_record')
       const actor = actorFor(current)
-      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose a recorder first.' : '请先选择记录人。')
+      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose the current role first.' : '请先选择当前角色。')
       const birthMeasurements = birthInputs.filter(([, value]) => String(value || '').trim()).map(([type, value, unit, method]) => {
         const prior = existingByType.get(type)
         return createEvaluatedGrowthMeasurement({ id: prior ? measurementPayload(prior).id || prior.id : undefined, type, value: String(value).trim(), unit, measuredAt: birthDate, method, source: 'birth_record' }, nextBaby, nonBirth)
@@ -211,7 +211,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
     return commitWithFeedback((current) => {
       const actor = actorFor(current)
       if (!current.baby?.id) throw new Error(isEnglish ? 'A baby profile is required.' : '请先建立宝宝档案。')
-      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose a recorder first.' : '请先选择记录人。')
+      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose the current role first.' : '请先选择当前角色。')
       const event = createCareEvent({ babyId: current.baby.id, kind: 'caregiver_observation', category: 'concern_open', occurredAt: now, recordedAt: now, source: 'caregiver', actor, payload: { concernId: concern.id, topicId: input.topicId, supportTopic: input.topicId, supportTitle: topic.title, facts: input.facts || [], notes: input.notes || '', plan: input.plan || null } })
       return { ...current, concerns: [...(current.concerns || []), concern], careEvents: [...(current.careEvents || []), event] }
     }, isEnglish ? 'Follow-up saved' : '关注事项已保存').then(() => concern)
@@ -222,7 +222,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
     return commitWithFeedback((current) => {
       const concern = current.concerns.find((item) => item.id === concernId)
       const actor = actorFor(current)
-      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose a recorder first.' : '请先选择记录人。')
+      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose the current role first.' : '请先选择当前角色。')
       return { ...current, concerns: current.concerns.map((item) => item.id === concernId ? { ...item, status: 'closed', updatedAt: now } : item), careEvents: [...(current.careEvents || []), createCareEvent({ babyId: current.baby.id, kind: 'caregiver_observation', category: 'care_action', occurredAt: now, recordedAt: now, source: 'caregiver', actor, payload: { concernId, supportStatus: 'closed', supportTitle: concern?.title || '' } })] }
     }, isEnglish ? 'Follow-up closed' : '关注事项已结束')
   }
@@ -243,10 +243,10 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
             <h1>{isEnglish ? 'Record center' : '记录中心'}</h1>
             <p>{isEnglish ? 'Save what happened first. BabyForge calculates the baseline and current state from these records.' : '先记录发生了什么。基线和当前状态由这些原始记录自动整理。'}</p>
           </div>
-          <div className="record-center-stage"><span>{isEnglish ? 'Current stage' : '当前阶段'}</span><strong>{text(stage.label, locale)}</strong><small>{text(stage.rangeLabel, locale)} · {isEnglish ? `${ageDays} days old` : `出生后 ${ageDays} 天`}</small></div>
+          <div className="record-center-stage"><span>{isEnglish ? 'Current stage' : '当前阶段'}</span><strong>{getStageLabel(stage, locale)}</strong><small>{getStageRangeLabel(stage, locale)} · {isEnglish ? `${ageDays} days old` : `出生后 ${ageDays} 天`}</small></div>
         </header>
 
-        <section className="record-center-notice"><ShieldCheck size={18} /><div><strong>{isEnglish ? 'Record facts, not conclusions' : '这里记录事实，不手工填写结论'}</strong><p>{isEnglish ? 'Every entry keeps its time, recorder, source, and lifecycle. Current state, baseline, changes, and unknowns are calculated below.' : '每条记录都会保留时间、记录人、来源和生命周期。当前状态、个人基线、变化与未知信息由系统自动计算。'}</p></div></section>
+        <section className="record-center-notice"><ShieldCheck size={18} /><div><strong>{isEnglish ? 'Record facts, not conclusions' : '这里记录事实，不手工填写结论'}</strong><p>{isEnglish ? 'Every entry keeps its time, current role, source, and lifecycle. Current state, baseline, changes, and unknowns are calculated below.' : '每条记录都会保留时间、当前角色、来源和生命周期。当前状态、个人基线、变化与未知信息由系统自动计算。'}</p></div></section>
 
         <section className="record-card-section" aria-labelledby="record-card-heading">
           <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'Quick entry' : '快速记录'}</p><h2 id="record-card-heading">{isEnglish ? 'What do you want to record?' : '现在要记录什么？'}</h2></div><span>{isEnglish ? 'Tap a card to open a light form' : '点击卡片，打开低负荷记录'}</span></div>
@@ -280,7 +280,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
           {activePanel === 'questions' && <RecordSubsection title={isEnglish ? 'Questions for a clinician' : '咨询问题'} onClose={() => setActivePanel(null)}><QuestionPanel questions={state.questions} locale={locale} readOnly={readOnly} onSave={saveQuestions} /></RecordSubsection>}
 
         {(toast || entryError) && <div className={`record-toast ${entryError ? 'error' : ''}`} role={entryError ? 'alert' : 'status'}>{entryError || toast}</div>}
-        <footer className="record-center-footer"><Clock3 size={15} /><span>{isEnglish ? 'The recorder selector in the header applies to every new entry. Existing records keep their original recorder.' : '顶部记录人选择会应用于新记录；已有记录保留原来的记录人。'}</span><button type="button" onClick={() => navigate(ROUTES.summary)}>{isEnglish ? 'Review care summary' : '查看就医摘要'}<ChevronRight size={15} /></button></footer>
+        <footer className="record-center-footer"><Clock3 size={15} /><span>{isEnglish ? 'The current role selector in the header applies to every new entry. Existing records keep their original recorder.' : '顶部当前角色选择会应用于新记录；已有记录保留原来的记录人。'}</span></footer>
       </div>
     </main>
   )
@@ -373,7 +373,7 @@ function QuestionPanel({ questions = [], locale, readOnly, onSave }) {
 }
 
 function FeedingPanel({ locale, readOnly, onRecord, onConcern }) {
-  return <div className="record-panel-stack"><p className="record-form-lede">{locale === 'en-US' ? 'One tap saves the occurrence time and recorder. Add amount only for bottle feeding.' : '点击一次就会保存发生时间和记录人。瓶喂时再补充实际喝下奶量。'}</p><QuickRecordPanel locale={locale} onRecord={onRecord} onConcern={onConcern} readOnly={readOnly} includeDiapers={false} /></div>
+  return <div className="record-panel-stack"><p className="record-form-lede">{locale === 'en-US' ? 'One tap saves the occurrence time and current role. Add amount only for bottle feeding.' : '点击一次就会保存发生时间和当前角色。瓶喂时再补充实际喝下奶量。'}</p><QuickRecordPanel locale={locale} onRecord={onRecord} onConcern={onConcern} readOnly={readOnly} includeDiapers={false} /></div>
 }
 
 function IllnessPanel({ locale, readOnly, onRecord }) {

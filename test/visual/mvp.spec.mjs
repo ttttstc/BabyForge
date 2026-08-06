@@ -213,11 +213,8 @@ test('common pediatric education advances through anatomy steps and records raw 
   await page.getByRole('button', { name: '保存事实' }).click()
   await expect(page.getByText('生病 / 症状已保存')).toBeVisible()
 
-  await page.locator('.app-header nav button').first().click()
-  await page.getByRole('button', { name: '生成就医摘要' }).click()
-  await expect(page).toHaveURL(/#\/doctor-summary$/)
-  await expect(page.getByText('38.2 °C')).toBeVisible()
-  await expect(page.getByText(/不提供诊断、数值解释或就医分级/)).toBeVisible()
+  await expect(page.locator('.app-header nav button', { hasText: '就医摘要' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '就医摘要' })).toHaveCount(0)
 })
 
 test('pediatric library exposes all anatomy models and opens a concrete case guide', async ({ page }) => {

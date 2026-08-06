@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Onboarding } from '../features/Onboarding.jsx'
 import { Workspace } from '../features/Workspace.jsx'
-import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
 import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
@@ -286,10 +285,6 @@ export function App() {
 
   if (route === ROUTES.pediatric) {
     return <PediatricDiseasesView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
-  }
-
-  if (route === ROUTES.summary) {
-    return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
   }
 
   return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />

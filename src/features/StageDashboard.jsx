@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Baby, CalendarDays, Check, ChevronLeft, ChevronRight, CircleHelp, LineChart, ShieldCheck } from 'lucide-react'
-import { getAgeDays, getStage } from '../domain/baby.js'
+import { getAgeDays, getStage, getStageLabel, getStageRangeLabel } from '../domain/baby.js'
 import { GROWTH_TYPES, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey } from '../domain/carePlan.js'
 import { evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel } from '../domain/growth.js'
 import { createCareEvent } from '../domain/careEvents.js'
@@ -59,7 +59,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
       <Header route={ROUTES_STAGE} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="stage-dashboard">
         <header className="stage-dashboard-hero">
-          <div><p className="eyebrow">{isEnglish ? 'Milestone workspace · 0–28 days' : '阶段里程碑工作台 · 0–28 天'}</p><h1>{localized(stage.label, locale)}</h1><p>{localized(stage.rangeLabel, locale)} · {isEnglish ? 'Turn a newborn stage into a few doable care steps.' : '把阶段目标变成少数几件今天能完成的照护动作。'}</p></div>
+          <div><p className="eyebrow">{isEnglish ? 'Milestone workspace · birth–6 years' : '阶段里程碑工作台 · 0–6 岁'}</p><h1>{getStageLabel(stage, locale)}</h1><p>{getStageRangeLabel(stage, locale)} · {isEnglish ? 'Turn this age window into a few doable care steps.' : '把当前时间段变成少数几件今天能完成的照护动作。'}</p></div>
           <button className="record-center-cta stage-record-cta" type="button" onClick={() => navigate(ROUTES.records)}><span><strong>{isEnglish ? 'Record a new fact' : '去记录中心录入'}</strong><small>{isEnglish ? 'Profile, feeding, illness, and medication stay in one place.' : '基础信息、喂奶、生病和用药统一从这里录入。'}</small></span><ChevronRight size={16} /></button>
         </header>
         <div className="stage-dashboard-grid">
@@ -71,7 +71,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
                 const done = milestone.status === 'done'
                 return <article className={`milestone-card ${done ? 'done' : ''}`} key={milestone.id}>
                   <button className="milestone-check" disabled={readOnly} onClick={() => updateMilestone(milestone.id, done ? 'pending' : 'done')} aria-pressed={done} aria-label={`${localized(milestone.title, locale)} ${done ? (isEnglish ? 'completed' : '已完成') : (isEnglish ? 'mark complete' : '标记完成')}`}>{done ? <Check size={16} /> : <span>{milestone.dueDay}</span>}</button>
-                  <div><strong>{localized(milestone.title, locale)}</strong><p>{localized(milestone.detail, locale)}</p><small>{isEnglish ? `Around day ${milestone.dueDay}` : `出生后第 ${milestone.dueDay} 天左右`}</small></div>
+                  <div><strong>{localized(milestone.title, locale)}</strong><p>{localized(milestone.detail, locale)}</p><small>{localized(milestone.dueLabel, locale) || (isEnglish ? `Around day ${milestone.dueDay}` : `出生后第 ${milestone.dueDay} 天左右`)}</small></div>
                 </article>
               })}
             </div>

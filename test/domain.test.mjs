@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { getAgeDays, getStage, getTodayPriorities } from '../src/domain/baby.js'
+import { getAgeDays, getStage, getStages, getTodayPriorities } from '../src/domain/baby.js'
 import { createObservation } from '../src/domain/observation.js'
 import { buildDoctorSummary } from '../src/domain/doctorSummary.js'
 import { evaluateMedicalTopic } from '../src/domain/safety.js'
@@ -21,14 +21,21 @@ import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSup
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
 import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
 
-test('age and stage boundaries follow the 0–28 day MVP contract', () => {
+test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
   assert.equal(getAgeDays('2026-07-29', '2026-08-05'), 7)
   assert.equal(getStage(0).id, 'newborn-early')
   assert.equal(getStage(7).id, 'newborn-early')
   assert.equal(getStage(8).id, 'newborn-adaptation')
   assert.equal(getStage(28).id, 'newborn-adaptation')
-  assert.equal(getStage(29).id, 'out-of-scope')
+  assert.equal(getStage(29).id, 'infant-1-2-months')
+  assert.equal(getStage(59).id, 'infant-1-2-months')
+  assert.equal(getStage(60).id, 'infant-2-3-months')
+  assert.equal(getStage(729).id, 'toddler-18-24-months')
+  assert.equal(getStage(730).id, 'child-2-3-years')
+  assert.equal(getStage(2191).id, 'child-5-6-years')
+  assert.equal(getStage(2192).id, 'out-of-scope')
+  assert.equal(getStages().length, 15)
 })
 
 test('today always exposes the three agreed priorities', () => {
