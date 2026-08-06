@@ -1,0 +1,50 @@
+import { test, expect } from '@playwright/test'
+
+// Each organ creates a WebGL scene; keep enough time for the full sequential
+// sweep so the assertion measures model stability instead of test-runner time.
+test.setTimeout(120000)
+
+function dateDaysAgo(days) {
+  const date = new Date()
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() - days)
+  return date.toISOString().slice(0, 10)
+}
+
+async function createBaby(page) {
+  await page.goto('/#/login')
+  await page.getByLabel('账号').fill('niwa')
+  await page.getByLabel('密码').fill('niwaniwa')
+  await page.getByRole('button', { name: '登录' }).click()
+  await expect(page).toHaveURL(/#\/(onboarding|today)$/)
+  if (page.url().endsWith('#/today')) return
+  await page.goto('/#/onboarding')
+  await page.getByLabel('宝宝昵称').fill('模型检查')
+  await page.getByLabel('出生日期').fill(dateDaysAgo(6))
+  await page.getByLabel('出生孕周').fill('39')
+  await page.getByLabel('男孩').check()
+  await page.getByLabel('喂养方式').selectOption('mixed')
+  await page.getByRole('button', { name: '进入 BabyForge' }).click()
+}
+
+test('all anatomy models load without entering the 2D fallback', async ({ page }) => {
+  const errors = []
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+  await createBaby(page)
+  await page.getByRole('button', { name: '常见儿科病', exact: true }).click()
+  await page.getByRole('tab', { name: /器官模型/ }).click()
+  const organs = ['心脏', '大脑', '肺', '肝脏', '肾脏', '眼睛', '肠道', '胰腺', '皮肤']
+  for (const organ of organs) {
+    const button = page.getByRole('button', { name: new RegExp(`${organ}.*系统`) })
+    await button.click()
+    await expect(page.getByRole('heading', { name: organ, exact: true })).toBeVisible()
+    await expect(page.locator('.pediatric-model-fallback')).toHaveCount(0)
+    await expect(page.locator('.pediatric-loading')).toHaveCount(0, { timeout: 10000 })
+    await expect(page.locator('.pediatric-viewer-frame canvas')).toBeVisible()
+    // Wait past the previous StrictMode remount window; the canvas must stay
+    // mounted and the viewer must not switch to its 2D fallback.
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.pediatric-model-fallback')).toHaveCount(0)
+  }
+  expect(errors.filter((message) => /GLTF|WebGL|THREE|loader/i.test(message))).toEqual([])
+})
