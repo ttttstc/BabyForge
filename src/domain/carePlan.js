@@ -1,11 +1,5 @@
 const DAY_MS = 86_400_000
 
-export const CARE_ACTORS = [
-  { id: 'parent', label: { zh: '家长', en: 'Parent' } },
-  { id: 'nanny', label: { zh: '月嫂', en: 'Nanny' } },
-  { id: 'other', label: { zh: '其他照护者', en: 'Other caregiver' } },
-]
-
 export const CARE_TASKS = [
   {
     id: 'feeding',
@@ -143,7 +137,6 @@ export function updateTaskLog(taskLogs = [], taskId, input = {}, now = new Date(
     taskId,
     date,
     status: input.status || 'done',
-    actor: input.actor || 'parent',
     note: input.note ? String(input.note).trim() : '',
     createdAt: input.createdAt || now,
     updatedAt: now,
@@ -177,7 +170,6 @@ export function upsertMilestoneRecord(records = [], milestoneId, input = {}, now
     id: input.id || id('milestone'),
     milestoneId,
     status: input.status || 'done',
-    actor: input.actor || 'parent',
     note: input.note ? String(input.note).trim() : '',
     updatedAt: now,
     provenance: 'parent-entered',

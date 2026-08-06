@@ -8,9 +8,13 @@ import { getCopy } from '../domain/i18n.js'
 import { ObservationForm } from './ObservationForm.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
+import { CareOverview } from './CareOverview.jsx'
+import { ConcernSupport } from './ConcernSupport.jsx'
+import { QuickRecordPanel } from './QuickRecordPanel.jsx'
 
-export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, growthMeasurements = [], onAddGrowth, observations, onSaveObservation, questions, onQuestionsChange, sheet, locale = 'zh-CN', readOnly = false }) {
+export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, growthMeasurements = [], onAddGrowth, observations, onSaveObservation, careEvents = [], concerns = [], onQuickRecord, onCreateConcern, onResolveConcern, questions, onQuestionsChange, sheet, locale = 'zh-CN', readOnly = false }) {
   const copy = getCopy(locale)
+  const [concernOpen, setConcernOpen] = useState(false)
   const stageLabel = stage.id === 'newborn-early' ? copy.newbornEarly : stage.id === 'newborn-adaptation' ? copy.newbornAdaptation : copy.outOfScope
   const stageRange = stage.id === 'newborn-early' ? copy.newbornEarlyRange : stage.id === 'newborn-adaptation' ? copy.newbornAdaptationRange : copy.outOfScope
   if (!topicMode) {
@@ -21,6 +25,9 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
           <h2>{stageLabel}</h2>
           <p>{stageRange}</p>
         </div>
+        <CareOverview careEvents={careEvents} concerns={concerns} locale={locale} />
+        <QuickRecordPanel locale={locale} onRecord={onQuickRecord} onConcern={() => setConcernOpen(true)} readOnly={readOnly} />
+        <ConcernSupport open={concernOpen} onOpenChange={setConcernOpen} locale={locale} concerns={concerns} onCreate={onCreateConcern} onResolve={onResolveConcern} readOnly={readOnly} />
         <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
         <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={onAdminTaskUpdate} readOnly={readOnly} />
         <section className="inspector-block tone-aqua">

@@ -1,7 +1,6 @@
 import { Component, lazy, Suspense, useEffect, useState } from 'react'
 import { Box, ChevronLeft, ChevronRight, CirclePause, CirclePlay, Image, RefreshCcw, Rotate3d, RotateCcw, ZoomIn } from 'lucide-react'
 import { JAUNDICE_TOPIC } from '../content/jaundice.js'
-import { ASSET_MANIFEST, resolveSexAsset } from '../content/assets.js'
 import { getSexLabel } from '../domain/baby.js'
 
 const ViewerCanvas = lazy(() => import('../viewer/ViewerCanvas.jsx'))
@@ -30,39 +29,19 @@ function canUseWebGL() {
   }
 }
 
-const STEP_IMAGE = {
-  stage: 'newbornFallback',
-  normal: 'newbornFallback',
-  surface: 'jaundiceLocation',
-  liver: 'jaundiceMechanism',
-  flow: 'jaundiceMechanism',
-  observe: 'newbornFallback',
-}
-
 function nextViewerAction(type) {
   return { type, id: `${type}-${Date.now()}` }
 }
 
-function TwoDimensionalFallback({ topicMode, step, sex, locale }) {
-  const asset = resolveSexAsset(ASSET_MANIFEST.images[STEP_IMAGE[step.id]], sex)
+function TwoDimensionalFallback({ step, sex, locale }) {
   const sexLabel = getSexLabel(sex, locale)
   return (
     <div className="two-d-fallback" data-testid="2d-fallback" data-baby-sex={sex || 'unset'}>
-      {asset?.ready ? (
-        <img className="generated-education-image" src={asset.src} alt={`${sexLabel}新生儿照护图`} />
-      ) : (
-        <div className={`education-figure step-${step.id}`} aria-hidden="true">
-          <span className="figure-head" />
-          <span className="figure-body" />
-          {topicMode && <span className="figure-liver" />}
-          {topicMode && step.id === 'flow' && <span className="figure-particles">••••••</span>}
-        </div>
-      )}
       <div>
-        <p className="eyebrow">{locale === 'en-US' ? '2D reference' : '2D 结构图'}</p>
+        <p className="eyebrow">{locale === 'en-US' ? 'Model unavailable' : '模型暂不可用'}</p>
         <h3>{locale === 'en-US' ? (step.titleEn || step.title) : step.title}</h3>
         <p>{locale === 'en-US' ? (step.descriptionEn || step.description) : step.description}</p>
-        <small>{locale === 'en-US' ? `${sexLabel} image is being prepared; the structure notes remain available.` : `${sexLabel}图片正在准备，当前保留结构说明。`}</small>
+        <small>{locale === 'en-US' ? `${sexLabel} appearance model is not ready; the written structure guide remains available.` : `${sexLabel}外观模型暂未就绪，当前保留文字结构说明。`}</small>
       </div>
     </div>
   )
@@ -94,7 +73,7 @@ export function StageSurface({ topicMode, sex, sceneMode, onSceneModeChange, per
     return () => window.clearInterval(timer)
   }, [playing, steps.length, topicMode])
 
-  const fallback = <TwoDimensionalFallback topicMode={topicMode} step={step} sex={sex} locale={locale} />
+  const fallback = <TwoDimensionalFallback step={step} sex={sex} locale={locale} />
 
   return (
     <section className="stage-surface" data-testid="stage-surface">

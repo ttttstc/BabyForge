@@ -22,7 +22,7 @@ export function CareTaskList({ tasks, locale = 'zh-CN', onUpdate, compact = fals
           const snoozed = task.status === 'snoozed'
           return (
             <article className={`care-task ${done ? 'done' : ''} ${snoozed ? 'snoozed' : ''}`} key={task.id} data-testid={compact ? 'priority-card' : undefined} data-task-id={task.id}>
-              <button className="care-task-check" type="button" disabled={readOnly} onClick={() => onUpdate(task.id, { status: done ? 'pending' : 'done', actor: task.log?.actor || 'parent' })} aria-pressed={done} aria-label={`${text(task.title, locale)} ${done ? (isEnglish ? 'completed' : '已完成') : (isEnglish ? 'mark complete' : '标记完成')}`}>
+              <button className="care-task-check" type="button" disabled={readOnly} onClick={() => onUpdate(task.id, { status: done ? 'pending' : 'done' })} aria-pressed={done} aria-label={`${text(task.title, locale)} ${done ? (isEnglish ? 'completed' : '已完成') : (isEnglish ? 'mark complete' : '标记完成')}`}>
                 {done ? <Check size={16} /> : <Icon size={16} />}
               </button>
               <div className="care-task-copy">

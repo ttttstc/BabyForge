@@ -9,6 +9,14 @@ import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
 import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
+import { applyCareEventsToLegacy, bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState } from '../src/domain/careEvents.js'
+import { changedCareEvents, mergePulledState } from '../src/domain/eventSync.js'
+import { coalesceOutboxItem } from '../src/domain/localDb.js'
+import { safeEventInput } from '../functions/_shared/care.js'
+import { onRequestPost as onEventPost } from '../functions/api/events.js'
+import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
+import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
+import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -87,7 +95,7 @@ test('versioned storage preserves explicit sex and safely migrates legacy profil
   }
 
   const migrated = loadState(storage)
-  assert.equal(migrated.version, 3)
+  assert.equal(migrated.version, 4)
   assert.equal(migrated.baby.nickname, '小舟')
   assert.equal(migrated.baby.sex, null)
   assert.equal(migrated.preferences.locale, 'zh-CN')
@@ -176,7 +184,7 @@ test('pediatric observations preserve symptoms and optional temperature facts', 
   assert.equal(record.provenance.symptomNotes, 'parent-entered')
 })
 
-test('care plan keeps low-burden task feedback, caregiver provenance, milestones, and growth facts', () => {
+test('care plan keeps low-burden task feedback, milestones, and growth facts', () => {
   const tasks = getDailyTasks([] , new Date('2026-08-05T12:00:00'))
   assert.equal(tasks.length, 3)
   assert.ok(tasks.every((item) => item.acceptance?.zh && item.acceptance?.en))
@@ -191,4 +199,117 @@ test('care plan keeps low-burden task feedback, caregiver provenance, milestones
   assert.ok(adminTasks.some((item) => item.id === 'birth-certificate' && item.state === 'due'))
   const adminRecords = upsertAdminTaskRecord([], 'birth-certificate', { status: 'done' }, '2026-08-05T10:00:00.000Z')
   assert.equal(getAdminTasks('newborn-early', 7, adminRecords).find((item) => item.id === 'birth-certificate').status, 'done')
+})
+
+test('legacy facts migrate into CareEvent without treating actor as performer', () => {
+  const state = migrateLegacyState({
+    baby: { id: 'baby-1' },
+    taskLogs: [{ id: 'task-1', taskId: 'feeding', date: '2026-08-05', actor: 'nanny', status: 'done' }],
+    observations: [],
+  })
+  assert.equal(state.careEvents.length, 1)
+  assert.equal(state.careEvents[0].type, 'care_action')
+  assert.equal(state.careEvents[0].recordedBy.displayName, '妈妈')
+  assert.equal(state.careEvents[0].payload.record.actor, 'nanny')
+  const unchanged = bridgeLegacyChanges(state, { ...state, preferences: { ...state.preferences } })
+  assert.equal(unchanged.careEvents[0].version, state.careEvents[0].version)
+})
+
+test('care event merge keeps newer server revision and detects local outbox operations', () => {
+  const local = createCareEvent({ id: 'event-1', babyId: 'baby-1', occurredAt: '2026-08-05T08:00:00Z', payload: { value: 'local' } }, { now: '2026-08-05T08:01:00Z' })
+  const remote = createCareEvent({ ...local, payload: { value: 'server' }, updatedAt: '2026-08-05T08:02:00Z', version: 2 }, { now: '2026-08-05T08:02:00Z' })
+  assert.equal(mergeCareEvents([local], [remote])[0].payload.value, 'server')
+  assert.deepEqual(changedCareEvents([], [local]).map((item) => item.operation), ['create'])
+  assert.deepEqual(changedCareEvents([local], [{ ...local, ...remote, status: 'voided' }]).map((item) => item.operation), ['void'])
+})
+
+test('server event input rejects unknown values and missing recorder', () => {
+  assert.throws(() => safeEventInput({ id: 'event-1', type: 'unknown', source: 'caregiver_entered', payload: {} }, { now: '2026-08-05T10:00:00.000Z' }, { requireId: true, requireRecordedBy: true, requireTimestamps: true }), /不支持的事件类型/)
+  assert.throws(() => safeEventInput({ id: 'event-1', type: 'care_action', source: 'caregiver_entered', payload: {} }, { now: '2026-08-05T10:00:00.000Z' }, { requireId: true, requireRecordedBy: true, requireTimestamps: true }), /必须提供记录人/)
+  assert.throws(() => safeEventInput({ id: 'event-1', type: 'care_action', source: 'caregiver_entered', recordedBy: { id: 'nanny', displayName: '月嫂' }, payload: {} }, { now: '2026-08-05T10:00:00.000Z' }, { requireId: true, requireRecordedBy: true, requireTimestamps: true }), /必须提供发生时间/)
+})
+
+test('server revision wins over a future-dated local clock at the same version', () => {
+  const local = createCareEvent({ id: 'event-clock', version: 2, updatedAt: '2099-01-01T00:00:00Z', payload: { value: 'local' } })
+  const remote = { ...local, updatedAt: '2026-08-05T10:00:00Z', payload: { value: 'server' } }
+  assert.equal(mergeCareEvents([local], [remote])[0].payload.value, 'server')
+})
+
+test('legacy event application merges fields and removes voided records', () => {
+  const state = { taskLogs: [{ id: 'task-1', actor: 'nanny', status: 'done' }] }
+  const active = createCareEvent({ id: 'legacy-task-1', status: 'active', payload: { legacyCollection: 'taskLogs', legacyId: 'task-1', record: { id: 'task-1', status: 'pending' } } })
+  const merged = applyCareEventsToLegacy(state, [active])
+  assert.deepEqual(merged.taskLogs, [{ id: 'task-1', actor: 'nanny', status: 'pending' }])
+  const voided = applyCareEventsToLegacy(merged, [{ ...active, status: 'voided' }])
+  assert.deepEqual(voided.taskLogs, [])
+})
+
+test('outbox coalescing keeps create and sends a voided tombstone', () => {
+  const create = coalesceOutboxItem(null, { event: { id: 'event-outbox', status: 'active' }, operation: 'create' }, 'niwa')
+  const patched = coalesceOutboxItem(create, { event: { id: 'event-outbox', status: 'corrected' }, operation: 'patch' }, 'niwa')
+  const voided = coalesceOutboxItem(create, { event: { id: 'event-outbox', status: 'voided' }, operation: 'void' }, 'niwa')
+  assert.equal(patched.operation, 'create')
+  assert.equal(voided.operation, 'create')
+  assert.equal(voided.event.status, 'voided')
+})
+
+test('incremental pulls merge collections while full pulls can clear them', () => {
+  const state = { careEvents: [], carePlanItems: [{ id: 'old-plan' }], concerns: [{ id: 'old-concern' }], syncMeta: {} }
+  const full = mergePulledState(state, { events: [], carePlanItems: [], concerns: [], pulledAt: '2026-08-05T10:00:00Z' })
+  assert.deepEqual(full.carePlanItems, [])
+  assert.deepEqual(full.concerns, [])
+  const incremental = mergePulledState(state, { events: [], carePlanItems: [{ id: 'new-plan' }], concerns: [], pulledAt: '2026-08-05T11:00:00Z' }, { since: '2026-08-05T10:00:00Z' })
+  assert.deepEqual(incremental.carePlanItems.map((item) => item.id), ['old-plan', 'new-plan'])
+  assert.deepEqual(incremental.concerns.map((item) => item.id), ['old-concern'])
+})
+
+test('guest sessions are denied by every event write endpoint', async () => {
+  const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
+  const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) } }
+  const request = (method, body) => new Request('https://babyforge.test/api/events/event-1', {
+    method,
+    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  assert.equal((await onEventPost({ request: request('POST', {}), env })).status, 403)
+  assert.equal((await onEventPatch({ request: request('PATCH', {}), env, params: { id: 'event-1' } })).status, 403)
+  assert.equal((await onEventDelete({ request: request('DELETE'), env, params: { id: 'event-1' } })).status, 403)
+})
+
+test('quick care records produce a personal 24-hour snapshot', () => {
+  const events = [
+    { id: 'feed-1', type: 'bottle_feeding', status: 'active', occurredAt: '2026-08-05T08:00:00Z', payload: { amountMl: 60 } },
+    { id: 'urine-1', type: 'diaper', status: 'active', occurredAt: '2026-08-05T09:00:00Z', payload: { kind: 'urine' } },
+    { id: 'old-1', type: 'diaper', status: 'active', occurredAt: '2026-08-03T09:00:00Z', payload: { kind: 'stool' } },
+  ]
+  const snapshot = getCareSnapshot(events, [], new Date('2026-08-05T12:00:00Z'))
+  assert.equal(snapshot.metrics.feedingCount, 1)
+  assert.equal(snapshot.metrics.bottleMl, 60)
+  assert.equal(snapshot.metrics.wetDiaperCount, 1)
+  assert.equal(eventTitle(events[0], 'zh-CN'), '瓶喂 60 mL')
+})
+
+test('guided support uses caregiver guidance without a triage label', () => {
+  const urgent = evaluateSupport({ topicId: 'breathing', facts: ['blue-color'] })
+  const routine = evaluateSupport({ topicId: 'feeding-change', facts: [] })
+  assert.equal(urgent.caregiverGuidance, 'immediate-contact')
+  assert.equal(routine.caregiverGuidance, 'observe-and-recheck')
+  assert.equal(urgent.actionLevel, undefined)
+  assert.match(routine.action.zh, /记录时间/)
+  assert.match(urgent.source.url, /who.int/)
+})
+
+test('support concerns can be reconstructed from synced care events', () => {
+  const event = { id: 'concern-event', babyId: 'baby-1', relatedConcernId: 'concern-1', status: 'active', createdAt: '2026-08-05T10:00:00Z', updatedAt: '2026-08-05T10:00:00Z', payload: { supportTopic: 'jaundice' } }
+  const open = concernsFromCareEvents([event])
+  assert.equal(open[0].status, 'open')
+  const closed = concernsFromCareEvents([{ ...event, id: 'close-event', payload: { supportStatus: 'closed' } }], open)
+  assert.equal(closed[0].status, 'closed')
+})
+
+test('reconstructing an unchanged concern preserves its timestamp and details', () => {
+  const event = { id: 'concern-event', babyId: 'baby-1', relatedConcernId: 'concern-1', status: 'active', createdAt: '2026-08-05T10:00:00Z', updatedAt: '2026-08-05T10:00:00Z', payload: { supportTopic: 'jaundice', facts: ['blue-color'], notes: '观察到变化', plan: { caregiverGuidance: 'immediate-contact' } } }
+  const existing = concernsFromCareEvents([event])
+  const replayed = concernsFromCareEvents([event], existing)
+  assert.strictEqual(replayed[0], existing[0])
 })
