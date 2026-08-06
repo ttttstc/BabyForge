@@ -16,7 +16,7 @@
 
 ## 双语
 
-默认 `zh-CN`，设置页可切换 `en-US`。语言偏好写入 `babyforge:workspace` 的 `preferences.locale`，存储版本升级为 3；旧版本迁移后默认中文。导航、建档、观察表、儿科专题、摘要和设置页均依据该偏好渲染。
+默认 `zh-CN`，设置页可切换 `en-US`。语言偏好写入 `babyforge:workspace:<username>` 的 `preferences.locale`（匿名/演示回退为 `babyforge:workspace`），存储版本为 3；旧版本迁移后默认中文。导航、建档、观察表、儿科专题、摘要和设置页均依据该偏好渲染。
 
 ## 资产
 

@@ -38,4 +38,6 @@ npm run test:visual
 
 前端交互骨架参考并移植自 [3DCellForge](https://github.com/huangserva/3DCellForge) 提交 `df56957`。BabyForge 保留自身 Git 历史，并已移除细胞领域、在线模型生成 provider 和服务端代码。许可信息见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
-详细范围与验收见 [`docs/mvp-spec.md`](docs/mvp-spec.md)。
+详细范围与验收见 [`docs/mvp-spec.md`](docs/mvp-spec.md)；常见儿科病与双语扩展见 [`docs/pediatric-bilingual-spec.md`](docs/pediatric-bilingual-spec.md)。
+
+产品边界与领域术语见 [`PRODUCT.md`](PRODUCT.md) 和 [`CONTEXT.md`](CONTEXT.md)；长期愿景与研究资料保留在 [`docs/vision.md`](docs/vision.md)、[`docs/prd.md`](docs/prd.md) 和 [`docs/research/parenting-app-moat.md`](docs/research/parenting-app-moat.md)。
