@@ -15,6 +15,7 @@ export const CARE_EVENT_TYPES = Object.freeze([
   'temperature',
   'growth_measurement',
   'symptom_observation',
+  'concern_open',
   'care_action',
   'health_visit',
   'vaccination',

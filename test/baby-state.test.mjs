@@ -43,8 +43,32 @@ test('BabyStateSnapshot states explicitly when there is not enough personal hist
   assert.match(snapshot.baseline.prior.limitation, /暂无个人基线/)
 })
 
+test('BabyStateSnapshot does not compare a zero-count day before a current record exists', () => {
+  const events = [
+    ...Array.from({ length: 8 }, (_, index) => feed(`prior-${index}`, `2026-08-06T0${index + 1}:00:00Z`)),
+    ...Array.from({ length: 8 }, (_, index) => feed(`prior-2-${index}`, `2026-08-05T0${index + 1}:00:00Z`)),
+    ...Array.from({ length: 8 }, (_, index) => feed(`prior-3-${index}`, `2026-08-04T0${index + 1}:00:00Z`)),
+  ]
+  const snapshot = projectBabyState({ baby: BABY, events, now: NOW })
+  assert.equal(snapshot.baseline.feeding.status, 'established')
+  assert.deepEqual(snapshot.current.changes, [])
+})
+
+test('BabyStateSnapshot compares equivalent elapsed portions of the day', () => {
+  const events = [
+    ...Array.from({ length: 6 }, (_, index) => feed(`morning-1-${index}`, `2026-08-06T0${index + 1}:00:00Z`)),
+    ...Array.from({ length: 6 }, (_, index) => feed(`morning-2-${index}`, `2026-08-05T0${index + 1}:00:00Z`)),
+    ...Array.from({ length: 6 }, (_, index) => feed(`morning-3-${index}`, `2026-08-04T0${index + 1}:00:00Z`)),
+    ...Array.from({ length: 6 }, (_, index) => feed(`today-morning-${index}`, `2026-08-07T0${index + 1}:00:00Z`)),
+  ]
+  const snapshot = projectBabyState({ baby: BABY, events, now: '2026-08-07T09:00:00.000Z' })
+  assert.equal(snapshot.current.changes.find((item) => item.dimension === 'feeding')?.status, 'within-personal-baseline')
+})
+
 test('conflicting caregiver observations remain pending instead of being silently merged', () => {
   const events = [
+    // `observation` is a legacy/open category; the typed stateKey is the
+    // contract that selects the BabyStateSnapshot fact schema.
     event('alert-mother', { category: 'observation', actorId: 'parent-mother', payload: { stateKey: 'alertness.observation', value: 'usual' }, occurredAt: '2026-08-07T08:00:00Z' }),
     event('alert-nanny', { category: 'observation', actorId: 'nanny', actorName: '月嫂', payload: { stateKey: 'alertness.observation', value: 'different' }, occurredAt: '2026-08-07T09:00:00Z' }),
   ]
@@ -86,4 +110,23 @@ test('short-lived illness and medication facts stay current only while their TTL
   })
   assert.ok(snapshot.current.unknown.some((item) => item.dimension === 'illness'))
   assert.equal(snapshot.current.known.find((item) => item.dimension === 'medication')?.value.name, '已服用药物')
+})
+
+test('BabyStateSnapshot ignores unknown state keys and preserves explicit expiration', () => {
+  const snapshot = projectBabyState({
+    baby: BABY,
+    events: [
+      event('forged-state', { category: 'observation', occurredAt: '2026-08-07T08:00:00Z', payload: { stateKey: 'fake.fever', value: 'high' } }),
+      event('expiring-state', { category: 'observation', occurredAt: '2026-08-07T08:00:00Z', payload: { stateKey: 'alertness.observation', value: 'usual', validUntil: '2026-08-08T08:00:00Z' } }),
+    ],
+    now: NOW,
+  })
+  assert.equal(snapshot.current.known.some((item) => item.stateKey === 'fake.fever'), false)
+  assert.equal(snapshot.current.known.find((item) => item.stateKey === 'alertness.observation')?.validUntil, '2026-08-08T08:00:00.000Z')
+})
+
+test('BabyStateSnapshot uses a null stage id when birth date is unavailable', () => {
+  const snapshot = projectBabyState({ baby: { id: 'unknown-stage' }, now: NOW })
+  assert.equal(snapshot.stage.stageId, null)
+  assert.match(snapshot.stage.limitation, /暂无出生日期/)
 })

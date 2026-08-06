@@ -177,10 +177,12 @@ test('common pediatric education advances through anatomy steps and records raw 
   await expect(page.getByText('记录可见事实', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: /去记录中心录入这次观察/ }).click()
-  await page.locator('.record-card').nth(2).click()
+  await expect(page.getByTestId('record-entry-illness')).toBeVisible()
   await page.getByLabel('发热').check()
   await page.getByLabel('咳嗽').check()
+  await page.getByLabel('面部').check()
   await page.getByLabel('体温（可选）').fill('38.2')
+  await page.getByLabel('胆红素数值').fill('178')
   await page.getByRole('button', { name: '保存事实' }).click()
   await expect(page.getByText('生病 / 症状已保存')).toBeVisible()
 

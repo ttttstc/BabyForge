@@ -52,6 +52,21 @@ test('record center keeps profile, feeding, illness, and medication entry togeth
   await page.getByRole('button', { name: '保存事实' }).click()
   await expect(page.getByText('用药事实已保存')).toBeVisible()
 
+  await page.getByRole('button', { name: /咨询问题/ }).click()
+  await page.getByLabel('希望咨询的问题').fill('需要复测胆红素吗？\n吃奶量如何记录？')
+  await page.getByRole('button', { name: '保存事实' }).click()
+  await expect(page.getByText('咨询问题已保存')).toBeVisible()
+
+  await page.getByRole('button', { name: /关注事项/ }).click()
+  await page.getByTestId('concern-support').getByRole('button', { name: /发现宝宝有变化/ }).click()
+  await page.getByRole('button', { name: '喂养有明显变化' }).click()
+  await page.getByLabel('补充事实（可选）').fill('今天吃奶时间比平时长')
+  await page.getByRole('button', { name: '保存并查看下一步' }).click()
+  const savedWorkspace = await page.evaluate(() => JSON.parse(localStorage.getItem('babyforge:workspace:niwa')))
+  expect(savedWorkspace.questions).toEqual(['需要复测胆红素吗？', '吃奶量如何记录？'])
+  expect(savedWorkspace.concerns).toHaveLength(1)
+  expect(savedWorkspace.careEvents.some((event) => event.category === 'concern_open' && event.payload.concernId === savedWorkspace.concerns[0].id)).toBeTruthy()
+
   await page.getByRole('button', { name: '阶段', exact: true }).click()
   await expect(page.getByText('新增测量统一在记录中心录入。')).toBeVisible()
   await expect(page.getByLabel('成长数值')).toHaveCount(0)

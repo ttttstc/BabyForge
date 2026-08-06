@@ -66,5 +66,5 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
 
 function RecordsLink({ locale, topic }) {
   const isEnglish = locale === 'en-US'
-  return <button className="record-center-cta" type="button" onClick={() => navigate(ROUTES.records)}><span><strong>{isEnglish ? 'Record in the center' : '去记录中心录入'}</strong><small>{topic === 'illness' ? (isEnglish ? 'Choose symptoms, timing, and measured facts.' : '选择表现、时间和测量事实。') : (isEnglish ? 'All facts stay in one place.' : '所有事实都从同一个入口保存。')}</small></span><ArrowRight size={16} /></button>
+  return <button className="record-center-cta" type="button" onClick={() => navigate(topic === 'illness' ? `${ROUTES.records}?panel=illness` : ROUTES.records)}><span><strong>{isEnglish ? 'Record in the center' : '去记录中心录入'}</strong><small>{topic === 'illness' ? (isEnglish ? 'Choose symptoms, timing, and measured facts.' : '选择表现、时间和测量事实。') : (isEnglish ? 'All facts stay in one place.' : '所有事实都从同一个入口保存。')}</small></span><ArrowRight size={16} /></button>
 }

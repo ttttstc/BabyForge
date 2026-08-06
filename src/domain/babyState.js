@@ -6,6 +6,36 @@ export const SHORT_TERM_TTL_DAYS = 90
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const CURRENT_DIMENSIONS = ['feeding', 'elimination', 'temperature', 'sleep', 'alertness', 'illness', 'medication', 'growth']
+const FACT_TTL_DAYS = Object.freeze({
+  'feeding.count': 1,
+  'elimination.count': 1,
+  'temperature.reading': 7,
+  'sleep.observation': 7,
+  'alertness.observation': 7,
+  'illness.observation': 30,
+  'illness.bilirubin': 30,
+  'medication.event': 14,
+  'concern.open': 14,
+  'growth.measurement': null,
+  'professional.conclusion': 90,
+})
+
+export const KNOWN_STATE_KEYS = Object.freeze([
+  'feeding.count',
+  'feeding.change',
+  'elimination.count',
+  'elimination.observation',
+  'temperature.reading',
+  'sleep.observation',
+  'alertness.observation',
+  'illness.observation',
+  'illness.bilirubin',
+  'medication.event',
+  'growth.measurement',
+  'concern.open',
+  'professional.conclusion',
+])
+const KNOWN_STATE_KEY_SET = new Set(KNOWN_STATE_KEYS)
 
 const PROFILE_FIELDS = [
   { key: 'nickname', label: '宝宝昵称' },
@@ -35,6 +65,10 @@ function startOfDay(value) {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
 }
 
+function elapsedDayMs(value) {
+  return Math.max(0, Math.min(DAY_MS - 1, asTime(value) - startOfDay(value)))
+}
+
 function clone(value) {
   if (value === undefined) return null
   try { return JSON.parse(JSON.stringify(value)) } catch { return null }
@@ -44,6 +78,10 @@ function stableValue(value) {
   if (value === undefined) return null
   if (value && typeof value === 'object') return JSON.stringify(value)
   return String(value)
+}
+
+export function isKnownStateKey(value) {
+  return KNOWN_STATE_KEY_SET.has(String(value || ''))
 }
 
 function sourceFor(event) {
@@ -66,7 +104,14 @@ function confidenceFor(event) {
 function stateFact(event, stateKey, value, options = {}) {
   const occurredAt = event.occurredAt || event.createdAt
   const occurredTime = asTime(occurredAt)
-  const ttlDays = options.ttlDays === null ? null : Number(options.ttlDays ?? SHORT_TERM_TTL_DAYS)
+  const explicitValidUntil = options.validUntil ?? event.payload?.validUntil
+  const explicitValidUntilTime = asTime(explicitValidUntil)
+  const ttlDays = options.ttlDays !== undefined ? options.ttlDays : FACT_TTL_DAYS[stateKey] ?? SHORT_TERM_TTL_DAYS
+  const validUntil = explicitValidUntilTime
+    ? new Date(explicitValidUntilTime).toISOString()
+    : ttlDays === null
+      ? null
+      : new Date(occurredTime + Number(ttlDays) * DAY_MS).toISOString()
   return {
     id: `${event.id}:${stateKey}:${options.metric || 'value'}`,
     stateKey,
@@ -75,7 +120,7 @@ function stateFact(event, stateKey, value, options = {}) {
     value: clone(value),
     occurredAt,
     recordedAt: event.recordedAt || event.updatedAt || event.createdAt,
-    validUntil: ttlDays === null ? null : new Date(occurredTime + ttlDays * DAY_MS).toISOString(),
+    validUntil,
     confidence: confidenceFor(event),
     kind: event.kind || null,
     category: event.category || event.type || null,
@@ -118,8 +163,28 @@ function eventFacts(event) {
   if (payload.temperatureValue !== undefined && payload.temperatureValue !== '') {
     facts.push(stateFact(event, 'temperature.reading', { value: payload.temperatureValue, unit: payload.temperatureUnit || null }, { dimension: 'temperature', metric: 'reading' }))
   }
-  if (payload.symptoms?.length || payload.symptomNotes) {
-    facts.push(stateFact(event, 'illness.observation', { symptoms: payload.symptoms || [], notes: payload.symptomNotes || '' }, { dimension: 'illness', metric: 'signal' }))
+  if (category === 'symptom_observation' && (
+    payload.symptoms?.length
+      || payload.symptomNotes
+      || payload.bodyAreas?.length
+      || payload.supportTopic
+      || payload.facts?.length
+  )) {
+    facts.push(stateFact(event, 'illness.observation', {
+      symptoms: payload.symptoms || [],
+      bodyAreas: payload.bodyAreas || [],
+      supportTopic: payload.supportTopic || null,
+      facts: payload.facts || [],
+      notes: payload.symptomNotes || payload.notes || '',
+    }, { dimension: 'illness', metric: 'signal' }))
+  }
+  if (payload.bilirubinValue !== undefined && payload.bilirubinValue !== '') {
+    facts.push(stateFact(event, 'illness.bilirubin', {
+      value: payload.bilirubinValue,
+      unit: payload.bilirubinUnit || null,
+      measuredAt: payload.measuredAt || null,
+      source: payload.measurementSource || null,
+    }, { dimension: 'illness', metric: 'reading' }))
   }
   if (category === 'medication') {
     facts.push(stateFact(event, 'medication.event', {
@@ -133,21 +198,29 @@ function eventFacts(event) {
   if (category === 'growth_measurement' || event.kind === 'measurement' && payload.type) {
     facts.push(stateFact(event, 'growth.measurement', payload, { dimension: 'growth', metric: 'measurement', ttlDays: null }))
   }
+  if (category === 'concern_open') {
+    facts.push(stateFact(event, 'concern.open', {
+      topicId: payload.topicId || payload.supportTopic || null,
+      title: payload.supportTitle || null,
+      facts: payload.facts || [],
+      notes: payload.notes || '',
+    }, { dimension: 'concern', metric: 'signal' }))
+  }
 
   const genericKey = payload.stateKey || payload.dimension
-  if (genericKey && !facts.some((fact) => fact.stateKey === genericKey)) {
+  if (isKnownStateKey(genericKey) && !facts.some((fact) => fact.stateKey === genericKey)) {
     facts.push(stateFact(event, String(genericKey), payload.value ?? payload.observation ?? payload.conclusion ?? payload.note ?? payload, {
       dimension: String(genericKey).split('.')[0],
       metric: payload.metric || 'signal',
-      ttlDays: payload.validUntil ? null : undefined,
+      validUntil: payload.validUntil,
     }))
   }
 
   if (event.kind === 'professional_conclusion' && facts.length === 0) {
-    facts.push(stateFact(event, `professional.${category || 'conclusion'}`, payload.conclusion ?? payload.note ?? payload, {
-      dimension: payload.dimension || 'professional',
+    facts.push(stateFact(event, 'professional.conclusion', payload.conclusion ?? payload.note ?? payload, {
+      dimension: 'professional',
       metric: 'conclusion',
-      ttlDays: payload.validUntil ? null : undefined,
+      validUntil: payload.validUntil,
     }))
   }
 
@@ -190,13 +263,23 @@ function projectBackground(baby) {
 }
 
 function priorFor(baby, now) {
+  if (!baby?.birthDate) {
+    return {
+      type: 'stage-prior',
+      stageId: null,
+      stageLabel: '阶段未知',
+      ageDays: null,
+      domains: CURRENT_DIMENSIONS,
+      limitation: '暂无出生日期；阶段先验只提供上下文，不替代个人记录或专业判断。',
+    }
+  }
   let ageDays = null
-  let stage = { id: 'unknown', label: '阶段未知', rangeLabel: '' }
+  let stage = { id: null, label: '阶段未知', rangeLabel: '' }
   try {
     ageDays = getAgeDays(baby?.birthDate, new Date(now))
     stage = getStage(ageDays)
-  } catch {
-    // A missing profile date is represented as unknown, never guessed.
+  } catch (error) {
+    console.warn('Unable to project baby stage prior', error)
   }
   return {
     type: 'stage-prior',
@@ -219,7 +302,8 @@ function baselineFor(facts, dimension, now, options) {
   const currentDay = dayKey(now)
   const currentStart = startOfDay(now)
   const windowStart = currentStart - options.windowDays * DAY_MS
-  const samples = facts.filter((fact) => fact.dimension === dimension && fact.metric === 'occurrence' && asTime(fact.occurredAt) >= windowStart && dayKey(fact.occurredAt) < currentDay)
+  const elapsed = elapsedDayMs(now)
+  const samples = facts.filter((fact) => fact.dimension === dimension && fact.metric === 'occurrence' && asTime(fact.occurredAt) >= windowStart && dayKey(fact.occurredAt) < currentDay && elapsedDayMs(fact.occurredAt) <= elapsed)
   const byDay = new Map()
   for (const fact of samples) byDay.set(dayKey(fact.occurredAt), (byDay.get(dayKey(fact.occurredAt)) || 0) + 1)
   const values = [...byDay.values()]
@@ -233,6 +317,7 @@ function baselineFor(facts, dimension, now, options) {
     coverage,
     sourceEventIds: samples.map((fact) => fact.source.eventId),
     value: values.length ? { min: Math.min(...values), max: Math.max(...values), median: median(values), samples: values, days: observedDays } : null,
+    comparisonWindow: { elapsedMs: elapsed, mode: 'same-time-of-day' },
   }
   if (base.status === 'missing') base.limitation = '样本不足，暂不形成个人基线。'
   return base
@@ -301,7 +386,7 @@ function projectChanges(facts, now, baseline) {
   for (const dimension of ['feeding', 'elimination']) {
     const today = todayCount(facts, dimension, now)
     const base = baseline[dimension]
-    if (!today.sourceEventIds.length && base.status === 'missing') continue
+    if (!today.sourceEventIds.length) continue
     if (base.status === 'missing') {
       changes.push({
         id: `change:${dimension}:baseline-missing`,
@@ -342,7 +427,9 @@ export function projectBabyState({ baby = null, events = [], concerns = [], now 
   const background = projectBackground(baby)
   const problems = projectProblems(historyEvents, concerns)
   const knownDimensions = new Set(signalState.known.map((fact) => fact.dimension))
-  const unknown = CURRENT_DIMENSIONS.filter((dimension) => !knownDimensions.has(dimension) && !recent24h.some((fact) => fact.dimension === dimension)).map((dimension) => ({
+  const baselineStart = asTime(now) - baselineWindowDays * DAY_MS
+  const knownInBaselineWindow = new Set(validFacts.filter((fact) => asTime(fact.occurredAt) >= baselineStart).map((fact) => fact.dimension))
+  const unknown = CURRENT_DIMENSIONS.filter((dimension) => !knownDimensions.has(dimension) && !knownInBaselineWindow.has(dimension)).map((dimension) => ({
     id: `unknown:${dimension}`,
     dimension,
     status: 'unknown',

@@ -9,8 +9,7 @@ import { RecordCenter } from '../features/RecordCenter.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
-import { applyCareEventsToLegacy, createCareEvent, mergeCareEvents, migrateLegacyState } from '../domain/careEvents.js'
-import { concernsFromCareEvents } from '../domain/healthSupport.js'
+import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
@@ -95,8 +94,6 @@ export function App() {
       let current = stateRef.current
       const payload = await pullCareEvents(babyId)
       let next = mergePulledState(current, payload)
-      next = { ...next, careEvents: mergeCareEvents(current.careEvents || [], payload.events || []) }
-      next = { ...next, concerns: concernsFromCareEvents(next.careEvents, next.concerns || []) }
       next = applyCareEventsToLegacy(next, next.careEvents)
       try {
         const actors = await pullCareActors(babyId)
@@ -281,7 +278,7 @@ export function App() {
   }
 
   if (route === ROUTES.records) {
-    return <RecordCenter state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <RecordCenter state={state} commitState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.pediatric) {

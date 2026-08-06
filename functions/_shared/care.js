@@ -4,7 +4,7 @@ export const EVENT_STATUSES = new Set(['active', 'corrected', 'voided'])
 
 const SOURCE_ALIASES = { caregiver_entered: 'caregiver', doctor_entered: 'clinical_record', device_imported: 'device_import' }
 const LEGACY_SOURCE = { caregiver: 'caregiver_entered', clinical_record: 'doctor_entered', device_import: 'device_imported', unknown: 'device_imported' }
-const LEGACY_TYPES = new Set(['breastfeeding', 'bottle_feeding', 'diaper', 'sleep', 'medication', 'temperature', 'growth_measurement', 'symptom_observation', 'care_action', 'health_visit', 'vaccination', 'doctor_instruction'])
+const LEGACY_TYPES = new Set(['breastfeeding', 'bottle_feeding', 'diaper', 'sleep', 'medication', 'temperature', 'growth_measurement', 'symptom_observation', 'concern_open', 'care_action', 'health_visit', 'vaccination', 'doctor_instruction'])
 
 export class EventInputError extends Error {
   constructor(field, message) {

@@ -16,11 +16,15 @@ export function navigate(route) {
   window.location.hash = route.slice(1)
 }
 
+function hashRoute() {
+  return (window.location.hash || ROUTES.onboarding).split('?')[0]
+}
+
 export function useHashRoute() {
-  const [route, setRoute] = useState(() => window.location.hash || ROUTES.onboarding)
+  const [route, setRoute] = useState(hashRoute)
 
   useEffect(() => {
-    const update = () => setRoute(window.location.hash || ROUTES.onboarding)
+    const update = () => setRoute(hashRoute())
     window.addEventListener('hashchange', update)
     return () => window.removeEventListener('hashchange', update)
   }, [])

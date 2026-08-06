@@ -51,7 +51,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     const topic = SUPPORT_TOPICS.find((item) => item.id === input.topicId)
     if (!topic) throw new Error('未找到关注类型')
     const concern = { ...createConcernRecord({ babyId: state.baby.id, topicId: input.topicId, title: topic.title, status: 'open' }), plan: input.plan || null, facts: input.facts || [], notes: input.notes || '' }
-    const event = createCareEvent({ babyId: state.baby.id, kind: 'caregiver_observation', category: input.topicId, source: 'caregiver', actor: state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0], payload: { concernId: concern.id, supportTopic: input.topicId, supportTitle: topic.title, facts: input.facts || [], notes: input.notes || '', plan: input.plan || null } })
+    const event = createCareEvent({ babyId: state.baby.id, kind: 'caregiver_observation', category: 'concern_open', source: 'caregiver', actor: state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0], payload: { concernId: concern.id, topicId: input.topicId, supportTopic: input.topicId, supportTitle: topic.title, facts: input.facts || [], notes: input.notes || '', plan: input.plan || null } })
     return setState((current) => ({ ...current, concerns: [...current.concerns, concern], careEvents: [...current.careEvents, event] })).then(() => concern)
   }
 
