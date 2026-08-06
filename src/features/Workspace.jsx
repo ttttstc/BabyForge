@@ -96,7 +96,11 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
 
   function recordCareEvent(input) {
     const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
-    const event = createCareEvent({ ...input, babyId: state.baby.id, source: 'caregiver', actor: recorder, category: input.category || input.type })
+    const { type, ...canonicalInput } = input || {}
+    const category = String(canonicalInput.category || type || '').trim()
+    if (!category) throw new Error('事件必须提供 category')
+    const now = new Date().toISOString()
+    const event = createCareEvent({ ...canonicalInput, babyId: state.baby.id, kind: canonicalInput.kind || 'caregiver_observation', category, occurredAt: canonicalInput.occurredAt || now, recordedAt: canonicalInput.recordedAt || now, source: 'caregiver', actor: recorder })
     return setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
   }
 

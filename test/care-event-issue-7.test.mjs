@@ -14,6 +14,7 @@ import {
 import { changedCareEvents, sendCareEvent } from '../src/domain/eventSync.js'
 import { eventFromRow, safeEventInput } from '../functions/_shared/care.js'
 import { onRequestDelete, onRequestPatch } from '../functions/api/events/[id].js'
+import { eventCategoryLabel, eventKindLabel } from '../src/domain/careSummary.js'
 
 test('CareEvent uses Issue #7 core protocol and open category payloads', () => {
   const event = createCareEvent({
@@ -74,9 +75,11 @@ test('canonical projections keep the latest action state and correction sends on
   assert.deepEqual(projected.adminTaskRecords.map((item) => item.status), ['done'])
   assert.equal(projected.growthMeasurements[0].value, 3.2)
 
-  const original = createCareEvent({ id: 'original', babyId: 'baby-1', category: 'language', payload: { note: 'old' } })
+  const original = createCareEvent({ id: 'original', babyId: 'baby-1', category: 'language', version: 3, payload: { note: 'old' } })
   const replacement = correctCareEvent([original], original.id, { payload: { note: 'new' } }, { now: '2026-08-06T10:00:00Z' })
-  assert.deepEqual(changedCareEvents([original], replacement).map((change) => change.operation), ['correct'])
+  const correction = changedCareEvents([original], replacement)
+  assert.deepEqual(correction.map((change) => change.operation), ['correct'])
+  assert.equal(correction[0].expectedVersion, 3)
 })
 
 test('event transport maps all write operations and preserves API errors', async () => {
@@ -103,6 +106,19 @@ test('server canonical input and row mapping preserve actor, source and correcti
   assert.equal(event.actor.id, 'device')
   assert.equal(event.source, 'unknown')
   assert.deepEqual(eventFromRow({ id: 'event-1', baby_id: 'baby-1', kind: 'measurement', category: 'oxygen_saturation', occurred_at: event.occurredAt, recorded_at: event.recordedAt, actor_id: 'device', actor_display_name: '设备', event_source: 'unknown', payload_json: JSON.stringify(event.payload), status: 'active', corrected_from_id: 'event-0', version: 2 }), { id: 'event-1', babyId: 'baby-1', kind: 'measurement', category: 'oxygen_saturation', occurredAt: event.occurredAt, recordedAt: event.recordedAt, actor: { id: 'device', displayName: '设备' }, source: 'unknown', payload: { value: 98 }, status: 'active', correctedFromId: 'event-0', version: 2, createdAt: undefined, updatedAt: undefined })
+})
+
+test('server input defaults unclear source to unknown and rejects direct correction links', () => {
+  const base = { id: 'event-1', babyId: 'baby-1', category: 'language', occurredAt: '2026-08-06T08:00:00Z', recordedAt: '2026-08-06T09:00:00Z', actor: { id: 'parent', displayName: '爸爸' }, payload: {} }
+  assert.equal(safeEventInput(base, {}, { requireId: true, requireActor: true, requireTimestamps: true }).source, 'unknown')
+  assert.throws(() => safeEventInput({ ...base, correctedFromId: 'event-0' }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /版本化修改接口/)
+  assert.equal(safeEventInput({ ...base, correctedFromId: 'event-0' }, {}, { allowCorrectedFromId: true, requireId: true, requireActor: true, requireTimestamps: true }).correctedFromId, 'event-0')
+})
+
+test('summary labels keep canonical kind and open categories readable', () => {
+  assert.equal(eventKindLabel('measurement', 'zh-CN'), '测量')
+  assert.equal(eventCategoryLabel('oxygen_saturation', 'zh-CN'), '血氧饱和度')
+  assert.equal(eventCategoryLabel('future_metric', 'en-US'), 'future metric')
 })
 
 function authorizedEventFixture(version = 1) {

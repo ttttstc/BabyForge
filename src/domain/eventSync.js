@@ -18,7 +18,7 @@ async function request(path, options = {}, fetchImpl = globalThis.fetch) {
   throw new CareEventSyncError(payload?.error || '线上同步暂时失败', response.status, payload)
 }
 
-export async function pullCareEvents(babyId, _since, fetchImpl = globalThis.fetch) {
+export async function pullCareEvents(babyId, fetchImpl = globalThis.fetch) {
   if (!babyId) return { events: [], carePlanItems: [], concerns: [] }
   const payload = await request(`/api/events?babyId=${encodeURIComponent(babyId)}&includeVoided=true`, {}, fetchImpl)
   return {
@@ -74,16 +74,6 @@ export async function syncCareEventChanges(changes = [], fetchImpl = globalThis.
   return completed
 }
 
-// Kept as a non-persistent compatibility helper for callers from the previous
-// branch. Issue #7 intentionally does not persist an offline write queue.
-export async function enqueueCareEvent(event, operation) {
-  return { event, operation }
-}
-
-export async function flushCareEventOutbox() {
-  return { sent: 0, pending: 0 }
-}
-
 export function changedCareEvents(previous = [], next = []) {
   const previousById = new Map(previous.map((event) => [event.id, event]))
   return next.flatMap((event) => {
@@ -92,7 +82,10 @@ export function changedCareEvents(previous = [], next = []) {
     // replacement event. The replacement carries the API write; the tombstone
     // is produced by that same correction request and must not be sent twice.
     if (event.status === 'corrected' && !event.correctedFromId) return []
-    if (!prior) return [{ event, operation: event.correctedFromId ? 'correct' : 'create' }]
+    if (!prior) {
+      const correctedOriginal = event.correctedFromId ? previousById.get(event.correctedFromId) : null
+      return [{ event, expectedVersion: correctedOriginal?.version, operation: event.correctedFromId ? 'correct' : 'create' }]
+    }
     if (prior.updatedAt === event.updatedAt && prior.version === event.version && prior.status === event.status) return []
     return [{ event, expectedVersion: prior.version, operation: event.status === 'voided' ? 'void' : event.status === 'corrected' ? 'correct' : 'patch' }]
   })

@@ -13,6 +13,22 @@ const EVENT_LABELS = {
   medication: { zh: '用药记录', en: 'Medication' },
 }
 
+const EVENT_KIND_LABELS = {
+  caregiver_observation: { zh: '照护观察', en: 'Caregiver observation' },
+  measurement: { zh: '测量', en: 'Measurement' },
+  professional_conclusion: { zh: '专业结论', en: 'Professional conclusion' },
+}
+
+const EVENT_CATEGORY_LABELS = {
+  ...EVENT_LABELS,
+  observation: { zh: '观察', en: 'Observation' },
+  admin_task: { zh: '行政事项', en: 'Admin task' },
+  milestone: { zh: '里程碑', en: 'Milestone' },
+  language: { zh: '语言观察', en: 'Language observation' },
+  emotion: { zh: '情绪观察', en: 'Emotion observation' },
+  oxygen_saturation: { zh: '血氧饱和度', en: 'Oxygen saturation' },
+}
+
 function asTime(value) {
   const time = new Date(value || 0).getTime()
   return Number.isFinite(time) ? time : 0
@@ -26,6 +42,21 @@ function categoryOf(event) {
   return event?.category || event?.type
 }
 
+function fallbackLabel(value, locale) {
+  if (!value) return locale === 'en-US' ? 'Unknown' : '未分类'
+  return locale === 'en-US' ? String(value).replaceAll('_', ' ') : String(value)
+}
+
+export function eventKindLabel(kindOrEvent, locale = 'zh-CN') {
+  const kind = typeof kindOrEvent === 'string' ? kindOrEvent : kindOrEvent?.kind
+  return EVENT_KIND_LABELS[kind]?.[locale === 'en-US' ? 'en' : 'zh'] || fallbackLabel(kind, locale)
+}
+
+export function eventCategoryLabel(categoryOrEvent, locale = 'zh-CN') {
+  const category = typeof categoryOrEvent === 'string' ? categoryOrEvent : categoryOf(categoryOrEvent)
+  return EVENT_CATEGORY_LABELS[category]?.[locale === 'en-US' ? 'en' : 'zh'] || fallbackLabel(category, locale)
+}
+
 export function getRecentCareEvents(events = [], limit = 8) {
   return events.filter(isActive).sort((a, b) => asTime(b.occurredAt || b.createdAt) - asTime(a.occurredAt || a.createdAt)).slice(0, limit)
 }
@@ -33,7 +64,7 @@ export function getRecentCareEvents(events = [], limit = 8) {
 export function eventTitle(event, locale = 'zh-CN') {
   const isEnglish = locale === 'en-US'
   const category = event?.category || event?.type
-  const label = EVENT_LABELS[category]?.[isEnglish ? 'en' : 'zh'] || (isEnglish ? 'Care record' : '照护记录')
+  const label = EVENT_CATEGORY_LABELS[category]?.[isEnglish ? 'en' : 'zh'] || fallbackLabel(category, locale)
   if (category === 'bottle_feeding' && event.payload?.amountMl) return `${label} ${event.payload.amountMl} mL`
   if (category === 'diaper') {
     const kind = event.payload?.kind

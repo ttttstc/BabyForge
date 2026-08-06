@@ -63,7 +63,7 @@ export async function onRequestGet({ request, env }) {
     includeVoided: url.searchParams.get('includeVoided') === 'true',
   }
   const events = await loadEvents(env, baby.id, filters)
-  const [carePlanItems, concerns] = filters.category || filters.kind || filters.from || filters.to || filters.includeVoided
+  const [carePlanItems, concerns] = filters.category || filters.kind || filters.from || filters.to
     ? [[], []]
     : await Promise.all([loadPlans(env, baby.id), loadConcerns(env, baby.id)])
   return json({ events, carePlanItems, concerns })

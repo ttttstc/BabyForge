@@ -11,6 +11,8 @@ function readExpectedVersion(body, request) {
 }
 
 function correctionPayload(currentEvent, patch, now) {
+  // The replacement is a new recorded fact: occurredAt may be preserved,
+  // while recordedAt/createdAt mark when this correction was entered.
   const merged = {
     ...currentEvent,
     ...patch,
@@ -51,7 +53,7 @@ async function correctEvent({ request, env, params }) {
   const raw = body?.event || body
   let next
   try {
-    next = safeEventInput(correctionPayload(currentEvent, raw, now), {}, { requireId: false, requireActor: true, requireTimestamps: true })
+    next = safeEventInput(correctionPayload(currentEvent, raw, now), {}, { allowCorrectedFromId: true, requireId: false, requireActor: true, requireTimestamps: true })
   } catch (error) {
     return json({ error: error.message || '事件数据不正确', field: error.field || null }, 422)
   }

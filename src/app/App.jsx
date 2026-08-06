@@ -78,6 +78,8 @@ export function App() {
         saveState(globalThis.localStorage, rolledBack, session?.username)
         setState(rolledBack)
       }
+      // Corrections and voids keep their stable event id/version in local
+      // state and pendingSyncRef so a manual retry can safely resume them.
       updateSyncMeta({ status: 'offline' })
       throw error
     })

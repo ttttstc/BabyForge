@@ -97,7 +97,6 @@ export function concernFromRow(row) {
 }
 
 export function legacyTypeForEvent(event) {
-  if (event.kind === 'measurement') return event.category === 'temperature' ? 'temperature' : 'growth_measurement'
   if (event.kind === 'professional_conclusion') return 'doctor_instruction'
   return LEGACY_TYPES.has(event.category) ? event.category : 'care_action'
 }
@@ -117,10 +116,11 @@ export function safeEventInput(input = {}, fallback = {}, options = {}) {
   if (!EVENT_KINDS.has(kind)) throw new EventInputError('kind', `不支持的事件 kind: ${kind || '空值'}`)
   const category = String(event?.category || legacyType || '').trim()
   if (!category) throw new EventInputError('category', '必须提供事件 category')
-  const source = SOURCE_ALIASES[event?.source] || event?.source
+  const source = SOURCE_ALIASES[event?.source] || event?.source || 'unknown'
   if (!EVENT_SOURCES.has(source)) throw new EventInputError('source', `不支持的事件来源: ${event?.source || '空值'}`)
   const status = event?.status || 'active'
   if (!EVENT_STATUSES.has(status)) throw new EventInputError('status', `不支持的事件状态: ${status}`)
+  if (event?.correctedFromId && !options.allowCorrectedFromId) throw new EventInputError('correctedFromId', '纠正事件必须通过版本化修改接口提交')
   const id = String(event?.id || globalThis.crypto?.randomUUID?.() || `event-${Date.now()}`)
   const actor = event?.actor?.id && event.actor.displayName
     ? { id: String(event.actor.id), displayName: String(event.actor.displayName) }

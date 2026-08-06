@@ -58,18 +58,6 @@ export async function writeLocalWorkspace(state, owner) {
   })
 }
 
-export async function enqueueOutbox(item, owner) {
-  return { item, owner }
-}
-
-export async function readOutbox() {
-  return []
-}
-
-export async function removeOutbox() {
-  return undefined
-}
-
 export async function clearLocalWorkspace(owner) {
   const db = await openDatabase()
   if (!db) return

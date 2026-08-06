@@ -9,6 +9,11 @@ const RECORDS = [
   { id: 'both', type: 'diaper', kind: 'both', label: { zh: '尿和便', en: 'Urine + stool' }, icon: CheckCircle2 },
 ]
 
+function eventInput(category, payload) {
+  const now = new Date().toISOString()
+  return { kind: 'caregiver_observation', category, occurredAt: now, recordedAt: now, source: 'caregiver', payload }
+}
+
 export function QuickRecordPanel({ locale = 'zh-CN', onRecord, onConcern, readOnly = false }) {
   const [bottleOpen, setBottleOpen] = useState(false)
   const [amount, setAmount] = useState('')
@@ -24,7 +29,7 @@ export function QuickRecordPanel({ locale = 'zh-CN', onRecord, onConcern, readOn
     setSaveError('')
     setSaving(true)
     try {
-      await onRecord?.({ type: item.type, payload: item.kind ? { kind: item.kind } : { mode: 'breastfeeding' } })
+      await onRecord?.(eventInput(item.type, item.kind ? { kind: item.kind } : { mode: 'breastfeeding' }))
     } catch (error) {
       setSaveError(error?.message || (isEnglish ? 'Save failed. Retry.' : '保存失败，请重试。'))
     } finally {
@@ -38,7 +43,7 @@ export function QuickRecordPanel({ locale = 'zh-CN', onRecord, onConcern, readOn
     setSaveError('')
     setSaving(true)
     try {
-      await onRecord?.({ type: 'bottle_feeding', payload: { amountMl: Number(amount), unit: 'mL' } })
+      await onRecord?.(eventInput('bottle_feeding', { amountMl: Number(amount), unit: 'mL' }))
       setAmount('')
       setBottleOpen(false)
     } catch (error) {
