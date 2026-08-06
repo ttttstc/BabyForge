@@ -9,6 +9,8 @@ import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
 import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
+import { bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState } from '../src/domain/careEvents.js'
+import { changedCareEvents } from '../src/domain/eventSync.js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -87,7 +89,7 @@ test('versioned storage preserves explicit sex and safely migrates legacy profil
   }
 
   const migrated = loadState(storage)
-  assert.equal(migrated.version, 3)
+  assert.equal(migrated.version, 4)
   assert.equal(migrated.baby.nickname, '小舟')
   assert.equal(migrated.baby.sex, null)
   assert.equal(migrated.preferences.locale, 'zh-CN')
@@ -176,7 +178,7 @@ test('pediatric observations preserve symptoms and optional temperature facts', 
   assert.equal(record.provenance.symptomNotes, 'parent-entered')
 })
 
-test('care plan keeps low-burden task feedback, caregiver provenance, milestones, and growth facts', () => {
+test('care plan keeps low-burden task feedback, milestones, and growth facts', () => {
   const tasks = getDailyTasks([] , new Date('2026-08-05T12:00:00'))
   assert.equal(tasks.length, 3)
   assert.ok(tasks.every((item) => item.acceptance?.zh && item.acceptance?.en))
@@ -191,4 +193,26 @@ test('care plan keeps low-burden task feedback, caregiver provenance, milestones
   assert.ok(adminTasks.some((item) => item.id === 'birth-certificate' && item.state === 'due'))
   const adminRecords = upsertAdminTaskRecord([], 'birth-certificate', { status: 'done' }, '2026-08-05T10:00:00.000Z')
   assert.equal(getAdminTasks('newborn-early', 7, adminRecords).find((item) => item.id === 'birth-certificate').status, 'done')
+})
+
+test('legacy facts migrate into CareEvent without treating actor as performer', () => {
+  const state = migrateLegacyState({
+    baby: { id: 'baby-1' },
+    taskLogs: [{ id: 'task-1', taskId: 'feeding', date: '2026-08-05', actor: 'nanny', status: 'done' }],
+    observations: [],
+  })
+  assert.equal(state.careEvents.length, 1)
+  assert.equal(state.careEvents[0].type, 'care_action')
+  assert.equal(state.careEvents[0].recordedBy.displayName, '妈妈')
+  assert.equal(state.careEvents[0].payload.record.actor, 'nanny')
+  const unchanged = bridgeLegacyChanges(state, { ...state, preferences: { ...state.preferences } })
+  assert.equal(unchanged.careEvents[0].version, state.careEvents[0].version)
+})
+
+test('care event merge keeps newer server revision and detects local outbox operations', () => {
+  const local = createCareEvent({ id: 'event-1', babyId: 'baby-1', occurredAt: '2026-08-05T08:00:00Z', payload: { value: 'local' } }, { now: '2026-08-05T08:01:00Z' })
+  const remote = createCareEvent({ ...local, payload: { value: 'server' }, updatedAt: '2026-08-05T08:02:00Z', version: 2 }, { now: '2026-08-05T08:02:00Z' })
+  assert.equal(mergeCareEvents([local], [remote])[0].payload.value, 'server')
+  assert.deepEqual(changedCareEvents([], [local]).map((item) => item.operation), ['create'])
+  assert.deepEqual(changedCareEvents([local], [{ ...local, ...remote, status: 'voided' }]).map((item) => item.operation), ['void'])
 })

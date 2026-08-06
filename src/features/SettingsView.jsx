@@ -30,7 +30,7 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
             {LOCALE_OPTIONS.map((option) => <label key={option.value}><input disabled={readOnly} type="radio" name="locale" value={option.value} checked={locale === option.value} onChange={() => changeLocale(option.value)} /><span><strong>{option.nativeLabel}</strong><small>{option.value === 'zh-CN' ? '简体中文' : 'Interface and labels'}</small></span></label>)}
           </div>
         </section>
-        <section className="settings-boundary"><ShieldCheck size={20} /><div><strong>{locale === 'en-US' ? 'Local care records' : '本地照护记录'}</strong><p>{copy.noDiagnosis} {locale === 'en-US' ? 'Records stay in this browser until you clear them.' : '记录会保存在当前浏览器，直到你主动清除。'}</p></div></section>
+        <section className="settings-boundary"><ShieldCheck size={20} /><div><strong>{locale === 'en-US' ? 'Local-first shared records' : '本地优先的共享记录'}</strong><p>{copy.noDiagnosis} {locale === 'en-US' ? 'Records save locally first and sync to the shared family workspace when online.' : '记录先保存在当前设备，联网后同步到家庭共享工作台。清除本地数据不会删除云端记录。'}</p></div></section>
         <button className="secondary-button settings-done" onClick={() => navigate(ROUTES.today)}>{locale === 'en-US' ? 'Done' : '完成设置'}</button>
       </section>
     </main>

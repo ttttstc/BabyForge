@@ -30,7 +30,7 @@ npm run test:visual
 
 ## 数据
 
-宝宝档案、观察记录和成长工作台优先保存在当前浏览器的 IndexedDB，`localStorage` 作为迁移和故障降级副本；语言、页面和显示偏好仍是轻量本地设置。顶部“清除本地数据”会删除全部 BabyForge 本地数据。Cloudflare 部署后，管理员工作台可同步到 D1，游客账号仅可读取。
+宝宝档案、照护事件（`CareEvent`）、计划项和关注事项优先保存在当前浏览器的 IndexedDB，`localStorage` 作为迁移和故障降级副本；语言、页面和当前记录人偏好仍是轻量本地设置。离线事件进入本地 outbox，线上页面在登录、切回页面、网络恢复时拉取，并每 30 秒增量同步；服务端按接收顺序更新当前版本，同时保留事件修订历史。顶部“清除本地数据”只清除当前设备，不删除云端记录。Cloudflare 部署后，管理员和月嫂可同步到 D1，游客账号仅可读取。
 
 登录与线上部署步骤见 [`docs/cloudflare-deploy.md`](docs/cloudflare-deploy.md)。
 

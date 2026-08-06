@@ -39,7 +39,7 @@ test('today tasks, stage milestones, calendar, and growth facts form one local l
   await expect(page.getByText('核对出生相关疫苗记录', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: /办理出生医学证明.*标记完成/ }).first().click()
   await expect(page.getByRole('button', { name: /办理出生医学证明.*已完成/ }).first()).toBeVisible()
-  await expect(page.getByText('记录人', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('记录人', { exact: true })).toHaveCount(1)
   await expect(page.getByText('稍后', { exact: true })).toHaveCount(0)
   await expect(page.getByTestId('care-task-list').last().getByText('完成标准：', { exact: true })).toHaveCount(3)
   await page.getByRole('button', { name: /观察一次完整喂养.*标记完成/ }).first().click()

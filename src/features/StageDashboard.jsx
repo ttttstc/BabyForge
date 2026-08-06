@@ -34,8 +34,8 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   const selectedMeasurements = state.growthMeasurements.filter((item) => item.measuredAt === selectedDate)
   const completed = milestones.filter((item) => item.status === 'done').length
 
-  function updateMilestone(milestoneId, status, actor = 'parent') {
-    setState((current) => ({ ...current, milestoneRecords: upsertMilestoneRecord(current.milestoneRecords, milestoneId, { status, actor }) }))
+  function updateMilestone(milestoneId, status) {
+    setState((current) => ({ ...current, milestoneRecords: upsertMilestoneRecord(current.milestoneRecords, milestoneId, { status }) }))
   }
 
   function addMeasurement(event) {
@@ -56,7 +56,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
 
   return (
     <main className="app-shell stage-dashboard-shell">
-      <Header route={ROUTES_STAGE} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} />
+      <Header route={ROUTES_STAGE} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} />
       <div className="stage-dashboard">
         <header className="stage-dashboard-hero">
           <div><p className="eyebrow">{isEnglish ? 'Milestone workspace · 0–28 days' : '阶段里程碑工作台 · 0–28 天'}</p><h1>{localized(stage.label, locale)}</h1><p>{localized(stage.rangeLabel, locale)} · {isEnglish ? 'Turn a newborn stage into a few doable care steps.' : '把阶段目标变成少数几件今天能完成的照护动作。'}</p></div>
@@ -69,9 +69,8 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
               {milestones.map((milestone) => {
                 const done = milestone.status === 'done'
                 return <article className={`milestone-card ${done ? 'done' : ''}`} key={milestone.id}>
-                  <button className="milestone-check" disabled={readOnly} onClick={() => updateMilestone(milestone.id, done ? 'pending' : 'done', milestone.record?.actor || 'parent')} aria-pressed={done} aria-label={`${localized(milestone.title, locale)} ${done ? (isEnglish ? 'completed' : '已完成') : (isEnglish ? 'mark complete' : '标记完成')}`}>{done ? <Check size={16} /> : <span>{milestone.dueDay}</span>}</button>
+                  <button className="milestone-check" disabled={readOnly} onClick={() => updateMilestone(milestone.id, done ? 'pending' : 'done')} aria-pressed={done} aria-label={`${localized(milestone.title, locale)} ${done ? (isEnglish ? 'completed' : '已完成') : (isEnglish ? 'mark complete' : '标记完成')}`}>{done ? <Check size={16} /> : <span>{milestone.dueDay}</span>}</button>
                   <div><strong>{localized(milestone.title, locale)}</strong><p>{localized(milestone.detail, locale)}</p><small>{isEnglish ? `Around day ${milestone.dueDay}` : `出生后第 ${milestone.dueDay} 天左右`}</small></div>
-                  <select disabled={readOnly} value={milestone.record?.actor || 'parent'} onChange={(event) => updateMilestone(milestone.id, milestone.status, event.target.value)} aria-label={`${localized(milestone.title, locale)} ${isEnglish ? 'caregiver' : '记录人'}`}><option value="parent">{isEnglish ? 'Parent' : '家长'}</option><option value="nanny">{isEnglish ? 'Nanny' : '月嫂'}</option><option value="other">{isEnglish ? 'Other caregiver' : '其他照护者'}</option></select>
                 </article>
               })}
             </div>

@@ -183,7 +183,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
 
   return (
     <main className="app-shell pediatric-shell">
-      <Header route={ROUTES.pediatric} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} />
+      <Header route={ROUTES.pediatric} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} />
       <div className="pediatric-workspace">
         <aside className="pediatric-library" aria-label={locale === 'en-US' ? 'Common pediatric conditions' : '常见儿科病'}>
           <div className="pediatric-panel-heading"><span>{locale === 'en-US' ? 'Explore library' : '探索资料库'}</span><BookOpen size={16} /></div>

@@ -8,6 +8,8 @@ import { LoginView } from '../features/LoginView.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
+import { applyCareEventsToLegacy, bridgeLegacyChanges, mergeCareEvents } from '../domain/careEvents.js'
+import { changedCareEvents, flushCareEventOutbox, mergePulledState, pullCareActors, pullCareEvents, enqueueCareEvent } from '../domain/eventSync.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -21,6 +23,8 @@ export function App() {
   })
   const [authError, setAuthError] = useState('')
   const stateRef = useRef(state)
+  const syncingRef = useRef(false)
+  const outboxSyncRef = useRef(Promise.resolve())
   const readOnly = Boolean(session) && !canEdit(session)
 
   useEffect(() => {
@@ -29,11 +33,60 @@ export function App() {
 
   function commitState(updater) {
     if (readOnly) return
-    const next = typeof updater === 'function' ? updater(stateRef.current) : updater
+    const previous = stateRef.current
+    const rawNext = typeof updater === 'function' ? updater(previous) : updater
+    const next = bridgeLegacyChanges(previous, rawNext, { babyId: rawNext.baby?.id })
+    const eventChanges = changedCareEvents(previous.careEvents || [], next.careEvents || [])
     stateRef.current = next
     saveState(globalThis.localStorage, next, session?.username)
     setState(next)
-    if (session?.mode === 'cloudflare' && next.baby) void pushWorkspace(next).catch(() => {})
+    if (session?.mode === 'cloudflare' && next.baby) {
+      outboxSyncRef.current = outboxSyncRef.current
+        .catch(() => {})
+        .then(async () => {
+          await Promise.all(eventChanges.map((change) => enqueueCareEvent(change.event, change.operation, session.username)))
+          await flushCareEventOutbox(session.username)
+        })
+    }
+  }
+
+  async function pullEventWorkspace(owner = sessionRef.current?.username, babyId = stateRef.current.baby?.id) {
+    if (!babyId || sessionRef.current?.mode !== 'cloudflare' || syncingRef.current) return
+    syncingRef.current = true
+    try {
+      let current = stateRef.current
+      const canWriteRemote = canEdit(sessionRef.current)
+      if (canWriteRemote && !current.syncMeta?.legacyEventsQueued) {
+        for (const event of (current.careEvents || []).filter((item) => item.legacyKey)) {
+          await enqueueCareEvent(event, 'create', owner)
+        }
+        current = { ...current, syncMeta: { ...(current.syncMeta || {}), legacyEventsQueued: true } }
+        stateRef.current = current
+      }
+      const payload = await pullCareEvents(babyId, current.syncMeta?.lastPulledAt)
+      let next = mergePulledState(current, payload)
+      next = { ...next, careEvents: mergeCareEvents(current.careEvents || [], payload.events || []) }
+      next = applyCareEventsToLegacy(next, next.careEvents)
+      try {
+        const actors = await pullCareActors(babyId)
+        if (actors.length) {
+          const currentRecorderId = actors.some((actor) => actor.id === next.preferences?.currentRecorderId) ? next.preferences.currentRecorderId : actors[0].id
+          next = { ...next, careActors: actors, preferences: { ...next.preferences, currentRecorderId } }
+        }
+      } catch {
+        // Actor sync is best effort; event sync remains useful without it.
+      }
+      stateRef.current = next
+      saveState(globalThis.localStorage, next, owner)
+      setState(next)
+      if (canWriteRemote) await flushCareEventOutbox(owner)
+    } catch {
+      stateRef.current = { ...stateRef.current, syncMeta: { ...(stateRef.current.syncMeta || {}), status: 'offline' } }
+      saveState(globalThis.localStorage, stateRef.current, owner)
+      setState(stateRef.current)
+    } finally {
+      syncingRef.current = false
+    }
   }
 
   useEffect(() => {
@@ -59,7 +112,7 @@ export function App() {
       if (remoteBabyId) {
         try {
           const remote = await pullWorkspace(remoteBabyId)
-          if (remote?.baby && sessionRef.current?.username === owner) hydrated = { ...createInitialState(), ...remote, preferences: { ...next.preferences, locale: remote.baby.locale || next.preferences.locale } }
+          if (remote?.baby && sessionRef.current?.username === owner) hydrated = bridgeLegacyChanges(next, { ...createInitialState(), ...remote, preferences: { ...next.preferences, locale: remote.baby.locale || next.preferences.locale } }, { babyId: remote.baby.id })
         } catch {
           // Keep the account-scoped local copy if the remote refresh is offline.
         }
@@ -68,6 +121,7 @@ export function App() {
       stateRef.current = hydrated
       saveState(globalThis.localStorage, hydrated, owner)
       setState(hydrated)
+      if (remoteBabyId) void pullEventWorkspace(owner, remoteBabyId)
     })
     return () => { active = false }
   // Login/logout transitions explicitly replace the in-memory state. Keeping
@@ -75,9 +129,26 @@ export function App() {
   // overwriting a freshly pulled account workspace after sign-in.
   }, [])
 
+  useEffect(() => {
+    if (session?.mode !== 'cloudflare' || !state.baby?.id) return undefined
+    const sync = () => void pullEventWorkspace(session.username, stateRef.current.baby?.id)
+    const timer = globalThis.setInterval(sync, 30_000)
+    const onFocus = () => sync()
+    const onOnline = () => sync()
+    globalThis.addEventListener?.('focus', onFocus)
+    globalThis.addEventListener?.('online', onOnline)
+    sync()
+    return () => {
+      globalThis.clearInterval?.(timer)
+      globalThis.removeEventListener?.('focus', onFocus)
+      globalThis.removeEventListener?.('online', onOnline)
+    }
+  }, [session?.mode, session?.username, state.baby?.id])
+
   function createBaby(baby) {
     if (readOnly || !session) return
     commitState((current) => ({ ...current, baby }))
+    if (session.mode === 'cloudflare') void pushWorkspace({ ...stateRef.current, baby }).catch(() => {})
     navigate(ROUTES.today)
   }
 
@@ -86,6 +157,7 @@ export function App() {
     try {
       const next = await login(username, password)
       setSession(next)
+      sessionRef.current = next
       // The Vite demo accounts share the seeded local workspace so the guest
       // flow mirrors the production household membership. Cloudflare always
       // uses the account-specific remote workspace returned by the API.
@@ -109,6 +181,7 @@ export function App() {
       stateRef.current = current
       saveState(globalThis.localStorage, current, next.username)
       setState(current)
+      if (next.mode === 'cloudflare' && remoteBaby?.id) void pullEventWorkspace(next.username, remoteBaby.id)
       if (next.role === 'guest' && !current.baby) {
         setAuthError('当前账号暂未关联宝宝档案，请联系管理员。')
         return

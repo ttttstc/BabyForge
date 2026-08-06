@@ -1,9 +1,9 @@
-import { Baby, CalendarRange, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope } from 'lucide-react'
+import { Baby, CalendarRange, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
 
-export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN' }) {
+export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle' }) {
   const copy = getCopy(locale)
   const items = [
     { route: ROUTES.today, label: copy.nav.today, icon: House },
@@ -30,6 +30,13 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
         ))}
       </nav>
       <div className="header-actions">
+        <label className="recorder-picker">
+          <span>{locale === 'en-US' ? 'Entered by' : '记录人'}</span>
+          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current recorder' : '当前记录人'}>
+            {careActors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
+          </select>
+        </label>
+        <span className={`sync-status ${syncStatus}`} aria-live="polite">{syncStatus === 'offline' ? (locale === 'en-US' ? 'Offline · saved locally' : '离线 · 已保存本地') : syncStatus === 'online' ? (locale === 'en-US' ? 'Synced' : '已同步') : (locale === 'en-US' ? 'Local first' : '本地优先')}</span>
         <span className={`role-pill ${role === 'guest' ? 'guest' : role === 'caregiver' ? 'caregiver' : 'admin'}`}>
           {role === 'guest'
             ? (locale === 'en-US' ? 'Guest · read only' : '游客 · 只读')
@@ -37,7 +44,6 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
               ? (locale === 'en-US' ? 'Caregiver · editor' : '月嫂 · 可录入')
               : (locale === 'en-US' ? 'Admin' : '管理员')}
         </span>
-        <span className="research-pill"><Sparkles size={14} />{copy.researchPrototype}</span>
         <button className="icon-button language-button" onClick={() => navigate(ROUTES.settings)} title={copy.settings}>
           <Languages size={16} />{getLocaleLabel(locale)}
         </button>
