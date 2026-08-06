@@ -34,8 +34,8 @@ test.beforeEach(async ({ page }) => {
 
 test('new visitors see the product login before profile setup', async ({ page }) => {
   await expect(page).toHaveURL(/#\/login$/)
-  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
-  await expect(page.getByText('每日照护', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '查看宝宝情况' })).toBeVisible()
+  await expect(page.getByText('日常记录', { exact: true })).toBeVisible()
   await page.getByLabel('账号').fill('niwa')
   await page.getByLabel('密码').fill('niwaniwa')
   await page.getByRole('button', { name: '登录' }).click()
