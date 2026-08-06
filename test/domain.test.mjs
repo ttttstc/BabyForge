@@ -289,10 +289,14 @@ test('quick care records produce a personal 24-hour snapshot', () => {
   assert.equal(eventTitle(events[0], 'zh-CN'), '瓶喂 60 mL')
 })
 
-test('guided support uses deterministic next steps without diagnosing', () => {
-  assert.equal(evaluateSupport({ topicId: 'breathing', facts: ['blue-color'] }).actionLevel, 'urgent-support')
-  assert.equal(evaluateSupport({ topicId: 'feeding-change', facts: [] }).actionLevel, 'observe-and-recheck')
-  assert.match(evaluateSupport({ topicId: 'feeding-change', facts: [] }).action.zh, /记录时间/)
+test('guided support uses caregiver guidance without a triage label', () => {
+  const urgent = evaluateSupport({ topicId: 'breathing', facts: ['blue-color'] })
+  const routine = evaluateSupport({ topicId: 'feeding-change', facts: [] })
+  assert.equal(urgent.caregiverGuidance, 'immediate-contact')
+  assert.equal(routine.caregiverGuidance, 'observe-and-recheck')
+  assert.equal(urgent.actionLevel, undefined)
+  assert.match(routine.action.zh, /记录时间/)
+  assert.match(urgent.source.url, /who.int/)
 })
 
 test('support concerns can be reconstructed from synced care events', () => {
@@ -301,4 +305,11 @@ test('support concerns can be reconstructed from synced care events', () => {
   assert.equal(open[0].status, 'open')
   const closed = concernsFromCareEvents([{ ...event, id: 'close-event', payload: { supportStatus: 'closed' } }], open)
   assert.equal(closed[0].status, 'closed')
+})
+
+test('reconstructing an unchanged concern preserves its timestamp and details', () => {
+  const event = { id: 'concern-event', babyId: 'baby-1', relatedConcernId: 'concern-1', status: 'active', createdAt: '2026-08-05T10:00:00Z', updatedAt: '2026-08-05T10:00:00Z', payload: { supportTopic: 'jaundice', facts: ['blue-color'], notes: '观察到变化', plan: { caregiverGuidance: 'immediate-contact' } } }
+  const existing = concernsFromCareEvents([event])
+  const replayed = concernsFromCareEvents([event], existing)
+  assert.strictEqual(replayed[0], existing[0])
 })

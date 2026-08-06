@@ -530,10 +530,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .concern-back { width: fit-content; padding: 0; color: var(--coral); border: 0; background: transparent; cursor: pointer; font-size: .56rem; }
 .concern-form fieldset { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
 .concern-form legend { padding: 0 3px; color: var(--muted); font-size: .55rem; }
+.concern-observation-note { display: block; margin: 2px 0 4px; color: var(--muted); font-size: .51rem; line-height: 1.35; }
 .concern-form label { display: grid; grid-template-columns: 17px 1fr; align-items: start; gap: 5px; color: #6f675f; font-size: .58rem; line-height: 1.35; }
 .concern-form textarea { min-height: 58px; padding: 7px; font-size: .59rem; }
 .support-plan { display: grid; gap: 5px; margin-top: 10px; padding: 10px; color: #6f675f; border: 1px solid rgba(118, 157, 116, .25); border-radius: 11px; background: var(--sage-soft); }
-.support-plan.urgent-support { color: #74453e; border-color: rgba(235, 124, 107, .42); background: #fff0eb; }
+.support-plan.immediate-contact { color: #74453e; border-color: rgba(235, 124, 107, .42); background: #fff0eb; }
 .support-plan header { display: flex; justify-content: space-between; align-items: center; }
 .support-plan header strong { font-size: .68rem; }
 .support-plan p { margin: 0; font-size: .57rem; line-height: 1.4; }

@@ -94,6 +94,9 @@ export function createConcern(input = {}, options = {}) {
     status: input.status || 'open',
     createdAt: timestamp(input.createdAt, now),
     updatedAt: timestamp(input.updatedAt, now),
+    plan: input.plan ? clone(input.plan) : null,
+    facts: Array.isArray(input.facts) ? [...input.facts] : [],
+    notes: typeof input.notes === 'string' ? input.notes : '',
   }
 }
 

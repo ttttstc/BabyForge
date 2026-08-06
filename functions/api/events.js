@@ -97,6 +97,10 @@ export async function onRequestPost({ request, env }) {
         UPDATE care_events SET type = ?, occurred_at = ?, recorded_at = ?, recorded_by_id = ?, recorded_by_name = ?, source = ?, payload_json = ?, related_concern_id = ?, updated_at = ?, version = version + 1, status = ?, updated_by = ?
         WHERE id = ?
       `).bind(event.type, event.occurredAt, event.recordedAt, event.recordedBy.id, event.recordedBy.displayName, event.source, JSON.stringify(event.payload), event.relatedConcernId, now, event.status, auth.session.accountId, existing.id).run()
+    } else {
+      // Idempotent replays are acknowledged without pretending that a new
+      // version was written. The client treats 204 as a successful no-op.
+      return new Response(null, { status: 204 })
     }
   }
   const row = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(event.id).first()

@@ -25,7 +25,9 @@ export async function onRequestPatch({ request, env, params }) {
   try {
     input = safeEventInput({ ...currentEvent, ...patchBody, id: current.id, babyId: current.baby_id }, {
       now,
-      recordedBy: currentEvent.recordedBy,
+      recordedBy: currentEvent.recordedBy?.id && currentEvent.recordedBy?.displayName
+        ? currentEvent.recordedBy
+        : { id: 'historical-record', displayName: '历史记录人' },
     }, { requireId: true, requireTimestamps: true })
   } catch (error) {
     return json({ error: error.message || '事件数据不正确', field: error.field || null }, 422)

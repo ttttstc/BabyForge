@@ -5,7 +5,7 @@ import { createObservation } from '../domain/observation.js'
 import { getAdminTasks, getDailyTasks, updateTaskLog, upsertAdminTaskRecord } from '../domain/carePlan.js'
 import { createGrowthMeasurement } from '../domain/carePlan.js'
 import { createCareEvent, createConcern as createConcernRecord } from '../domain/careEvents.js'
-import { topicById } from '../domain/healthSupport.js'
+import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { LeftRail } from './LeftRail.jsx'
@@ -51,7 +51,8 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
   }
 
   function createSupportConcern(input) {
-    const topic = topicById(input.topicId)
+    const topic = SUPPORT_TOPICS.find((item) => item.id === input.topicId)
+    if (!topic) throw new Error('未找到关注类型')
     const concern = { ...createConcernRecord({ babyId: state.baby.id, topicId: input.topicId, title: topic.title, status: 'open' }), plan: input.plan || null, facts: input.facts || [], notes: input.notes || '' }
     const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
     const event = createCareEvent({

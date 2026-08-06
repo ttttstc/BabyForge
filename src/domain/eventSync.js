@@ -1,11 +1,11 @@
 import { enqueueOutbox, readOutbox, removeOutbox } from './localDb.js'
-import { createCareEvent, mergeCareEvents } from './careEvents.js'
+import { createCareEvent, createCarePlanItem, createConcern, mergeCareEvents } from './careEvents.js'
 
 async function request(path, options = {}, fetchImpl = globalThis.fetch) {
   if (typeof fetchImpl !== 'function') throw new Error('同步服务不可用')
   const response = await fetchImpl(path, { credentials: 'include', ...options })
   if (!response.ok) throw new Error('线上同步暂时失败')
-  return response.json()
+  return response.status === 204 ? null : response.json()
 }
 
 export async function pullCareEvents(babyId, since, fetchImpl = globalThis.fetch) {
@@ -77,9 +77,12 @@ export function changedCareEvents(previous = [], next = []) {
   })
 }
 
-function mergeRecords(local = [], incoming = []) {
+function mergeRecords(local = [], incoming = [], normalize = (item) => item) {
   const byId = new Map(local.map((item) => [item.id, item]))
-  for (const item of incoming) byId.set(item.id, item)
+  for (const item of incoming) {
+    const normalized = normalize(item)
+    byId.set(normalized.id, normalized)
+  }
   return [...byId.values()]
 }
 
@@ -91,11 +94,11 @@ export function mergePulledState(state, payload, { since = null } = {}) {
     // A full pull is authoritative even when a collection is empty. An
     // incremental pull contains only changed rows and must merge by id.
     carePlanItems: incremental
-      ? mergeRecords(state.carePlanItems || [], payload?.carePlanItems || [])
-      : (Array.isArray(payload?.carePlanItems) ? payload.carePlanItems : []),
+      ? mergeRecords(state.carePlanItems || [], payload?.carePlanItems || [], (item) => createCarePlanItem(item))
+      : (Array.isArray(payload?.carePlanItems) ? payload.carePlanItems.map((item) => createCarePlanItem(item)) : []),
     concerns: incremental
-      ? mergeRecords(state.concerns || [], payload?.concerns || [])
-      : (Array.isArray(payload?.concerns) ? payload.concerns : []),
+      ? mergeRecords(state.concerns || [], payload?.concerns || [], (item) => createConcern(item))
+      : (Array.isArray(payload?.concerns) ? payload.concerns.map((item) => createConcern(item)) : []),
     syncMeta: { ...(state.syncMeta || {}), status: 'online', lastPulledAt: payload?.pulledAt || new Date().toISOString() },
   }
 }
