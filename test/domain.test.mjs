@@ -8,7 +8,7 @@ import { evaluateMedicalTopic } from '../src/domain/safety.js'
 import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
-import { createGrowthMeasurement, getAdminTasks, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
+import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -133,21 +133,33 @@ test('baby assets resolve to separate male and female files while shared assets 
 })
 
 test('pediatric condition library reuses the nine anatomy resources', () => {
-  assert.equal(PEDIATRIC_DISEASES.length, 6)
+  assert.equal(PEDIATRIC_DISEASES.length, 9)
   assert.equal(ANATOMY_RESOURCES.length, 9)
   assert.ok(PEDIATRIC_DISEASES.every((item) => ANATOMY_RESOURCES.some((resource) => resource.id === item.organId)))
   assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'jaundice')?.organId, 'liver')
   assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'fever')?.modelLabel.zh, '循环参照')
+  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'cardiovascular')?.organId, 'heart')
+  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'urinary')?.organId, 'kidneys')
+  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'neurologic')?.organId, 'brain')
   assert.deepEqual(getAnatomyHotspots('lungs').map((item) => item.id), ['trachea', 'right-lung', 'left-lung', 'bronchus', 'base'])
 })
 
 test('every pediatric category exposes four bilingual case guides with reserved artwork paths', () => {
   const cases = PEDIATRIC_DISEASES.flatMap((category) => category.cases)
-  assert.equal(cases.length, 24)
-  assert.equal(new Set(cases.map((item) => item.id)).size, 24)
+  assert.equal(cases.length, 36)
+  assert.equal(new Set(cases.map((item) => item.id)).size, 36)
   assert.ok(cases.every((item) => item.title.zh && item.title.en))
   assert.ok(cases.every((item) => item.scenario.zh && item.scenario.en))
+  assert.ok(cases.every((item) => item.treatment?.zh && item.nextSteps?.zh))
   assert.ok(cases.every((item) => item.image === `/assets/pediatric-cases/${item.id}.webp`))
+})
+
+test('calendar exposes anniversaries, milestones, admin tasks, and completion state', () => {
+  const events = getCalendarEvents({ birthDate: '2026-07-29' }, [{ milestoneId: 'first-visit-plan', status: 'done' }], [{ taskId: 'birth-certificate', status: 'done' }])
+  assert.equal(events.find((item) => item.id === 'birth-anniversary')?.date, '2026-07-29')
+  assert.equal(events.find((item) => item.id === 'first-visit-plan')?.date, '2026-07-30')
+  assert.equal(events.find((item) => item.id === 'first-visit-plan')?.status, 'done')
+  assert.equal(events.find((item) => item.id === 'birth-certificate')?.status, 'done')
 })
 
 test('pediatric observations preserve symptoms and optional temperature facts', () => {

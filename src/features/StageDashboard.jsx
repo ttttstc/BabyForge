@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Baby, CalendarDays, Check, ChevronLeft, ChevronRight, CircleHelp, LineChart, Plus, ShieldCheck } from 'lucide-react'
 import { getAgeDays, getStage } from '../domain/baby.js'
-import { GROWTH_TYPES, createGrowthMeasurement, dateForAge, getAdminTasks, getMonthDays, getStageMilestones, localDateKey, upsertAdminTaskRecord, upsertMilestoneRecord } from '../domain/carePlan.js'
+import { GROWTH_TYPES, createGrowthMeasurement, getAdminTasks, getCalendarEvents, getMonthDays, getStageMilestones, localDateKey, upsertAdminTaskRecord, upsertMilestoneRecord } from '../domain/carePlan.js'
 import { Header } from './Header.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
 
@@ -20,6 +20,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   const stage = useMemo(() => getStage(ageDays), [ageDays])
   const milestones = useMemo(() => getStageMilestones(stage.id, state.milestoneRecords), [stage.id, state.milestoneRecords])
   const adminTasks = useMemo(() => getAdminTasks(stage.id, ageDays, state.adminTaskRecords), [stage.id, ageDays, state.adminTaskRecords])
+  const calendarEvents = useMemo(() => getCalendarEvents(state.baby, state.milestoneRecords, state.adminTaskRecords), [state.baby, state.milestoneRecords, state.adminTaskRecords])
   const today = new Date()
   const [calendarCursor, setCalendarCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [selectedDate, setSelectedDate] = useState(localDateKey(today))
@@ -78,7 +79,7 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
 
           <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={updateAdminTask} readOnly={readOnly} />
 
-          <CalendarCard locale={locale} monthDays={monthDays} cursor={calendarCursor} selectedDate={selectedDate} onSelect={setSelectedDate} onMove={moveMonth} taskLogs={state.taskLogs} measurements={state.growthMeasurements} milestones={milestones} adminTasks={adminTasks} baby={state.baby} />
+          <CalendarCard locale={locale} monthDays={monthDays} cursor={calendarCursor} selectedDate={selectedDate} onSelect={setSelectedDate} onMove={moveMonth} taskLogs={state.taskLogs} measurements={state.growthMeasurements} calendarEvents={calendarEvents} />
 
           <GrowthCard locale={locale} measurements={state.growthMeasurements} growthType={growthType} setGrowthType={setGrowthType} growthValue={growthValue} setGrowthValue={setGrowthValue} growthDate={growthDate} setGrowthDate={setGrowthDate} onSubmit={addMeasurement} readOnly={readOnly} />
 
@@ -94,23 +95,25 @@ export function StageDashboard({ state, setState, onClear, onLogout, readOnly = 
   )
 }
 
-function CalendarCard({ locale, monthDays, cursor, selectedDate, onSelect, onMove, taskLogs, measurements, milestones, adminTasks, baby }) {
+function CalendarCard({ locale, monthDays, cursor, selectedDate, onSelect, onMove, taskLogs, measurements, calendarEvents }) {
   const isEnglish = locale === 'en-US'
   const today = localDateKey()
   const dayLabels = isEnglish ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['日', '一', '二', '三', '四', '五', '六']
-  const milestoneDates = new Set(milestones.map((item) => dateForAge(baby.birthDate, item.dueDay)))
-  const adminDates = new Set(adminTasks.map((item) => dateForAge(baby.birthDate, item.dueDay)))
+  const eventsByDate = new Map()
+  calendarEvents.forEach((event) => eventsByDate.set(event.date, [...(eventsByDate.get(event.date) || []), event]))
+  const selectedEvents = eventsByDate.get(selectedDate) || []
   return <section className="stage-calendar-card">
     <header className="dashboard-card-heading"><div><p className="eyebrow">{isEnglish ? 'Local calendar' : '本地日历'}</p><h2>{cursor.toLocaleDateString(isEnglish ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'long' })}</h2></div><div className="calendar-nav"><button onClick={() => onMove(-1)} aria-label={isEnglish ? 'Previous month' : '上个月'}><ChevronLeft size={15} /></button><button onClick={() => onMove(1)} aria-label={isEnglish ? 'Next month' : '下个月'}><ChevronRight size={15} /></button></div></header>
     <div className="calendar-weekdays">{dayLabels.map((label) => <span key={label}>{label}</span>)}</div>
     <div className="calendar-grid">{monthDays.map(({ date, key, inMonth }) => {
       const hasLog = taskLogs.some((item) => item.date === key)
       const hasMeasurement = measurements.some((item) => item.measuredAt === key)
-      const hasMilestone = milestoneDates.has(key)
-      const hasAdminTask = adminDates.has(key)
-      return <button key={key} className={`calendar-day ${inMonth ? '' : 'muted'} ${key === today ? 'today' : ''} ${key === selectedDate ? 'selected' : ''}`} onClick={() => onSelect(key)}><span>{date.getDate()}</span><i>{hasAdminTask ? '!' : hasMilestone ? '◆' : hasLog || hasMeasurement ? '•' : ''}</i></button>
+      const events = eventsByDate.get(key) || []
+      const markerLabel = events.map((event) => localized(event.title, locale)).join('、')
+      return <button key={key} className={`calendar-day ${inMonth ? '' : 'muted'} ${key === today ? 'today' : ''} ${key === selectedDate ? 'selected' : ''}`} onClick={() => onSelect(key)} aria-label={`${key}${markerLabel ? ` · ${markerLabel}` : ''}`}><span>{date.getDate()}</span><i className="calendar-markers">{events.slice(0, 3).map((event) => <b key={event.id} className={`calendar-marker ${event.kind} ${event.status === 'done' ? 'done' : ''}`} aria-hidden="true" />)}{!events.length && (hasLog || hasMeasurement) && <b className="calendar-marker record" aria-hidden="true" />}</i></button>
     })}</div>
-    <p className="calendar-legend"><span>! {isEnglish ? 'standard errand' : '标准代办'}</span><span>◆ {isEnglish ? 'milestone' : '里程碑'}</span><span>• {isEnglish ? 'record' : '已有记录'}</span></p>
+    <p className="calendar-legend"><span><b className="calendar-marker admin" /> {isEnglish ? 'care task' : '照护代办'}</span><span><b className="calendar-marker milestone" /> {isEnglish ? 'milestone' : '里程碑'}</span><span><b className="calendar-marker anniversary" /> {isEnglish ? 'anniversary' : '纪念日'}</span><span><b className="calendar-marker record" /> {isEnglish ? 'record' : '已有记录'}</span></p>
+    {selectedEvents.length > 0 && <div className="calendar-event-list"><strong>{isEnglish ? 'Selected date' : '当天事项'}</strong>{selectedEvents.map((event) => <div key={event.id} className={event.status === 'done' ? 'done' : ''}><span className={`calendar-marker ${event.kind} ${event.status === 'done' ? 'done' : ''}`} /><p><b>{localized(event.title, locale)}</b><small>{localized(event.detail, locale)}</small></p></div>)}</div>}
   </section>
 }
 

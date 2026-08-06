@@ -11,11 +11,11 @@ function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHot
     const detail = locale === 'en-US' ? hotspot.detail.en : hotspot.detail.zh
     return <group key={hotspot.id} position={position} onClick={(event) => { event.stopPropagation(); onSelectHotspot(selected ? null : hotspot) }}>
       <mesh renderOrder={20} scale={selected ? 1.14 : 1}>
-        <sphereGeometry args={[0.1, 18, 12]} />
+        <sphereGeometry args={[0.06, 18, 12]} />
         <meshBasicMaterial color={hotspot.color} transparent opacity={0.98} depthTest={false} depthWrite={false} />
       </mesh>
       <mesh renderOrder={19} scale={selected ? 1.8 : 1.5}>
-        <sphereGeometry args={[0.1, 18, 12]} />
+        <sphereGeometry args={[0.06, 18, 12]} />
         <meshBasicMaterial color={hotspot.color} transparent opacity={selected ? 0.28 : 0.18} depthTest={false} depthWrite={false} />
       </mesh>
       {selected && <Html position={[0, 0.18, 0]} center distanceFactor={8} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}><div className="pediatric-hotspot-3d-callout"><strong>{label}</strong><small>{detail}</small></div></Html>}
@@ -23,7 +23,7 @@ function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHot
   })
 }
 
-function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, locale, settings }) {
+function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, locale, settings, onReady }) {
   const { scene } = useGLTF(resource.model)
   const controlsRef = useRef(null)
   const fitted = useMemo(() => {
@@ -93,6 +93,10 @@ function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, 
   const { model, plinthY, markerScale } = fitted
 
   useEffect(() => {
+    onReady?.()
+  }, [onReady, resource.id])
+
+  useEffect(() => {
     const plane = settings.crossSection ? new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0.08) : null
     model.traverse((node) => {
       if (!node.isMesh || !node.material) return
@@ -133,7 +137,12 @@ function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, 
   )
 }
 
-export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId = null, onSelectHotspot = () => {}, locale = 'zh-CN', settings }) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function preloadAnatomyModel(url) {
+  if (url) useGLTF.preload(url)
+}
+
+export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId = null, onSelectHotspot = () => {}, locale = 'zh-CN', settings, onReady = () => {} }) {
   return (
     <Canvas
       dpr={settings.performanceMode === 'low' ? 1 : [1, 1.6]}
@@ -146,7 +155,7 @@ export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId 
       <directionalLight position={[-4.5, 1.2, 5.2]} intensity={1.05} color="#e6ecff" />
       <directionalLight position={[-4, 3.5, -5.5]} intensity={1.18} color="#ffb7a5" />
       <pointLight position={[-3, -1.4, 3.5]} intensity={0.5} color="#ff8d70" />
-      <AnatomyModel key={resource.id} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} settings={settings} />
+      <AnatomyModel key={resource.id} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} settings={settings} onReady={onReady} />
     </Canvas>
   )
 }

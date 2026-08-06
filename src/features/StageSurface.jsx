@@ -49,7 +49,7 @@ function TwoDimensionalFallback({ topicMode, step, sex, locale }) {
   return (
     <div className="two-d-fallback" data-testid="2d-fallback" data-baby-sex={sex || 'unset'}>
       {asset?.ready ? (
-        <img className="generated-education-image" src={asset.src} alt={`${sexLabel}新生儿教育示意`} />
+        <img className="generated-education-image" src={asset.src} alt={`${sexLabel}新生儿照护图`} />
       ) : (
         <div className={`education-figure step-${step.id}`} aria-hidden="true">
           <span className="figure-head" />
@@ -59,10 +59,10 @@ function TwoDimensionalFallback({ topicMode, step, sex, locale }) {
         </div>
       )}
       <div>
-        <p className="eyebrow">{locale === 'en-US' ? '2D education layer' : '2D 教育层'}</p>
+        <p className="eyebrow">{locale === 'en-US' ? '2D reference' : '2D 结构图'}</p>
         <h3>{locale === 'en-US' ? (step.titleEn || step.title) : step.title}</h3>
         <p>{locale === 'en-US' ? (step.descriptionEn || step.description) : step.description}</p>
-        <small>{locale === 'en-US' ? `${sexLabel} asset placeholder · final PNG follows prompt/; the structure layer remains readable without assets.` : `${sexLabel}素材占位 · 最终 PNG 待按 prompt/ 生成；当前结构层保证无素材时仍可阅读。`}</small>
+        <small>{locale === 'en-US' ? `${sexLabel} image is being prepared; the structure notes remain available.` : `${sexLabel}图片正在准备，当前保留结构说明。`}</small>
       </div>
     </div>
   )
@@ -109,7 +109,7 @@ export function StageSurface({ topicMode, sex, sceneMode, onSceneModeChange, per
       <div className="scene-frame">
         {use3d ? (
           <ViewerErrorBoundary fallback={fallback}>
-            <Suspense fallback={<div className="scene-loading">正在准备轻量 3D 舞台…</div>}>
+              <Suspense fallback={<div className="scene-loading">正在准备 3D 结构…</div>}>
               <ViewerCanvas stepIndex={topicMode ? stepIndex : 0} performanceMode={performanceMode} sex={sex} viewerAction={viewerAction} />
             </Suspense>
           </ViewerErrorBoundary>

@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,7 +32,8 @@ import { anatomyArt, ANATOMY_RESOURCES, getAnatomyHotspots, getAnatomyResource, 
 import { Header } from './Header.jsx'
 import { ObservationForm } from './ObservationForm.jsx'
 
-const AnatomyModelCanvas = lazy(() => import('../viewer/AnatomyModelCanvas.jsx').then((module) => ({ default: module.AnatomyModelCanvas })))
+const AnatomyViewerModule = () => import('../viewer/AnatomyModelCanvas.jsx')
+const AnatomyModelCanvas = lazy(() => AnatomyViewerModule().then((module) => ({ default: module.AnatomyModelCanvas })))
 
 class AnatomyErrorBoundary extends Component {
   constructor(props) {
@@ -82,6 +83,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
   const [sheet, setSheet] = useState('peek')
   const [selectedHotspot, setSelectedHotspot] = useState(null)
   const [modal, setModal] = useState(null)
+  const [modelReady, setModelReady] = useState(false)
   const webglAvailable = canUseWebGL()
   const disease = getPediatricDisease(diseaseId)
   const resource = getAnatomyResource(resourceId)
@@ -93,6 +95,20 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
   const isContextResource = resource.id === disease.organId
   const anatomyRelation = disease.anatomyRole ? localized(disease.anatomyRole, locale) : (locale === 'en-US' ? 'primary structural reference' : '对应结构参照')
   const viewerSettings = { autoRotate, isolate, crossSection, wireframe, zoomToken, resetToken, performanceMode: state.preferences.performanceMode }
+  const handleModelReady = useCallback(() => setModelReady(true), [])
+
+  useEffect(() => {
+    let active = true
+    const preload = () => AnatomyViewerModule().then(({ preloadAnatomyModel }) => {
+      if (active) preloadAnatomyModel(resource.model)
+    }).catch(() => {})
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(preload, { timeout: 700 })
+      return () => { active = false; window.cancelIdleCallback?.(idleId) }
+    }
+    const timer = window.setTimeout(preload, 120)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [resource.model])
 
   useEffect(() => {
     if (!playing) return undefined
@@ -123,6 +139,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
     setResourceId(nextDisease.organId)
     setStepIndex(0)
     setPlaying(false)
+    setModelReady(false)
     setCompare(false)
     setSelectedHotspot(null)
     setResetToken((value) => value + 1)
@@ -130,6 +147,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
 
   function selectResource(id) {
     setResourceId(id)
+    setModelReady(false)
     setAutoRotate(true)
     setIsolate(false)
     setCrossSection(false)
@@ -161,7 +179,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
     }
   }
 
-  const fallback = <div className="pediatric-model-fallback"><Art organId={resource.id} asset="organ" alt={`${localized(resource.title, locale)} anatomy`} /><span>{localized(resource.title, locale)} · 2D anatomy reference</span></div>
+  const fallback = <div className="pediatric-model-fallback"><Art organId={resource.id} asset="organ" alt={`${localized(resource.title, locale)} anatomy`} /><span>{localized(resource.title, locale)} · {locale === 'en-US' ? '2D reference' : '二维结构图'}</span></div>
 
   return (
     <main className="app-shell pediatric-shell">
@@ -200,21 +218,22 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
               </div>
             )}
           </div>
-          {libraryMode === 'diseases' && <blockquote className="pediatric-quote"><Sparkles size={17} /><p>{locale === 'en-US' ? 'Learning is an act of curiosity.' : '学习从好奇开始。'}</p><em>{locale === 'en-US' ? 'Keep exploring.' : '继续探索'}</em></blockquote>}
+          {libraryMode === 'diseases' && <blockquote className="pediatric-quote"><Sparkles size={17} /><p>{locale === 'en-US' ? 'Keep time, location, change, and source together.' : '把时间、部位、变化和来源放在一起记录。'}</p><em>{locale === 'en-US' ? 'Useful for the next care conversation.' : '方便下一次照护沟通。'}</em></blockquote>}
         </aside>
 
         <section className="pediatric-viewer-shell" aria-label={`${localized(resource.title, locale)} 3D viewer`}>
           <header className="pediatric-scene-header">
-            <div><p className="eyebrow">{localized(disease.title, locale)} · {copy.studyOnly}</p><h1>{localized(resource.title, locale)}</h1><p>{isContextResource ? (locale === 'en-US' ? `${localized(resource.system, locale)} · ${anatomyRelation}.` : `${localized(resource.system, locale)} · ${anatomyRelation}。`) : (locale === 'en-US' ? `${localized(resource.system, locale)} · independent anatomy exploration; the condition category remains unchanged.` : `${localized(resource.system, locale)} · 独立器官探索，右侧疾病分类保持不变。`)}</p></div>
+            <div><p className="eyebrow">{localized(disease.title, locale)} · {locale === 'en-US' ? 'Anatomy & care guide' : '器官与照护指南'}</p><h1>{localized(resource.title, locale)}</h1><p>{isContextResource ? (locale === 'en-US' ? `${localized(resource.system, locale)} · ${anatomyRelation}.` : `${localized(resource.system, locale)} · ${anatomyRelation}。`) : (locale === 'en-US' ? `${localized(resource.system, locale)} · browse the organ without changing the condition guide.` : `${localized(resource.system, locale)} · 可独立查看器官，不改变右侧疾病指南。`)}</p></div>
           </header>
           <div className="pediatric-viewer-frame">
-            {webglAvailable ? (
-              <AnatomyErrorBoundary key={resource.id} fallback={fallback}>
-                <Suspense fallback={<div className="pediatric-loading">{locale === 'en-US' ? 'Preparing anatomy specimen…' : '正在准备解剖示意…'}</div>}>
-                  <AnatomyModelCanvas resource={resource} hotspots={resourceHotspots} selectedHotspotId={selectedHotspot?.id} onSelectHotspot={setSelectedHotspot} locale={locale} settings={viewerSettings} />
+            {!webglAvailable ? fallback : <>
+              {!modelReady && fallback}
+              <AnatomyErrorBoundary key={resource.id} fallback={null}>
+                <Suspense fallback={<div className="pediatric-loading"><span>{locale === 'en-US' ? 'Loading anatomy…' : '正在加载器官模型…'}</span><small>{locale === 'en-US' ? 'The 2D reference remains available.' : '二维结构图可先用于查看。'}</small></div>}>
+                  <AnatomyModelCanvas resource={resource} hotspots={resourceHotspots} selectedHotspotId={selectedHotspot?.id} onSelectHotspot={setSelectedHotspot} locale={locale} settings={viewerSettings} onReady={handleModelReady} />
                 </Suspense>
               </AnatomyErrorBoundary>
-            ) : fallback}
+            </>}
             <div className="pediatric-viewer-tools" aria-label={locale === 'en-US' ? 'Anatomy viewer tools' : '解剖查看工具'}>
               <ToolButton icon={RotateCcw} label={locale === 'en-US' ? 'Rotate' : '旋转'} active={autoRotate} disabled={!webglAvailable} onClick={() => handleTool('rotate')} />
               <ToolButton icon={ZoomIn} label={locale === 'en-US' ? 'Zoom' : '放大'} disabled={!webglAvailable} onClick={() => handleTool('zoom')} />
@@ -224,8 +243,8 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
               <ToolButton icon={Box} label={locale === 'en-US' ? 'Compare' : '比较'} active={compare} onClick={() => handleTool('compare')} />
               <ToolButton icon={RefreshCcw} label={locale === 'en-US' ? 'Reset' : '重置'} disabled={!webglAvailable} onClick={() => handleTool('reset')} />
             </div>
-            <aside className="pediatric-tip-note"><span><Sparkles size={14} /> Tip</span><p>{locale === 'en-US' ? 'Drag to rotate\nScroll to zoom\nTap a dot to learn' : '拖动旋转\n滚动缩放\n点击标记了解结构'}</p></aside>
-            <div className="pediatric-view-caption"><span>3D specimen · {localized(resource.system, locale)}</span><strong>{localized(resource.title, locale)}</strong></div>
+            <aside className="pediatric-tip-note"><span><Sparkles size={14} /> {locale === 'en-US' ? 'How to view' : '查看方式'}</span><p>{locale === 'en-US' ? 'Drag to rotate\nScroll to zoom\nTap a dot to see the structure' : '拖动旋转\n滚动缩放\n点击标记查看结构'}</p></aside>
+            <div className="pediatric-view-caption"><span>{locale === 'en-US' ? 'Organ structure' : '器官结构'} · {localized(resource.system, locale)}</span><strong>{localized(resource.title, locale)}</strong></div>
             <button className="pediatric-auto-rotate" onClick={() => setAutoRotate((value) => !value)} aria-pressed={autoRotate}><RotateCcw size={14} /> {locale === 'en-US' ? 'Auto rotate' : '自动旋转'}<span className={`pediatric-switch ${autoRotate ? 'on' : ''}`}><i /></span></button>
           </div>
           <div className="pediatric-stepbar">
@@ -240,8 +259,8 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
           <div className="pediatric-info-hero"><p className="eyebrow">{localized(disease.category, locale)}</p><div className="pediatric-title-row"><div><h2>{localized(disease.title, locale)}</h2><em>{localized(disease.poetic, locale)}</em></div><span className="pediatric-stamp"><Art organId={disease.organId} asset="organ" alt="" /></span></div><p>{localized(disease.description, locale)}</p></div>
           <div className="pediatric-rule" />
           <section className="pediatric-facts"><h3>{locale === 'en-US' ? 'Key facts' : '观察框架'}</h3>{disease.facts.map((fact) => <div key={fact.label.zh}><b>{localized(fact.label, locale)}</b><span>{localized(fact.value, locale)}</span></div>)}</section>
-          <section className="pediatric-note pediatric-medical-note"><Stethoscope size={16} /><p><b>{locale === 'en-US' ? 'Medical boundary' : '医学边界'}</b>{locale === 'en-US' ? 'This prototype organizes observations and teaches structure. It does not diagnose or grade urgency.' : '本原型整理观察并解释结构，不进行诊断或就医分级。'}</p></section>
-          <section className="pediatric-condition-list"><header><div><FileText size={16} /><h3>{locale === 'en-US' ? 'Common conditions' : '本分类常见疾病'}</h3></div><span>{disease.cases.length}</span></header><p>{locale === 'en-US' ? 'Open an educational case guide. Images can be added later by filename.' : '点击查看教育病例导览；后续配图按预留文件名自动接入。'}</p><div className="pediatric-case-list">{disease.cases.map((caseItem) => <button key={caseItem.id} onClick={() => setModal({ type: 'case', item: caseItem })}><span><strong>{localized(caseItem.title, locale)}</strong><small>{localized(caseItem.summary, locale)}</small></span><ChevronRight size={15} /></button>)}</div></section>
+          <section className="pediatric-note pediatric-medical-note"><Stethoscope size={16} /><p><b>{locale === 'en-US' ? 'How to use this guide' : '使用说明'}</b>{locale === 'en-US' ? 'Review the signs and body structures together. The guide does not diagnose or grade urgency.' : '结合表现与身体结构查看信息。本指南不提供诊断或就医分级。'}</p></section>
+          <section className="pediatric-condition-list"><header><div><FileText size={16} /><h3>{locale === 'en-US' ? 'Common conditions' : '本分类常见疾病'}</h3></div><span>{disease.cases.length}</span></header><p>{locale === 'en-US' ? 'Review signs, possible causes, usual care, and facts to record for each condition.' : '逐项查看常见表现、可能成因、通常处理和需要记录的事实。'}</p><div className="pediatric-case-list">{disease.cases.map((caseItem) => <button key={caseItem.id} onClick={() => setModal({ type: 'case', item: caseItem })}><span><strong>{localized(caseItem.title, locale)}</strong><small>{localized(caseItem.summary, locale)}</small></span><ChevronRight size={15} /></button>)}</div></section>
           <div className="pediatric-learning-actions"><button onClick={() => setModal({ type: 'lesson' })}><BookOpen size={14} />{locale === 'en-US' ? 'Lesson' : '课程'}</button><button onClick={() => setModal({ type: 'animation' })}><Play size={14} />{locale === 'en-US' ? 'Animation' : '动画'}</button><button onClick={() => setModal({ type: 'quiz' })}><CircleHelp size={14} />{locale === 'en-US' ? 'Quiz' : '测验'}</button></div>
           <ObservationForm variant="pediatric" locale={locale} observationCount={state.observations.length} onSave={saveObservation} questions={state.questions} onQuestionsChange={(questions) => setState((current) => ({ ...current, questions }))} readOnly={readOnly} />
           <button className="summary-cta pediatric-summary-cta" onClick={() => navigate(ROUTES.summary)}>{copy.generateSummary}<ArrowRight size={17} /></button>
@@ -266,17 +285,17 @@ function ToolButton({ icon: Icon, label, active = false, disabled = false, onCli
 
 function CaseModal({ item, category, locale, onClose }) {
   const isEnglish = locale === 'en-US'
-  return <div className="pediatric-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="pediatric-case-modal" role="dialog" aria-modal="true" aria-labelledby={`case-title-${item.id}`} onMouseDown={(event) => event.stopPropagation()}><button className="pediatric-modal-close" onClick={onClose} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button><CaseArtwork item={item} locale={locale} /><div className="pediatric-case-content"><p className="eyebrow">{localized(category.title, locale)} · {isEnglish ? 'Detailed education guide' : '详细科普导览'}</p><h2 id={`case-title-${item.id}`}>{localized(item.title, locale)}</h2><div className="pediatric-case-meta"><span>{localized(item.age, locale)}</span><span>{isEnglish ? 'Illustrative, not diagnostic' : '情境示意，不是诊断标准'}</span></div><p className="pediatric-case-summary">{localized(item.summary, locale)}</p><section><h3>{isEnglish ? 'Possible causes' : '可能成因'}</h3><p>{localized(item.cause, locale)}</p></section><section><h3>{isEnglish ? 'What it may affect' : '可能影响'}</h3><p>{localized(item.impact, locale)}</p></section><section><h3>{isEnglish ? 'Case scenario' : '病例情境'}</h3><p>{localized(item.scenario, locale)}</p></section><section><h3>{isEnglish ? 'Facts to record' : '建议记录的事实'}</h3><ul>{item.observations.map((observation) => <li key={observation.zh}>{localized(observation, locale)}</li>)}</ul></section><section><h3>{isEnglish ? 'Anatomy connection' : '结构关联'}</h3><p>{localized(item.anatomy, locale)}</p></section><section className="pediatric-case-question"><Stethoscope size={16} /><div><h3>{isEnglish ? 'A question for a clinician' : '可向专业人员咨询'}</h3><p>{localized(item.question, locale)}</p></div></section><div className="pediatric-case-footer"><span><ShieldCheck size={14} />{isEnglish ? 'Research prototype · no diagnosis or urgency grading' : '研究原型 · 不诊断、不进行就医分级'}</span><button className="primary-button compact" onClick={onClose}>{isEnglish ? 'Back to category' : '返回分类'}</button></div></div></section></div>
+  return <div className="pediatric-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="pediatric-case-modal" role="dialog" aria-modal="true" aria-labelledby={`case-title-${item.id}`} onMouseDown={(event) => event.stopPropagation()}><button className="pediatric-modal-close" onClick={onClose} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button><CaseArtwork item={item} locale={locale} /><div className="pediatric-case-content"><p className="eyebrow">{localized(category.title, locale)} · {isEnglish ? 'Care information' : '照护信息'}</p><h2 id={`case-title-${item.id}`}>{localized(item.title, locale)}</h2><div className="pediatric-case-meta"><span>{localized(item.age, locale)}</span><span>{isEnglish ? 'Information guide · not a diagnosis' : '信息指南 · 不替代专业诊断'}</span></div><p className="pediatric-case-summary">{localized(item.summary, locale)}</p><section><h3>{isEnglish ? 'Possible causes' : '可能成因'}</h3><p>{localized(item.cause, locale)}</p></section><section><h3>{isEnglish ? 'What it may affect' : '可能影响'}</h3><p>{localized(item.impact, locale)}</p></section><section><h3>{isEnglish ? 'Usual care' : '通常处理'}</h3><p>{localized(item.treatment, locale)}</p></section><section><h3>{isEnglish ? 'What to do next' : '接下来怎么做'}</h3><p>{localized(item.nextSteps, locale)}</p></section><section><h3>{isEnglish ? 'Case scenario' : '病例情境'}</h3><p>{localized(item.scenario, locale)}</p></section><section><h3>{isEnglish ? 'Facts to record' : '建议记录的事实'}</h3><ul>{item.observations.map((observation) => <li key={observation.zh}>{localized(observation, locale)}</li>)}</ul></section><section><h3>{isEnglish ? 'Anatomy connection' : '结构关联'}</h3><p>{localized(item.anatomy, locale)}</p></section><section className="pediatric-case-question"><Stethoscope size={16} /><div><h3>{isEnglish ? 'A question for a clinician' : '可向专业人员咨询'}</h3><p>{localized(item.question, locale)}</p></div></section><div className="pediatric-case-footer"><span><ShieldCheck size={14} />{isEnglish ? 'Records support care discussions and do not replace a clinician’s assessment.' : '记录用于就医沟通，不替代专业诊断。'}</span><button className="primary-button compact" onClick={onClose}>{isEnglish ? 'Back to category' : '返回分类'}</button></div></div></section></div>
 }
 
 function CaseArtwork({ item, locale }) {
   const [loaded, setLoaded] = useState(false)
   const fileName = item.image.split('/').pop()
-  return <div className="pediatric-case-art"><div className={`pediatric-case-placeholder ${loaded ? 'hidden' : ''}`}><ImageIcon size={28} /><strong>{locale === 'en-US' ? 'Case illustration reserved' : '病例配图位'}</strong><small>{fileName}</small></div><img src={item.image} alt={localized(item.title, locale)} onLoad={() => setLoaded(true)} onError={() => setLoaded(false)} className={loaded ? 'loaded' : ''} /></div>
+  return <div className="pediatric-case-art"><div className={`pediatric-case-placeholder ${loaded ? 'hidden' : ''}`}><ImageIcon size={28} /><strong>{locale === 'en-US' ? 'Illustration will appear here' : '配图加载后显示'}</strong><small>{fileName}</small></div><img src={item.image} alt={localized(item.title, locale)} onLoad={() => setLoaded(true)} onError={() => setLoaded(false)} className={loaded ? 'loaded' : ''} /></div>
 }
 
 function LearningModal({ type, disease, resource, locale, onClose }) {
   const isEnglish = locale === 'en-US'
   const title = type === 'quiz' ? (isEnglish ? `${localized(disease.title, locale)} quick quiz` : `${localized(disease.title, locale)} 小测验`) : type === 'animation' ? (isEnglish ? `${localized(resource.title, locale)} in motion` : `${localized(resource.title, locale)} 动画`) : (isEnglish ? `Inside ${localized(resource.title, locale).toLowerCase()}` : `认识${localized(resource.title, locale)}`)
-  return <div className="pediatric-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="pediatric-resource-modal pediatric-learning-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button onClick={onClose} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button><Art organId={resource.id} asset="organ" alt="" /><p className="eyebrow">{isEnglish ? 'Guided discovery' : '引导式探索'}</p><h2>{title}</h2>{type === 'quiz' ? <div className="pediatric-quiz-options"><p>{isEnglish ? 'Which action keeps the record factual?' : '哪种做法更接近事实记录？'}</p><button onClick={onClose}>{isEnglish ? 'Record timing and what was observed' : '记录时间和看到的表现'}</button><button onClick={onClose}>{isEnglish ? 'Assign a severity score' : '给表现打严重度分数'}</button></div> : <><p>{isEnglish ? 'Rotate the specimen, connect structure with the symptom topic, and keep the next question for a clinician.' : '旋转示意模型，把结构和表现主题联系起来，并把下一步问题留给专业人员。'}</p><button className="primary-button compact" onClick={onClose}>{isEnglish ? 'Continue exploring' : '继续探索'}</button></>}</section></div>
+  return <div className="pediatric-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="pediatric-resource-modal pediatric-learning-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button onClick={onClose} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button><Art organId={resource.id} asset="organ" alt="" /><p className="eyebrow">{isEnglish ? 'How to use' : '使用方式'}</p><h2>{title}</h2>{type === 'quiz' ? <div className="pediatric-quiz-options"><p>{isEnglish ? 'Which action keeps the record factual?' : '哪种做法更接近事实记录？'}</p><button onClick={onClose}>{isEnglish ? 'Record timing and what was observed' : '记录时间和看到的表现'}</button><button onClick={onClose}>{isEnglish ? 'Assign a severity score' : '给表现打严重度分数'}</button></div> : <><p>{isEnglish ? 'Rotate the organ, connect its structure with the condition guide, and keep the next question for a clinician.' : '旋转器官模型，把结构和疾病指南联系起来，并把下一步问题留给专业人员。'}</p><button className="primary-button compact" onClick={onClose}>{isEnglish ? 'Continue' : '继续'}</button></>}</section></div>
 }

@@ -1,8 +1,7 @@
-import { Baby, BookOpen, CheckCircle2, ChevronRight, Clock3 } from 'lucide-react'
+import { Baby, BookOpen, CheckCircle2, ChevronRight, CircleAlert, Clock3, HeartPulse, ShieldCheck } from 'lucide-react'
 import { getSexLabel } from '../domain/baby.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { getCopy } from '../domain/i18n.js'
-import { CareTaskList } from './CareTaskList.jsx'
 
 const FEEDING_LABELS = {
   breastfeeding: '母乳喂养',
@@ -11,7 +10,7 @@ const FEEDING_LABELS = {
   other: '其他 / 待确定',
 }
 
-export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN', tasks = [], onTaskUpdate, readOnly = false }) {
+export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
   const copy = getCopy(locale)
   return (
     <aside className="left-rail">
@@ -39,7 +38,15 @@ export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN', tasks = [], o
         {stage.id === 'out-of-scope' && <p className="scope-warning">{copy.outOfScope}</p>}
       </section>
 
-      <CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} compact />
+      <section className="rail-card new-parent-guide">
+        <div className="section-heading"><span>{locale === 'en-US' ? 'New parent guide' : '新手父母关注'}</span><HeartPulse size={16} /></div>
+        <div className="new-parent-guide-list">
+          <article><span className="guide-icon feeding"><HeartPulse size={15} /></span><div><strong>{locale === 'en-US' ? 'After a feed' : '喂养后看一眼'}</strong><p>{locale === 'en-US' ? 'Swallowing, breathing, and the state after feeding.' : '吞咽是否连续、呼吸是否平稳、喂后状态是否和平时相近。'}</p></div></article>
+          <article><span className="guide-icon notice"><ShieldCheck size={15} /></span><div><strong>{locale === 'en-US' ? 'Keep a simple reference' : '先建立宝宝自己的参照'}</strong><p>{locale === 'en-US' ? 'Alertness, wet diapers, feeding, and sleep are more useful than comparisons.' : '先熟悉精神、湿尿布、吃奶和睡眠的平时状态，不急着和别人比较。'}</p></div></article>
+          <article><span className="guide-icon alert"><CircleAlert size={15} /></span><div><strong>{locale === 'en-US' ? 'When to call for help' : '这些变化要及时求助'}</strong><p>{locale === 'en-US' ? 'Labored breathing, blue lips, inability to wake, or clearly reduced intake.' : '呼吸费力、嘴唇发青、叫不醒或明显吃不进去时，联系儿科或当地医疗服务。'}</p></div></article>
+        </div>
+        <button className="rail-guide-link" onClick={() => navigate(ROUTES.stage)}>{locale === 'en-US' ? 'Open stage tasks and appointments' : '查看阶段代办与预约'}<ChevronRight size={15} /></button>
+      </section>
 
       <button className="topic-entry" onClick={() => navigate(ROUTES.pediatric)}>
         <span><BookOpen size={18} /><span><strong>{copy.topicEntry}</strong><small>{copy.topicEntryHint}</small></span></span>

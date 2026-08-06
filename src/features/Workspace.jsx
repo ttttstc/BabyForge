@@ -49,7 +49,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     <main className="app-shell">
       <Header route={route} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} />
       <div className="workspace-grid">
-        <LeftRail baby={state.baby} ageDays={ageDays} stage={stage} locale={state.preferences.locale} tasks={dailyTasks} onTaskUpdate={updateTask} readOnly={readOnly} />
+        <LeftRail baby={state.baby} ageDays={ageDays} stage={stage} locale={state.preferences.locale} />
         <StageSurface
           key={topicMode ? 'topic' : 'stage'}
           topicMode={topicMode}

@@ -71,7 +71,7 @@ const hotspots = {
 
 const bi = (zh, en) => ({ zh, en })
 
-const caseStudy = (id, title, age, summary, scenario, observations, anatomy, question) => ({
+const caseStudy = (id, title, age, summary, scenario, observations, anatomy, question, details = {}) => ({
   id,
   title: bi(...title),
   age: bi(...age),
@@ -81,6 +81,7 @@ const caseStudy = (id, title, age, summary, scenario, observations, anatomy, que
   anatomy: bi(...anatomy),
   question: bi(...question),
   image: `/assets/pediatric-cases/${id}.webp`,
+  ...details,
 })
 
 const EDUCATION_FRAMES = {
@@ -108,10 +109,69 @@ const EDUCATION_FRAMES = {
     cause: { zh: '新生儿黄疸与胆红素生成、肝脏处理和排出之间的变化有关；出生周数、喂养、时间线和其他表现都需要一起交给专业人员判断。', en: 'Newborn jaundice relates to changes in bilirubin production, liver processing, and elimination. Gestational age, feeding, timing, and other signs should be considered together by a clinician.' },
     impact: { zh: '颜色变化可能从皮肤开始，也可能涉及巩膜；同时记录吃奶、精神、尿便和首次发现时间，比只描述“黄不黄”更有帮助。', en: 'Color changes may begin in the skin and involve the sclera. Recording feeding, alertness, urine, stool, and onset is more useful than saying only “more yellow”.' },
   },
+  liver: {
+    cause: { zh: '肝胆问题可能涉及胆汁排出、感染、代谢、药物或出生相关因素；仅凭外观看不到完整原因。', en: 'Liver and bile-duct problems can involve bile flow, infection, metabolism, medicines, or birth-related factors; appearance alone cannot show the cause.' },
+    impact: { zh: '可能影响胆汁排出、营养吸收和肝功能。黄疸持续、尿色变深、粪便颜色变浅或吃奶精神变化，需要尽快交给专业人员。', en: 'They can affect bile flow, nutrient absorption, and liver function. Persistent jaundice, dark urine, pale stools, or feeding and alertness changes need prompt clinical review.' },
+  },
+  cardiovascular: {
+    cause: { zh: '心脏问题可能在出生时已经存在，也可能在出生后循环转换过程中显现；家族史、孕期因素和出生情况都可能影响评估。', en: 'Heart problems may be present at birth or become apparent as circulation changes after birth; family history, pregnancy factors, and birth history can matter.' },
+    impact: { zh: '可能影响血氧、呼吸、吃奶、体重增长和精神状态。发绀、呼吸费力、明显出汗或吃奶困难需要立即联系专业人员。', en: 'They can affect oxygenation, breathing, feeding, growth, and alertness. Bluish color, labored breathing, marked sweating, or feeding difficulty need prompt clinical attention.' },
+  },
+  urinary: {
+    cause: { zh: '泌尿问题可能与感染、尿路结构、肾脏发育或液体摄入有关；新生儿表现常不典型。', en: 'Urinary problems can involve infection, urinary-tract structure, kidney development, or fluid intake; newborn signs are often nonspecific.' },
+    impact: { zh: '可能表现为发热、吃奶减少、精神变化、尿量或尿色改变。新生儿发热或尿量明显减少应及时联系专业人员。', en: 'They may appear as fever, reduced feeding, alertness changes, or altered urine amount or color. Fever or a marked drop in urine in a newborn needs prompt clinical review.' },
+  },
+  neurologic: {
+    cause: { zh: '神经系统表现可能与出生过程、感染、低血糖、药物或结构问题有关；需要结合观察和检查判断。', en: 'Neurologic signs can relate to birth events, infection, low blood sugar, medicines, or structural problems and require examination and testing.' },
+    impact: { zh: '可能影响清醒、吃奶、肌张力、动作和呼吸节律。出现反复异常动作、叫不醒或呼吸暂停，应立即寻求急诊帮助。', en: 'They can affect alertness, feeding, tone, movement, and breathing rhythm. Repeated unusual movements, inability to wake, or pauses in breathing need emergency help.' },
+  },
 }
 
 function enrichCases(cases, category) {
-  return cases.map((item) => ({ ...item, cause: EDUCATION_FRAMES[category].cause, impact: EDUCATION_FRAMES[category].impact }))
+  return cases.map((item) => ({ ...item, cause: EDUCATION_FRAMES[category].cause, impact: EDUCATION_FRAMES[category].impact, treatment: item.treatment || MANAGEMENT_FRAMES[category]?.treatment, nextSteps: item.nextSteps || MANAGEMENT_FRAMES[category]?.nextSteps }))
+}
+
+const MANAGEMENT_FRAMES = {
+  respiratory: {
+    treatment: { zh: '多数病毒性呼吸道感染以清理鼻腔、维持吃奶和观察呼吸为主；是否需要吸氧、雾化或其他治疗由专业人员根据检查决定，抗生素不用于单纯病毒感染。', en: 'Most viral respiratory infections are managed with nasal care, maintaining feeds, and watching breathing. Oxygen, inhaled treatment, or other care depends on an examination; antibiotics do not treat a simple viral infection.' },
+    nextSteps: { zh: '记录开始时间、呼吸声音、胸腹起伏、吃奶量和湿尿布；呼吸费力、口唇发青、明显嗜睡或摄入下降时立即联系医疗机构。', en: 'Record onset, breathing sounds, chest movement, feeds, and wet diapers. Seek immediate care for labored breathing, blue lips, marked sleepiness, or reduced intake.' },
+  },
+  digestive: {
+    treatment: { zh: '处理取决于病因和脱水情况，可能包括调整喂养、补充液体、观察或医院治疗；不要自行给新生儿止泻药、止吐药或抗生素。', en: 'Care depends on the cause and hydration status and may include feeding changes, fluids, observation, or hospital treatment. Do not give a newborn anti-diarrhea, anti-vomiting, or antibiotic medicine without a clinician.' },
+    nextSteps: { zh: '记录每次喂养、呕吐/排便、尿量、腹胀和精神状态；绿色呕吐、持续喷射性呕吐、明显腹胀或尿量减少时及时就医。', en: 'Record feeds, vomiting or stools, urine, abdominal distension, and alertness. Seek care for green vomit, repeated forceful vomiting, marked distension, or reduced urine.' },
+  },
+  skin: {
+    treatment: { zh: '先减少摩擦、潮湿和可疑接触物，保持皮肤清洁干燥；保湿剂、抗真菌药或激素类药物应由专业人员按部位和年龄指导。', en: 'Reduce friction, moisture, and suspected exposures and keep skin clean and dry. Moisturizers, antifungals, or steroids should be chosen by a clinician for the child’s age and site.' },
+    nextSteps: { zh: '记录皮疹出现时间、部位、范围、接触物和是否破损渗出；快速扩散、起疱、渗液、发热或影响吃奶时联系专业人员。', en: 'Record onset, location, spread, exposures, and any breaks or oozing. Contact a clinician for rapid spread, blisters, oozing, fever, or reduced feeding.' },
+  },
+  eye: {
+    treatment: { zh: '泪道堵塞常先做清洁和随访；结膜或眼睑感染是否需要处方滴眼液由专业人员判断，不共用毛巾或眼药。', en: 'Blocked tear ducts are often managed with cleaning and follow-up. A clinician decides whether conjunctival or eyelid infection needs prescription drops; do not share towels or eye medicines.' },
+    nextSteps: { zh: '记录单双侧、眼白和眼睑红肿、分泌物颜色与视线变化；新生儿眼睛明显红肿、脓性分泌物或睁不开时尽快就医。', en: 'Record one or both eyes, redness or swelling, discharge, and visual behavior. Promptly seek care for marked redness, swelling, pus-like discharge, or inability to open the eye in a newborn.' },
+  },
+  fever: {
+    treatment: { zh: '新生儿发热需要先确认测量方式并由专业人员评估感染风险；是否需要检查、补液或药物由医疗机构决定，不自行按成人剂量处理。', en: 'Fever in a newborn requires confirmation of the measurement and professional assessment for infection. Tests, fluids, or medicine are decided by a medical team; do not use adult dosing.' },
+    nextSteps: { zh: '保存体温数值、单位、测量部位、时间、设备和伴随表现；新生儿体温异常、叫不醒、吃奶明显减少或呼吸改变时立即联系医疗机构。', en: 'Keep the temperature, unit, site, time, device, and accompanying signs. Contact a medical facility immediately for abnormal temperature, inability to wake, markedly reduced feeding, or breathing changes in a newborn.' },
+  },
+  jaundice: {
+    treatment: { zh: '通常需要按日龄、孕周和测量结果复核；可能继续喂养并安排复查，达到治疗条件时由专业人员进行光疗等处理。不要用晒太阳替代检查或治疗。', en: 'Care is based on age in hours, gestation, and measured bilirubin. It may include continued feeding and repeat checks; phototherapy or other treatment is provided by clinicians when indicated. Sunlight is not a substitute for care.' },
+    nextSteps: { zh: '记录首次出现时间、皮肤和眼白部位、吃奶、精神、尿便及测量来源；出生后 24 小时内出现黄疸、颜色加深或宝宝难以唤醒时及时就医。', en: 'Record onset, skin and sclera locations, feeding, alertness, urine, stool, and measurement source. Seek care promptly for jaundice in the first 24 hours, increasing yellowing, or difficulty waking.' },
+  },
+  liver: {
+    treatment: { zh: '肝胆问题需要血液检查、影像和专科评估；可能包括营养支持、针对病因的治疗或手术，不能在家凭外观处理。', en: 'Liver and bile-duct problems require blood tests, imaging, and specialist review. Care may include nutrition support, cause-specific treatment, or surgery and cannot be managed from appearance at home.' },
+    nextSteps: { zh: '记录尿色、粪便颜色、皮肤/眼白变化、吃奶、体重和检查结果；持续黄疸伴浅色便或深色尿时尽快联系儿科或儿童肝胆专科。', en: 'Record urine color, stool color, skin or sclera changes, feeding, weight, and test results. Persistent jaundice with pale stools or dark urine needs prompt pediatric or liver-specialist review.' },
+  },
+  cardiovascular: {
+    treatment: { zh: '有些先天性心脏问题只需定期随访，有些需要药物、导管介入或手术；治疗方案由儿童心脏团队根据超声和血氧等检查决定。', en: 'Some congenital heart problems need monitoring; others need medicine, catheter procedures, or surgery. A pediatric heart team bases care on echocardiography, oxygen levels, and other tests.' },
+    nextSteps: { zh: '记录吃奶时是否气促、出汗、疲劳，嘴唇或皮肤颜色和呼吸情况；出现发青、呼吸困难、昏睡或喂不进时立即急诊。', en: 'Record breathlessness, sweating, fatigue during feeds, skin or lip color, and breathing. Go to emergency care for blue color, breathing difficulty, extreme sleepiness, or inability to feed.' },
+  },
+  urinary: {
+    treatment: { zh: '泌尿问题可能需要尿液检查、培养、超声或抗感染治疗；药物和疗程必须由专业人员根据年龄、结果和肾脏情况决定。', en: 'Urinary problems may need urine testing, culture, ultrasound, or treatment for infection. Medicine and duration must be set by a clinician using age, results, and kidney status.' },
+    nextSteps: { zh: '记录体温、尿量、尿色、吃奶和精神状态；新生儿发热、尿量明显减少、呕吐或精神差时尽快就医。', en: 'Record temperature, urine amount and color, feeding, and alertness. Seek prompt care for newborn fever, markedly reduced urine, vomiting, or poor alertness.' },
+  },
+  neurologic: {
+    treatment: { zh: '异常动作、肌张力或清醒度需要专业检查，可能涉及血糖、电解质、感染、脑电图或影像；治疗针对原因进行。', en: 'Unusual movements, tone, or alertness require professional assessment, which may include glucose, electrolytes, infection tests, EEG, or imaging; treatment targets the cause.' },
+    nextSteps: { zh: '尽量记录发作开始、持续时间、动作特点和呼吸变化；反复抽动、呼吸暂停、叫不醒或突然发软时立即急诊，并在安全情况下保留短视频。', en: 'Record onset, duration, movement pattern, and breathing changes. Seek emergency care for repeated jerking, pauses in breathing, inability to wake, or sudden floppiness; keep a short video only if safe.' },
+  },
 }
 
 const CASES = {
@@ -147,11 +207,29 @@ const CASES = {
   ],
   jaundice: [
     caseStudy('newborn-jaundice', ['新生儿黄疸（常见现象）', 'Newborn jaundice (common finding)'], ['出生后早期常见', 'Common in the early newborn period'], ['胆红素在出生后短期升高并不少见，但出现时间、变化范围和宝宝整体状态需要一起观察。', 'A short-term bilirubin rise is common after birth, but timing, spread, and overall state should be observed together.'], ['宝宝出生后第几天开始看起来发黄，家长在自然光下记录皮肤和眼白的变化，并保留时间线。', 'A baby appears yellow on a certain day after birth; the caregiver records skin and sclera changes in natural light and keeps a timeline.'], [['首次发现时间与变化范围', 'Onset and spread'], ['皮肤与眼白的观察部位', 'Skin and sclera locations'], ['吃奶、精神、尿便', 'Feeding, alertness, urine, and stool']], ['肝脏处理胆红素，皮肤和巩膜是家长可观察的外部位置；模型用于理解路径，不用于估计数值。', 'The liver processes bilirubin while skin and sclera are observable locations; the model explains the pathway, not a value estimate.'], ['这条时间线还应向专业人员补充哪些出生和喂养资料？', 'Which birth and feeding details should be added for a clinician?']),
-    caseStudy('prolonged-jaundice', ['黄疸持续观察', 'Jaundice that persists'], ['需要按时间线复核', 'Review with a timeline'], ['如果颜色变化持续或再次加深，不能只凭外观解释原因，应把时间、喂养和排泄事实整理出来。', 'If the color persists or deepens again, appearance alone cannot explain the cause; organize timing, feeding, and output facts.'], ['家长发现颜色变化没有按预期减轻，记录每天的观察部位、吃奶情况和尿便，并准备联系专业人员。', 'The caregiver notices that the color has not eased as expected, records locations, feeding, urine, and stool each day, and prepares to contact a clinician.'], [['每天观察的时间和光线', 'Observation time and lighting'], ['颜色涉及皮肤还是眼白', 'Skin versus sclera'], ['吃奶量、湿尿布和粪便颜色描述', 'Feeding, wet diapers, and stool color description']], ['肝脏和胆汁排出是理解持续黄疸的结构背景；具体原因需要专业评估。', 'The liver and bile flow provide structural context; the specific cause needs professional assessment.'], ['哪些事实和既往测量记录最值得一并带去？', 'Which facts and prior measurements should be brought together?']),
-    caseStudy('jaundice-feeding', ['喂养与黄疸观察', 'Feeding and jaundice observations'], ['新生儿期', 'Newborn period'], ['喂养、尿便和精神状态是理解新生儿整体情况的重要事实，不能用单一颜色替代。', 'Feeding, urine, stool, and alertness are important facts about a newborn’s overall state; a single color change cannot replace them.'], ['宝宝吃奶节律与平时不同，同时出现皮肤颜色变化。家长记录每次观察的时间和可见事实，不自行推断。', 'A baby’s feeding rhythm differs from usual alongside a color change. The caregiver records timing and visible facts without inferring a cause.'], [['吃奶次数和状态', 'Feeding frequency and behavior'], ['尿布和粪便的可见变化', 'Visible urine and stool changes'], ['精神状态和呼吸', 'Alertness and breathing']], ['肝脏模型帮助理解胆红素处理，照护记录仍应围绕可见事实。', 'The liver model explains bilirubin processing while care records remain focused on observable facts.'], ['怎样把喂养和颜色观察放在同一时间线上？', 'How can feeding and color observations share one timeline?']),
-    caseStudy('bilirubin-measurement', ['胆红素测量记录', 'Bilirubin measurement record'], ['由专业人员决定测量方式', 'Measurement method is decided by a clinician'], ['胆红素数值必须连同单位、测量时间、方式和来源保存，不能脱离出生信息自行解释。', 'A bilirubin value must be kept with its unit, time, method, and source; it cannot be interpreted apart from birth details.'], ['家长把检查单上的数值、单位和时间抄入记录，并准备询问专业人员如何结合宝宝日龄理解。', 'The caregiver copies the value, unit, and time from a report and asks a clinician how to interpret it with the baby’s age in days.'], [['数值、单位与测量时间', 'Value, unit, and measurement time'], ['测量方式和机构来源', 'Method and source'], ['出生时间、孕周和喂养事实', 'Birth time, gestational age, and feeding facts']], ['肝脏是胆红素处理路径中的关键器官，但模型不解释具体读数。', 'The liver is central to bilirubin processing, but the model does not interpret a reading.'], ['就医时还需要带上哪些原始资料？', 'Which original records should be brought to a visit?']),
+    caseStudy('biliary-atresia', ['胆道闭锁相关表现', 'Biliary atresia concerns'], ['出生后数周需要关注', 'Needs attention in early infancy'], ['持续黄疸伴粪便颜色变浅或尿色变深，可能提示胆汁排出受阻，需要尽快检查。', 'Persistent jaundice with pale stools or dark urine can signal impaired bile flow and needs prompt evaluation.'], ['家长发现宝宝皮肤仍然发黄，尿布颜色比平时深，粪便颜色明显变浅，于是保存样本或照片并联系儿科。', 'A caregiver notices persistent yellowing, darker urine, and much paler stools, then keeps a sample or photo and contacts a pediatric clinician.'], [['黄疸持续时间', 'How long jaundice has lasted'], ['尿色和粪便颜色', 'Urine and stool color'], ['吃奶、体重和精神状态', 'Feeding, weight, and alertness']], ['肝脏、胆管和肠道共同完成胆汁排出；模型帮助理解路径，不判断病因。', 'The liver, bile ducts, and intestine form the bile-flow pathway; the model explains the path, not the cause.'], ['这些颜色和时间线是否需要今天就做检查？', 'Do these color and timeline changes need same-day assessment?']),
+    caseStudy('neonatal-hepatitis', ['新生儿肝炎相关表现', 'Neonatal hepatitis concerns'], ['新生儿期可见', 'Can occur in the newborn period'], ['肝脏炎症可能伴黄疸、吃奶差、体重增长慢或肝脾增大，原因可能与感染或代谢有关。', 'Liver inflammation may involve jaundice, poor feeding, slow weight gain, or an enlarged liver; infection and metabolic causes are possible.'], ['宝宝近期吃奶变少、精神不如平时，体检或检查提示肝脏需要进一步评估。', 'A baby feeds less and is less alert than usual, and an examination or test indicates that the liver needs further review.'], [['吃奶和精神变化', 'Feeding and alertness changes'], ['体重、腹部外观和检查结果', 'Weight, abdominal appearance, and test results'], ['黄疸、尿色和粪便颜色', 'Jaundice, urine, and stool color']], ['肝脏参与代谢和胆汁处理；具体原因需要血液检查、影像和专科判断。', 'The liver handles metabolism and bile; the cause requires blood tests, imaging, and specialist review.'], ['怎样把出生史、喂养和既往检查交给肝胆专科？', 'How should birth history, feeding, and prior tests be shared with a liver specialist?']),
+    caseStudy('liver-metabolic-disorder', ['肝脏代谢异常线索', 'Possible liver metabolic disorder'], ['少见但需及时排查', 'Uncommon but important to assess'], ['反复呕吐、嗜睡、吃奶困难或黄疸可能与代谢问题有关，也可能有其他原因，不能靠症状归类。', 'Repeated vomiting, sleepiness, feeding difficulty, or jaundice can occur with metabolic disorders but also have other causes; symptoms cannot classify them.'], ['宝宝出现反复呕吐和异常嗜睡，家长记录发生时间、进食和尿便，并立即联系医疗机构。', 'A baby has repeated vomiting and unusual sleepiness. The caregiver records timing, intake, urine, and stool and contacts a medical facility promptly.'], [['呕吐与吃奶时间', 'Timing of vomiting and feeds'], ['清醒程度和异常动作', 'Alertness and unusual movements'], ['尿便、体重和家族史', 'Urine, stool, weight, and family history']], ['代谢性肝病需要专科检查和实验室检测；治疗可能包括监护、营养支持和针对病因的方案。', 'Metabolic liver disease needs specialist testing; care may include monitoring, nutrition support, and cause-specific treatment.'], ['出现叫不醒、抽动、呼吸异常或持续呕吐时应如何立即就医？', 'How should urgent care be arranged for inability to wake, jerking, breathing changes, or persistent vomiting?']),
   ],
-}
+  cardiovascular: [
+    caseStudy('congenital-heart-defect', ['先天性心脏病线索', 'Congenital heart defect concerns'], ['出生后即可发现', 'May be found after birth'], ['发绀、呼吸快、吃奶易累或体重增长慢可能提示心脏需要进一步评估，也可能有其他原因。', 'Bluish color, fast breathing, tiring during feeds, or slow weight gain can signal a need for heart assessment but can have other causes.'], ['宝宝吃奶几分钟就停下喘气或出汗，家长记录吃奶时长、呼吸和颜色变化。', 'A baby stops after a few minutes of feeding to catch breath or sweat; the caregiver records feed duration, breathing, and color changes.'], [['吃奶时呼吸和出汗', 'Breathing and sweating during feeds'], ['嘴唇或皮肤颜色', 'Lip or skin color'], ['体重和出生筛查记录', 'Weight and newborn screening record']], ['心脏超声、血氧筛查和专科检查用于判断结构与血流；治疗可能是随访、药物、介入或手术。', 'Echocardiography, oxygen screening, and specialist review assess structure and blood flow; care may be monitoring, medicine, procedures, or surgery.'], ['哪些吃奶和呼吸表现需要今天联系儿童心脏专科？', 'Which feeding and breathing signs need same-day pediatric cardiac advice?']),
+    caseStudy('patent-ductus-arteriosus', ['动脉导管未闭', 'Patent ductus arteriosus'], ['早产儿更常见', 'More common in preterm infants'], ['出生前连接肺动脉和主动脉的血管通常会关闭；持续开放时可能增加心肺负担。', 'A vessel connecting the pulmonary artery and aorta usually closes after birth; if it stays open, it can increase heart and lung workload.'], ['早产宝宝出现呼吸支持需求增加、吃奶容易疲劳，医生安排心脏超声复核。', 'A preterm baby needs more breathing support and tires during feeds, so the care team schedules an echocardiogram.'], [['孕周和出生史', 'Gestational age and birth history'], ['呼吸支持与吃奶耐力', 'Breathing support and feeding stamina'], ['心脏超声和体重变化', 'Echocardiogram and weight change']], ['部分小的导管可随访观察；需要处理时由专科选择药物、导管介入或其他方案。', 'Some small ducts are monitored; when treatment is needed, specialists choose medicine, catheter procedures, or another plan.'], ['把呼吸支持、喂养和检查结果按日期整理，便于复诊讨论。', 'Organize breathing support, feeds, and test results by date for follow-up.']),
+    caseStudy('newborn-heart-murmur', ['新生儿心脏杂音', 'Newborn heart murmur'], ['出生后体检发现', 'Found during a newborn exam'], ['心脏杂音是听诊声音，不等于已经确定心脏病；有些是暂时性血流声音，有些需要检查。', 'A murmur is a sound heard on examination and does not itself confirm heart disease; some are temporary flow sounds and some need testing.'], ['体检听到杂音，但宝宝颜色、呼吸和吃奶暂时平稳，家长记录医生建议的复查时间。', 'A murmur is heard while color, breathing, and feeding are currently stable; the caregiver records the clinician’s follow-up plan.'], [['杂音发现时间和听诊结果', 'When it was found and auscultation notes'], ['呼吸、颜色和吃奶', 'Breathing, color, and feeding'], ['血氧和超声安排', 'Oxygen reading and echo plan']], ['是否需要心脏超声、血氧或复查由专业人员决定；不要根据声音自行判断严重程度。', 'Clinicians decide whether an echocardiogram, oxygen check, or follow-up is needed; do not infer severity from the sound.'], ['如果出现发青、呼吸费力或吃奶突然变差，不要等待原定复查。', 'Do not wait for a scheduled follow-up if blue color, labored breathing, or sudden feeding decline appears.']),
+    caseStudy('newborn-cyanosis', ['新生儿发绀', 'Newborn cyanosis'], ['需要立即确认', 'Needs immediate assessment'], ['嘴唇或皮肤发蓝可能与低氧、寒冷、哭闹或循环/呼吸问题有关，颜色位置和持续时间很重要。', 'Blue lips or skin can relate to low oxygen, cold, crying, or heart and lung problems; location and duration matter.'], ['宝宝安静时嘴唇仍发蓝或伴呼吸费力，家长记录开始时间并立即寻求急诊帮助。', 'A baby’s lips remain blue while calm or breathing is difficult; the caregiver records onset and seeks emergency help immediately.'], [['安静还是哭闹时出现', 'At rest or while crying'], ['嘴唇、舌头还是四肢', 'Lips, tongue, or limbs'], ['呼吸、吃奶和反应', 'Breathing, feeding, and responsiveness']], ['需要现场测量血氧并评估呼吸、循环和感染等原因；不要等待颜色自行恢复。', 'On-site oxygen and assessment of breathing, circulation, and infection are needed; do not wait for color to resolve on its own.'], ['持续发蓝、呼吸暂停、叫不醒或吃奶不了时立即拨打急救电话。', 'Call emergency services for persistent blue color, pauses in breathing, inability to wake, or inability to feed.']),
+  ],
+  urinary: [
+    caseStudy('newborn-uti', ['新生儿泌尿道感染', 'Newborn urinary tract infection'], ['新生儿表现常不典型', 'Signs can be nonspecific in newborns'], ['可能只有发热或体温不稳、吃奶减少、呕吐、黄疸或精神变化，没有明显排尿疼痛。', 'There may be fever or unstable temperature, reduced feeding, vomiting, jaundice, or alertness change without obvious pain while urinating.'], ['宝宝体温异常且吃奶减少，家长记录尿量和时间，联系医疗机构做评估。', 'A baby has an abnormal temperature and feeds less; the caregiver records urine and timing and contacts a medical facility.'], [['体温测量时间和来源', 'Temperature time and source'], ['吃奶、呕吐和精神', 'Feeding, vomiting, and alertness'], ['尿量、颜色和气味', 'Urine amount, color, and odor']], ['通常需要合格尿样、培养和医生选择的抗感染治疗；新生儿不要自行等待或服用家中抗生素。', 'Care usually needs a proper urine sample, culture, and clinician-selected treatment; do not wait or use leftover antibiotics for a newborn.'], ['保存体温和尿量时间线；新生儿发热、明显嗜睡或尿量减少时尽快就医。', 'Keep the temperature and urine timeline; seek prompt care for newborn fever, marked sleepiness, or reduced urine.']),
+    caseStudy('hydronephrosis', ['肾积水随访', 'Hydronephrosis follow-up'], ['产前或出生后发现', 'Found before or after birth'], ['肾盂扩张可能与尿液回流或排出受阻有关，程度和变化需要超声等检查判断。', 'A widened renal pelvis can relate to urine reflux or obstruction; ultrasound and follow-up assess its degree and change.'], ['产检或出生后超声提示肾盂扩张，宝宝目前吃奶和尿量平稳，家长记录复查时间。', 'Prenatal or newborn ultrasound shows a widened renal pelvis while feeding and urine are stable; the caregiver records follow-up dates.'], [['超声日期和左右侧', 'Ultrasound date and side'], ['尿量、发热和吃奶', 'Urine, fever, and feeding'], ['医生给出的复查计划', 'Clinician’s follow-up plan']], ['轻度情况可能观察复查；感染、梗阻或变化明显时由泌尿专科决定进一步检查和处理。', 'Mild cases may be watched; infection, obstruction, or progression may need urology-led testing and treatment.'], ['按预约复查，不把一次影像结果当成最终结论；出现发热或尿量变化及时联系医生。', 'Keep scheduled follow-up and do not treat one scan as a final conclusion; contact the doctor for fever or urine changes.']),
+    caseStudy('vesicoureteral-reflux', ['膀胱输尿管反流', 'Vesicoureteral reflux'], ['婴幼儿可见', 'Can occur in infants and young children'], ['尿液从膀胱向输尿管或肾脏反流，常因反复发热性尿路感染被发现。', 'Urine flows back from the bladder toward the ureters or kidneys and may be found after recurrent febrile UTIs.'], ['宝宝因不明发热做检查，医生讨论尿路结构和是否需要进一步影像。', 'A baby is evaluated for unexplained fever, and the clinician discusses urinary structure and further imaging.'], [['发热与尿样结果', 'Fever and urine results'], ['既往感染次数', 'Number of previous infections'], ['超声或其他检查', 'Ultrasound or other tests']], ['是否预防性用药、观察或手术取决于反流程度、感染和肾脏情况，由泌尿专科制定方案。', 'Monitoring, preventive medicine, or surgery depends on reflux grade, infections, and kidney status and is set by urology specialists.'], ['把每次发热、尿样和用药记录带到复诊，不自行停药或改药。', 'Bring fever, urine, and medicine records to follow-up; do not stop or change medicine yourself.']),
+    caseStudy('reduced-urine-output', ['尿量减少', 'Reduced urine output'], ['需要结合喂养和体温观察', 'Interpret with feeding and temperature'], ['尿布明显变少可能与摄入不足、发热、呕吐、脱水或肾脏问题有关。', 'Fewer wet diapers can relate to low intake, fever, vomiting, dehydration, or kidney problems.'], ['宝宝吃奶减少且湿尿布明显少于平时，家长记录最后一次排尿时间并联系专业人员。', 'A baby feeds less and has clearly fewer wet diapers; the caregiver records the last urination and contacts a clinician.'], [['最后一次排尿时间', 'Time of last urination'], ['吃奶、呕吐和腹泻', 'Feeding, vomiting, and diarrhea'], ['口腔湿润度和精神', 'Mouth moisture and alertness']], ['需要先评估摄入和脱水，再判断是否需要补液、检查肾功能或住院处理；不自行灌水。', 'Clinicians assess intake and dehydration before deciding on fluids, kidney tests, or hospital care; do not force water at home.'], ['记录完整时间线；明显尿量减少、叫不醒、反复呕吐或呼吸异常时及时急诊。', 'Keep a complete timeline; seek emergency care for markedly reduced urine, inability to wake, repeated vomiting, or breathing changes.']),
+  ],
+  neurologic: [
+    caseStudy('neonatal-seizure', ['新生儿惊厥样发作', 'Newborn seizure-like episode'], ['需要立即评估', 'Needs immediate assessment'], ['反复有节律的抽动、眼睛偏向一侧、短暂停顿或异常僵硬可能需要区分惊厥与其他动作。', 'Repeated rhythmic jerking, eye deviation, pauses, or unusual stiffening need assessment to distinguish seizures from other movements.'], ['宝宝出现重复抽动且不易被安抚停止，家长在确保安全后记录时间并立即求助。', 'A baby has repeated jerking that does not settle; the caregiver records timing if safe and seeks help immediately.'], [['动作开始和持续时间', 'Onset and duration'], ['眼睛、呼吸和肤色', 'Eyes, breathing, and color'], ['发作前后的吃奶和反应', 'Feeding and responsiveness before and after']], ['医生可能检查血糖、电解质、感染、脑电图或影像，并根据原因进行治疗；不要把物体放进嘴里。', 'Clinicians may check glucose, electrolytes, infection, EEG, or imaging and treat the cause; never put an object in the mouth.'], ['反复抽动、呼吸暂停、发青或叫不醒时立即拨打急救电话。', 'Call emergency services for repeated jerking, pauses in breathing, blue color, or inability to wake.']),
+    caseStudy('newborn-hypotonia', ['肌张力偏低线索', 'Possible low muscle tone'], ['需要体检确认', 'Needs examination'], ['宝宝特别松软、抬头和四肢活动明显少，可能与疲劳、药物、感染、代谢或神经肌肉问题有关。', 'Marked floppiness or little limb movement can relate to fatigue, medicines, infection, metabolism, or neuromuscular problems.'], ['宝宝清醒时仍明显松软、吃奶吸吮弱，家长记录清醒和喂养状态并联系医生。', 'A baby remains very floppy while awake and has weak sucking; the caregiver records alertness and feeding and contacts a clinician.'], [['清醒时的肌张力', 'Tone while awake'], ['吸吮、吞咽和吃奶时长', 'Suck, swallow, and feed duration'], ['呼吸和动作对称性', 'Breathing and movement symmetry']], ['需要体检并针对病因检查；支持喂养、呼吸和感染等问题由医疗团队安排。', 'Examination and cause-specific tests are needed; medical teams support feeding, breathing, and infection concerns as needed.'], ['叫不醒、吃奶不了、呼吸暂停或突然变软时立即就医。', 'Seek immediate care for inability to wake, inability to feed, breathing pauses, or sudden floppiness.']),
+    caseStudy('newborn-torticollis', ['新生儿头颈偏向', 'Newborn head preference'], ['出生后早期可见', 'Can appear early after birth'], ['头总是偏向一侧或转动受限可能与姿势、肌肉紧张或出生过程有关，需要检查活动范围。', 'A persistent head preference or limited turning can relate to position, muscle tightness, or birth events and needs an assessment of movement.'], ['宝宝清醒时总朝同一侧看，另一侧转动受限，家长记录两侧差异并预约儿保。', 'A baby consistently looks to one side while awake and turns less to the other; the caregiver records the difference and arranges a health visit.'], [['偏向哪一侧和持续时间', 'Side and duration'], ['两侧转动范围', 'Range on both sides'], ['吃奶姿势和四肢活动', 'Feeding position and limb movement']], ['医生或物理治疗师会判断是否需要姿势调整、活动训练或进一步检查；不要强行扳动颈部。', 'A clinician or therapist decides on positioning, exercises, or further tests; do not force the neck.'], ['记录视频和日常姿势，出现疼痛、明显僵硬或动作不对称加重时联系专业人员。', 'Keep a short video and posture notes; contact a clinician for pain, marked stiffness, or worsening asymmetry.']),
+    caseStudy('newborn-alertness-change', ['清醒度明显改变', 'Marked alertness change'], ['需要结合喂养和呼吸', 'Interpret with feeding and breathing'], ['比平时难以唤醒、持续异常安静或突然反应变差可能与感染、低血糖、药物或其他急症有关。', 'Being much harder to wake, unusually quiet, or suddenly less responsive can relate to infection, low blood sugar, medicines, or another emergency.'], ['宝宝连续几次喂养都叫不醒或吸吮很弱，家长记录最后一次正常状态并立即联系急救。', 'A baby cannot be woken for several feeds or sucks weakly; the caregiver records the last usual state and seeks emergency help immediately.'], [['最后一次正常清醒时间', 'Last usual alert time'], ['吃奶、呼吸和体温', 'Feeding, breathing, and temperature'], ['是否有抽动或发青', 'Jerking or blue color']], ['需要现场评估血糖、感染、呼吸和神经状态；不要用强刺激或强行喂食等待恢复。', 'On-site assessment of glucose, infection, breathing, and neurologic status is needed; do not rely on forceful stimulation or feeding.'], ['叫不醒、呼吸暂停、发青或抽动时立即拨打急救电话。', 'Call emergency services for inability to wake, pauses in breathing, blue color, or jerking.']),
+  ],
+ }
 
 export const PEDIATRIC_DISEASES = [
   {
@@ -190,8 +268,8 @@ export const PEDIATRIC_DISEASES = [
     id: 'skin', organId: 'skin', accent: '#c99277',
     title: { zh: '皮肤与皮疹', en: 'Skin and rashes' },
     category: { zh: '常见皮肤问题', en: 'Common skin concerns' },
-    poetic: { zh: '描述位置，不放大颜色', en: 'Describe location, not intensity' },
-    description: { zh: '用皮肤层次帮助记录位置、范围和时间。颜色本身不能替代专业判断。', en: 'Use the skin layers to record location, spread, and timing. Color alone cannot replace clinical assessment.' },
+    poetic: { zh: '记录出现的位置和范围', en: 'Record where it appears and how far it spreads' },
+    description: { zh: '查看皮肤层次，记录皮疹出现的位置、范围、时间和伴随不适。', en: 'Use the skin layers to record where a rash appears, how far it spreads, when it started, and what discomfort comes with it.' },
     steps: [
       { id: 'notice', title: { zh: '描述出现时间', en: 'Note when it appeared' }, description: { zh: '记录首次发现、是否变化以及宝宝是否抓挠。', en: 'Record when it appeared, whether it changed, and whether the baby scratches.' } },
       { id: 'structure', title: { zh: '认识皮肤层次', en: 'Explore skin layers' }, description: { zh: '查看表皮和真皮的示意结构。', en: 'Explore the illustrated epidermis and dermis.' } },
@@ -220,18 +298,18 @@ export const PEDIATRIC_DISEASES = [
   },
   {
     id: 'jaundice', organId: 'liver', accent: '#d19b3f',
-    title: { zh: '新生儿黄疸', en: 'Newborn jaundice' },
-    category: { zh: '新生儿常见问题', en: 'Common newborn concern' },
-    poetic: { zh: '先看时间，再记变化', en: 'Start with timing, then record change' },
-    description: { zh: '用肝脏和胆红素路径建立结构参照，帮助家长记录皮肤、眼白与整体状态，不凭外观诊断。', en: 'Use the liver and bilirubin pathway as a structural reference for recording skin, sclera, and overall state without diagnosing from appearance.' },
+    title: { zh: '肝胆与黄疸', en: 'Liver, bile & jaundice' },
+    category: { zh: '新生儿肝胆问题', en: 'Newborn liver and bile concerns' },
+    poetic: { zh: '记录颜色、尿便和检查结果', en: 'Record color, urine, stool, and test results' },
+    description: { zh: '认识肝脏、胆管和胆红素路径，分别记录外观、排泄、喂养和检查结果。', en: 'Explore the liver, bile ducts, and bilirubin pathway while recording appearance, output, feeding, and test results separately.' },
     steps: [
       { id: 'notice', title: { zh: '先看时间和日常状态', en: 'Start with timing and the usual state' }, description: { zh: '先记录出生后第几天、吃奶、精神和尿便，再观察颜色变化。', en: 'Record the day after birth, feeding, alertness, and output before describing color change.' } },
       { id: 'structure', title: { zh: '认识肝脏与胆红素路径', en: 'Explore the liver and bilirubin pathway' }, description: { zh: '查看肝脏在处理胆红素中的位置，模型不用于解释具体数值。', en: 'Explore the liver’s role in bilirubin processing; the model does not interpret a value.' } },
       { id: 'observe', title: { zh: '整理观察与测量事实', en: 'Organize observations and measurements' }, description: { zh: '记录发现时间、观察部位、喂养尿便和原始测量来源。', en: 'Record onset, locations, feeding, urine, stool, and original measurement sources.' } },
     ],
     facts: [{ label: { zh: '关注', en: 'Notice' }, value: { zh: '首次发现时间、皮肤/眼白、吃奶和精神', en: 'Onset, skin/sclera, feeding, alertness' } }, { label: { zh: '结构', en: 'Structure' }, value: { zh: '肝脏、胆红素处理与排出路径', en: 'Liver, bilirubin processing, and elimination' } }],
-    conditions: { zh: ['出生后常见黄疸', '黄疸持续观察', '喂养与黄疸观察', '胆红素测量记录'], en: ['Common newborn jaundice', 'Persistent jaundice observation', 'Feeding and jaundice observations', 'Bilirubin measurement record'] },
-    cases: enrichCases(CASES.jaundice, 'jaundice'),
+    conditions: { zh: ['新生儿黄疸', '胆道闭锁相关表现', '新生儿肝炎', '肝脏代谢异常线索'], en: ['Newborn jaundice', 'Biliary atresia concerns', 'Neonatal hepatitis', 'Possible liver metabolic disorder'] },
+    cases: enrichCases(CASES.jaundice, 'liver'),
     hotspots: hotspots.liver,
   },
   {
@@ -251,6 +329,54 @@ export const PEDIATRIC_DISEASES = [
     conditions: { zh: ['发热', '感染相关表现', '精神状态变化', '脱水风险线索'], en: ['Fever', 'Infection-related signs', 'Alertness change', 'Possible dehydration clues'] },
     cases: enrichCases(CASES.fever, 'fever'),
     hotspots: hotspots.heart,
+  },
+  {
+    id: 'cardiovascular', organId: 'heart', accent: '#ee7c6a',
+    title: { zh: '心脏与循环', en: 'Heart & circulation' },
+    category: { zh: '常见心脏问题', en: 'Common heart concerns' },
+    poetic: { zh: '记录吃奶、呼吸和颜色', en: 'Record feeding, breathing, and color' },
+    description: { zh: '查看心脏腔室与血流路径，整理吃奶耐力、呼吸和血氧筛查等信息。', en: 'Explore chambers and blood flow while organizing feeding stamina, breathing, and oxygen-screening information.' },
+    steps: [
+      { id: 'notice', title: { zh: '先看日常表现', en: 'Start with daily signs' }, description: { zh: '记录吃奶时长、是否出汗、呼吸和嘴唇颜色变化。', en: 'Record feeding duration, sweating, breathing, and lip-color changes.' } },
+      { id: 'structure', title: { zh: '认识血流路径', en: 'Explore blood flow' }, description: { zh: '查看心房、心室与主要血管的相对位置。', en: 'Explore the relative positions of chambers and major vessels.' } },
+      { id: 'observe', title: { zh: '整理筛查与观察', en: 'Organize screening and observations' }, description: { zh: '把血氧筛查、听诊记录和日常变化按时间整理。', en: 'Place oxygen screening, auscultation notes, and daily changes on one timeline.' } },
+    ],
+    facts: [{ label: { zh: '关注', en: 'Notice' }, value: { zh: '吃奶耐力、呼吸、出汗、颜色', en: 'Feeding stamina, breathing, sweating, color' } }, { label: { zh: '结构', en: 'Structure' }, value: { zh: '心房、心室、主动脉与肺循环', en: 'Chambers, aorta, and pulmonary circulation' } }],
+    conditions: { zh: ['先天性心脏结构异常', '动脉导管未闭', '新生儿心脏杂音', '新生儿发绀'], en: ['Congenital heart defect', 'Patent ductus arteriosus', 'Newborn heart murmur', 'Newborn cyanosis'] },
+    cases: enrichCases(CASES.cardiovascular, 'cardiovascular'),
+    hotspots: hotspots.heart,
+  },
+  {
+    id: 'urinary', organId: 'kidneys', accent: '#c96963',
+    title: { zh: '肾脏与泌尿', en: 'Kidneys & urinary system' },
+    category: { zh: '常见泌尿问题', en: 'Common urinary concerns' },
+    poetic: { zh: '记录尿量、颜色和体温', en: 'Record urine, color, and temperature' },
+    description: { zh: '查看肾脏过滤和输尿路径，整理尿量、尿色、体温和吃奶变化。', en: 'Explore kidney filtration and urine flow while organizing urine, temperature, and feeding changes.' },
+    steps: [
+      { id: 'notice', title: { zh: '建立尿便参照', en: 'Build an output reference' }, description: { zh: '记录湿尿布、尿色、体温和吃奶是否和平时不同。', en: 'Record wet diapers, urine color, temperature, and feeding changes.' } },
+      { id: 'structure', title: { zh: '认识过滤路径', en: 'Explore the filtering path' }, description: { zh: '查看肾皮质、肾髓质和输尿管的关系。', en: 'Explore the cortex, medulla, and ureter relationship.' } },
+      { id: 'observe', title: { zh: '整理变化', en: 'Organize changes' }, description: { zh: '把尿量、体温、吃奶和精神状态按时间记录。', en: 'Record urine, temperature, feeding, and alertness by time.' } },
+    ],
+    facts: [{ label: { zh: '关注', en: 'Notice' }, value: { zh: '湿尿布、尿色、体温、吃奶', en: 'Wet diapers, urine color, temperature, feeding' } }, { label: { zh: '结构', en: 'Structure' }, value: { zh: '肾皮质、髓质、输尿管', en: 'Cortex, medulla, ureter' } }],
+    conditions: { zh: ['新生儿尿路感染', '肾积水', '膀胱输尿管反流', '尿量减少'], en: ['Newborn urinary infection', 'Hydronephrosis', 'Vesicoureteral reflux', 'Reduced urine output'] },
+    cases: enrichCases(CASES.urinary, 'urinary'),
+    hotspots: hotspots.kidneys,
+  },
+  {
+    id: 'neurologic', organId: 'brain', accent: '#c58696',
+    title: { zh: '大脑与神经', en: 'Brain & nervous system' },
+    category: { zh: '常见神经表现', en: 'Common neurologic concerns' },
+    poetic: { zh: '记录清醒、动作和吃奶', en: 'Record alertness, movement, and feeding' },
+    description: { zh: '用大脑结构整理清醒程度、肌张力、动作、吃奶和呼吸节律等事实。', en: 'Use brain structures to organize facts about alertness, tone, movement, feeding, and breathing rhythm.' },
+    steps: [
+      { id: 'notice', title: { zh: '观察反应和动作', en: 'Notice responses and movement' }, description: { zh: '记录是否容易唤醒、动作是否重复或与平时不同。', en: 'Record how easily the baby wakes and whether movements repeat or differ from usual.' } },
+      { id: 'structure', title: { zh: '认识大脑分区', en: 'Explore brain regions' }, description: { zh: '查看大脑、小脑与感觉和运动的关系。', en: 'Explore the relationship of the brain and cerebellum to sensation and movement.' } },
+      { id: 'observe', title: { zh: '整理时间线', en: 'Organize the timeline' }, description: { zh: '记录动作发生时的清醒、吃奶、体温和呼吸。', en: 'Record alertness, feeding, temperature, and breathing when a movement occurs.' } },
+    ],
+    facts: [{ label: { zh: '关注', en: 'Notice' }, value: { zh: '清醒、肌张力、动作、吃奶', en: 'Alertness, tone, movement, feeding' } }, { label: { zh: '结构', en: 'Structure' }, value: { zh: '大脑、小脑、脑干参照', en: 'Brain, cerebellum, brainstem reference' } }],
+    conditions: { zh: ['新生儿异常动作', '肌张力偏低', '先天性斜颈', '清醒度变化'], en: ['Neonatal seizure-like movements', 'Low muscle tone', 'Congenital torticollis', 'Alertness change'] },
+    cases: enrichCases(CASES.neurologic, 'neurologic'),
+    hotspots: hotspots.brain,
   },
 ]
 

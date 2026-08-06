@@ -30,6 +30,9 @@ test.beforeEach(async ({ page }) => {
 
 test('today tasks, stage milestones, calendar, and growth facts form one local loop', async ({ page }) => {
   await createBaby(page)
+  await expect(page.getByText('新手父母关注', { exact: true })).toBeVisible()
+  await expect(page.getByText('喂养后看一眼', { exact: true })).toBeVisible()
+  await expect(page.getByText('这些变化要及时求助', { exact: true })).toBeVisible()
   await expect(page.getByTestId('care-task-list').first()).toBeVisible()
   await expect(page.getByTestId('admin-task-list')).toBeVisible()
   await expect(page.getByText('办理出生医学证明', { exact: true }).first()).toBeVisible()

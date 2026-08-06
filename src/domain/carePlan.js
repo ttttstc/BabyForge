@@ -238,3 +238,43 @@ export function dateForAge(birthDate, ageDays) {
   date.setTime(date.getTime() + ageDays * DAY_MS)
   return localDateKey(date)
 }
+
+export function getCalendarEvents(baby, milestoneRecords = [], adminTaskRecords = []) {
+  if (!baby?.birthDate) return []
+  const milestoneRecordMap = new Map(milestoneRecords.map((record) => [record.milestoneId, record]))
+  const adminRecordMap = new Map(adminTaskRecords.map((record) => [record.taskId, record]))
+  const events = [{
+    id: 'birth-anniversary',
+    date: baby.birthDate,
+    kind: 'anniversary',
+    title: { zh: '出生纪念日', en: 'Birth anniversary' },
+    detail: { zh: '宝宝出生的日子', en: 'The day your baby was born' },
+    status: 'scheduled',
+  }]
+  const seenMilestones = new Set()
+  Object.values(STAGE_MILESTONES).flat().forEach((milestone) => {
+    if (seenMilestones.has(milestone.id)) return
+    seenMilestones.add(milestone.id)
+    events.push({
+      id: milestone.id,
+      date: dateForAge(baby.birthDate, milestone.dueDay),
+      kind: 'milestone',
+      title: milestone.title,
+      detail: milestone.detail,
+      status: milestoneRecordMap.get(milestone.id)?.status || 'pending',
+    })
+  })
+  NEWBORN_ADMIN_TASKS.forEach((task) => {
+    events.push({
+      id: task.id,
+      date: dateForAge(baby.birthDate, task.dueDay),
+      kind: 'admin',
+      title: task.title,
+      detail: task.detail,
+      dueHint: task.dueHint,
+      status: adminRecordMap.get(task.id)?.status || 'pending',
+      priority: task.priority,
+    })
+  })
+  return events
+}

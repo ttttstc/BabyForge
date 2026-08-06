@@ -24,7 +24,7 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
         <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
         <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={onAdminTaskUpdate} readOnly={readOnly} />
         <section className="inspector-block tone-aqua">
-          <div className="inspector-section-title"><ShieldCheck size={18} /><span>{locale === 'en-US' ? 'Prototype boundary' : '原型边界'}</span></div>
+          <div className="inspector-section-title"><ShieldCheck size={18} /><span>{locale === 'en-US' ? 'How to use this information' : '信息使用说明'}</span></div>
           <p>{locale === 'en-US' ? 'This helps you understand and record. It does not judge normality or provide a health score.' : '这里帮助你理解和记录，不判断宝宝是否正常，也不给健康评分。'}</p>
         </section>
         <QuickGrowthEntry locale={locale} measurements={growthMeasurements} onAdd={onAddGrowth} readOnly={readOnly} />
@@ -40,20 +40,20 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
         <p className="eyebrow">{locale === 'en-US' ? 'Condition learning topic' : '疾病认知专题'}</p>
         <h2>{locale === 'en-US' ? JAUNDICE_TOPIC.titleEn : JAUNDICE_TOPIC.title}</h2>
         <p>{locale === 'en-US' ? JAUNDICE_TOPIC.summaryEn : JAUNDICE_TOPIC.summary}</p>
-        <span className="prototype-status"><AlertCircle size={14} />{copy.studyOnly}</span>
+        <span className="prototype-status"><AlertCircle size={14} />{locale === 'en-US' ? 'Care information' : '照护信息'}</span>
       </div>
       <section className="inspector-block mechanism-list">
         <div className="inspector-section-title"><BookOpenCheck size={18} /><span>{locale === 'en-US' ? 'Five-step explanation' : '五步解释'}</span></div>
         {JAUNDICE_TOPIC.steps.map((step, index) => <div className="mechanism-item" key={step.id}><span>{index + 1}</span><div><strong>{locale === 'en-US' ? step.titleEn : step.title}</strong><small>{locale === 'en-US' ? step.descriptionEn : step.description}</small></div></div>)}
       </section>
-      {safety.status === 'unavailable' && <section className="safety-gate"><ShieldCheck size={19} /><div><strong>{locale === 'en-US' ? 'Automatic triage is unavailable' : '自动分级未启用'}</strong><p>{locale === 'en-US' ? 'This topic is not clinically reviewed. It does not output diagnosis, severity, or care level.' : '本专题未获临床审核，不输出诊断、严重度或就医等级。若担心宝宝，请联系儿科或当地医疗服务。'}</p></div></section>}
+      {safety.status === 'unavailable' && <section className="safety-gate"><ShieldCheck size={19} /><div><strong>{locale === 'en-US' ? 'For care conversations' : '用于照护沟通'}</strong><p>{locale === 'en-US' ? 'The workspace records observations but does not provide a diagnosis, severity label, or care level. If you are worried, contact a pediatric clinician or local medical service.' : '工作台只整理观察，不提供诊断、严重度标签或就医等级。如果你担心宝宝，请联系儿科专业人员或当地医疗服务。'}</p></div></section>}
       <ObservationForm observationCount={observations.length} onSave={onSaveObservation} questions={questions} onQuestionsChange={onQuestionsChange} locale={locale} readOnly={readOnly} />
       <button className="summary-cta" onClick={() => navigate(ROUTES.summary)}>{copy.generateSummary}<ArrowRight size={17} /></button>
       <section className="source-panel">
         <div className="inspector-section-title"><BookOpenCheck size={17} /><span>{locale === 'en-US' ? 'Sources' : '内容依据'}</span></div>
         <p>{locale === 'en-US' ? 'Version' : '版本'}：{JAUNDICE_TOPIC.contentVersion}</p>
         {JAUNDICE_TOPIC.sources.map((source) => <a key={source.id} href={source.url} target="_blank" rel="noreferrer">{source.label}<ExternalLink size={13} /></a>)}
-        <small>{locale === 'en-US' ? 'Accessed 2026-08-05 · Research prototype content structure only.' : '访问日期：2026-08-05 · 仅用于研究原型内容结构。'}</small>
+        <small>{locale === 'en-US' ? 'Source updated 2026-08-05 · Use this information to organize care notes.' : '来源更新：2026-08-05 · 用于整理照护记录和咨询问题。'}</small>
       </section>
     </aside>
   )

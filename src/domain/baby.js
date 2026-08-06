@@ -8,7 +8,7 @@ const STAGES = [
 const TODAY_PRIORITIES = [
   { id: 'feeding', title: '观察吃奶和吞咽', description: '记录喂养方式与和平时相比的变化。', assetKey: 'feeding' },
   { id: 'elimination', title: '记录尿便情况', description: '只记录家长看到的次数与变化。', assetKey: 'elimination' },
-  { id: 'safe-sleep', title: '确认安全睡眠环境', description: '查看教育示意，不替代专业指导。', assetKey: 'safeSleep' },
+  { id: 'safe-sleep', title: '确认安全睡眠环境', description: '检查睡眠姿势、睡眠表面和周围物品。', assetKey: 'safeSleep' },
 ]
 
 export const SEX_LABELS = { male: '男孩', female: '女孩' }
@@ -46,7 +46,7 @@ export function getStage(ageDays) {
   return stage || {
     id: 'out-of-scope',
     label: '超出 MVP 范围',
-    rangeLabel: '当前研究原型仅覆盖出生后 0–28 天',
+    rangeLabel: '当前工作台覆盖出生后 0–28 天',
     min: 29,
     max: Infinity,
   }

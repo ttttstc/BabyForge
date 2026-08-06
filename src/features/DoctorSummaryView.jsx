@@ -50,7 +50,7 @@ function formatSummaryText(summary, locale) {
     lines.push('')
   }
   if (summary.questions.length) lines.push(isEnglish ? 'Questions for a clinician:' : '希望咨询：', ...summary.questions.map((question) => `- ${question}`), '')
-  lines.push(isEnglish ? 'This research prototype organizes parent-entered facts and does not diagnose or triage.' : summary.disclaimer)
+  lines.push(isEnglish ? 'This summary organizes caregiver-entered facts and does not diagnose or triage.' : summary.disclaimer)
   return lines.join('\n')
 }
 

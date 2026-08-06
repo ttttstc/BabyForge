@@ -10,6 +10,6 @@ export function buildDoctorSummary(baby, observations = [], questions = [], gene
     taskLogs: Array.isArray(extras.taskLogs) ? extras.taskLogs : [],
     growthMeasurements: Array.isArray(extras.growthMeasurements) ? extras.growthMeasurements : [],
     milestoneRecords: Array.isArray(extras.milestoneRecords) ? extras.milestoneRecords : [],
-    disclaimer: '研究原型仅整理家长填写的事实，不提供诊断、数值解释或就医分级。',
+    disclaimer: '本摘要仅整理照护者填写的事实，不提供诊断、数值解释或就医分级。',
   }
 }

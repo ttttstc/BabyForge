@@ -50,7 +50,7 @@ test('parent creates a profile and sees the newborn workspace', async ({ page })
   await expect(page.getByText('出生后 6 天').first()).toBeVisible()
   await expect(page.getByText('新生儿早期', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('男孩', { exact: true }).first()).toBeVisible()
-  await expect(page.locator('[data-testid="priority-card"]')).toHaveCount(3)
+  await expect(page.getByTestId('care-task-list').locator('[data-task-id]')).toHaveCount(3)
   await expect(page.getByTestId('stage-surface')).toBeVisible()
 })
 
@@ -60,7 +60,7 @@ test('girl profile persists and selects the girl visual set', async ({ page }) =
   await page.getByRole('button', { name: '2D' }).click()
 
   await expect(page.getByText('女孩', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText(/女孩素材占位/)).toBeVisible()
+  await expect(page.getByText(/女孩图片正在准备/)).toBeVisible()
 })
 
 test('guest account can view the workspace but cannot edit records', async ({ page }) => {
@@ -94,7 +94,7 @@ test('common pediatric education advances through anatomy steps and records raw 
   await page.getByRole('button', { name: '常见儿科病', exact: true }).click()
 
   await expect(page.getByText('呼吸道症状', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('医学边界', { exact: true })).toBeVisible()
+  await expect(page.getByText('使用说明', { exact: true })).toBeVisible()
   await expect(page.getByText('先看日常状态', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '下一步' }).click()
   await expect(page.getByText('认识肺和气道', { exact: true })).toBeVisible()
@@ -126,7 +126,7 @@ test('pediatric library exposes all anatomy models and opens a concrete case gui
   await expect(page.getByRole('heading', { name: '大脑', exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: /疾病分类/ }).click()
-  await page.getByRole('button', { name: /新生儿黄疸/ }).click()
+  await page.getByRole('button', { name: /肝胆与黄疸/ }).click()
   await expect(page.getByRole('heading', { name: '肝脏', exact: true })).toBeVisible()
   await expect(page.getByText('新生儿黄疸（常见现象）', { exact: true })).toBeVisible()
 
