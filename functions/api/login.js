@@ -12,7 +12,7 @@ export async function onRequestPost({ request, env }) {
   if (!account || !(await samePassword(body.password, account))) return json({ error: '账号或密码不正确' }, 401)
   const session = await createSession(env, account)
   const babies = await env.DB.prepare(`
-    SELECT b.id, b.nickname, b.birth_date AS birthDate, b.gestational_weeks AS gestationalWeeks, b.sex, b.feeding_mode AS feedingMode, b.locale
+    SELECT b.id, b.nickname, b.birth_date AS birthDate, b.gestational_weeks AS gestationalWeeks, b.gestational_days AS gestationalDays, b.growth_age_basis AS growthAgeBasis, b.birth_multiplicity AS birthMultiplicity, b.sex, b.feeding_mode AS feedingMode, b.locale
     FROM baby_profiles b JOIN household_members m ON m.household_id = b.household_id
     WHERE m.account_id = ? AND m.active = 1
     ORDER BY b.updated_at DESC

@@ -20,12 +20,39 @@ export function Onboarding({ onCreate, locale = 'zh-CN', onLocaleChange }) {
       setError('出生日期不能晚于今天。')
       return
     }
+    const gestationalWeeks = Number(data.get('gestationalWeeks'))
+    const gestationalDays = Number(data.get('gestationalDays') || 0)
+    if (!Number.isFinite(gestationalWeeks) || gestationalWeeks < 20 || gestationalWeeks > 44 || !Number.isInteger(gestationalDays) || gestationalDays < 0 || gestationalDays > 6) {
+      setError('请填写有效的出生孕周。')
+      return
+    }
+    const birthInputs = [['birthWeight', 20], ['birthLength', 100], ['birthHeadCircumference', 70]]
+    if (birthInputs.some(([name, max]) => { const value = String(data.get(name) || '').trim(); return value && (!Number.isFinite(Number(value)) || Number(value) <= 0 || Number(value) > max) })) {
+      setError('请核对出生测量的数值和单位。')
+      return
+    }
+
+    const birthMeasurements = [
+      ['weight', data.get('birthWeight'), 'kg', 'birth_weight'],
+      ['length', data.get('birthLength'), 'cm', 'lying_length'],
+      ['headCircumference', data.get('birthHeadCircumference'), 'cm', 'head_circumference_tape'],
+    ].filter(([, value]) => String(value || '').trim()).map(([type, value, unit, method]) => ({
+      type,
+      value: String(value).trim(),
+      unit,
+      method,
+      measuredAt: birthDate,
+      source: 'birth_record',
+    }))
 
     onCreate({
       id: globalThis.crypto?.randomUUID?.() || `baby-${Date.now()}`,
       nickname: String(data.get('nickname')).trim(),
       birthDate,
-      gestationalWeeks: Number(data.get('gestationalWeeks')),
+      gestationalWeeks,
+      gestationalDays,
+      birthMultiplicity: data.get('birthMultiplicity') || 'singleton',
+      birthMeasurements,
       sex: data.get('sex'),
       feedingMode: data.get('feedingMode'),
       locale: 'zh-CN',
@@ -63,7 +90,7 @@ export function Onboarding({ onCreate, locale = 'zh-CN', onLocaleChange }) {
             {locale === 'en-US' ? 'Baby nickname' : '宝宝昵称'}
             <input name="nickname" required maxLength="20" placeholder={locale === 'en-US' ? 'e.g. River' : '例如：小舟'} autoComplete="off" />
           </label>
-          <div className="form-grid">
+          <div className="form-grid three">
             <label>
               {locale === 'en-US' ? 'Birth date' : '出生日期'}
               <input name="birthDate" type="date" required max={todayValue()} />
@@ -72,7 +99,32 @@ export function Onboarding({ onCreate, locale = 'zh-CN', onLocaleChange }) {
               {locale === 'en-US' ? 'Gestational weeks' : '出生孕周'}
               <input name="gestationalWeeks" type="number" min="20" max="44" defaultValue="40" required />
             </label>
+            <label>
+              {locale === 'en-US' ? 'Extra days' : '孕周余天'}
+              <input name="gestationalDays" type="number" min="0" max="6" defaultValue="0" />
+            </label>
           </div>
+          <label>
+            {locale === 'en-US' ? 'Birth type' : '出生情况'}
+            <select name="birthMultiplicity" defaultValue="singleton"><option value="singleton">{locale === 'en-US' ? 'Singleton' : '单胎'}</option><option value="multiple">{locale === 'en-US' ? 'Multiple birth' : '多胎（暂不使用出生胎龄标准）'}</option></select>
+          </label>
+          <fieldset className="birth-measurement-fields">
+            <legend>{locale === 'en-US' ? 'Birth measurements (optional)' : '出生测量（可选）'}</legend>
+            <div className="form-grid three">
+              <label>
+                {locale === 'en-US' ? 'Weight' : '体重'}
+                <input name="birthWeight" type="number" inputMode="decimal" min="0" max="20" step="0.01" placeholder={locale === 'en-US' ? 'kg' : 'kg'} />
+              </label>
+              <label>
+                {locale === 'en-US' ? 'Length' : '身长'}
+                <input name="birthLength" type="number" inputMode="decimal" min="0" max="100" step="0.1" placeholder={locale === 'en-US' ? 'cm' : 'cm'} />
+              </label>
+              <label>
+                {locale === 'en-US' ? 'Head circumference' : '头围'}
+                <input name="birthHeadCircumference" type="number" inputMode="decimal" min="0" max="70" step="0.1" placeholder={locale === 'en-US' ? 'cm' : 'cm'} />
+              </label>
+            </div>
+          </fieldset>
           <fieldset className="sex-field">
             <legend>{locale === 'en-US' ? 'Baby sex' : '宝宝性别'}</legend>
             <div className="sex-options">

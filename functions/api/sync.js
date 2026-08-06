@@ -17,7 +17,7 @@ function parseRecord(row) {
 
 async function accessibleBaby(env, accountId, babyId) {
   return env.DB.prepare(`
-    SELECT b.id, b.household_id AS householdId, b.nickname, b.birth_date AS birthDate, b.gestational_weeks AS gestationalWeeks, b.sex, b.feeding_mode AS feedingMode, b.locale
+    SELECT b.id, b.household_id AS householdId, b.nickname, b.birth_date AS birthDate, b.gestational_weeks AS gestationalWeeks, b.gestational_days AS gestationalDays, b.growth_age_basis AS growthAgeBasis, b.birth_multiplicity AS birthMultiplicity, b.sex, b.feeding_mode AS feedingMode, b.locale
     FROM baby_profiles b JOIN household_members m ON m.household_id = b.household_id
     WHERE b.id = ? AND m.account_id = ? AND m.active = 1
   `).bind(babyId, accountId).first()
@@ -80,11 +80,14 @@ export async function onRequestPost({ request, env }) {
     return json({ error: error.message }, 403)
   }
   const now = new Date().toISOString()
+  const gestationalDays = Number.isInteger(Number(baby.gestationalDays)) && Number(baby.gestationalDays) >= 0 && Number(baby.gestationalDays) <= 6 ? Number(baby.gestationalDays) : 0
+  const growthAgeBasis = ['chronological', 'corrected', 'postmenstrual'].includes(baby.growthAgeBasis) ? baby.growthAgeBasis : 'chronological'
+  const birthMultiplicity = baby.birthMultiplicity === 'multiple' ? 'multiple' : 'singleton'
   await env.DB.prepare(`
-    INSERT INTO baby_profiles (id, household_id, nickname, birth_date, gestational_weeks, sex, feeding_mode, locale, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-  `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
+    INSERT INTO baby_profiles (id, household_id, nickname, birth_date, gestational_weeks, gestational_days, growth_age_basis, birth_multiplicity, sex, feeding_mode, locale, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, gestational_days=excluded.gestational_days, growth_age_basis=excluded.growth_age_basis, birth_multiplicity=excluded.birth_multiplicity, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+  `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, gestationalDays, growthAgeBasis, birthMultiplicity, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
 
   const records = []
   for (const collection of COLLECTIONS) {

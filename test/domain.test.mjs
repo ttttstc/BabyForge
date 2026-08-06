@@ -17,6 +17,7 @@ import { onRequestPost as onEventPost } from '../functions/api/events.js'
 import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
+import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -98,6 +99,9 @@ test('versioned storage preserves explicit sex and safely migrates legacy profil
   assert.equal(migrated.version, 4)
   assert.equal(migrated.baby.nickname, '小舟')
   assert.equal(migrated.baby.sex, null)
+  assert.equal(migrated.baby.gestationalDays, 0)
+  assert.equal(migrated.baby.growthAgeBasis, 'chronological')
+  assert.equal(migrated.baby.birthMultiplicity, 'singleton')
   assert.equal(migrated.preferences.locale, 'zh-CN')
   migrated.baby.sex = 'female'
   saveState(storage, migrated)
@@ -199,6 +203,96 @@ test('care plan keeps low-burden task feedback, milestones, and growth facts', (
   assert.ok(adminTasks.some((item) => item.id === 'birth-certificate' && item.state === 'due'))
   const adminRecords = upsertAdminTaskRecord([], 'birth-certificate', { status: 'done' }, '2026-08-05T10:00:00.000Z')
   assert.equal(getAdminTasks('newborn-early', 7, adminRecords).find((item) => item.id === 'birth-certificate').status, 'done')
+})
+
+test('official growth packages evaluate birth and postnatal measurements deterministically', () => {
+  const baby = { id: 'baby-growth', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40, gestationalDays: 0 }
+  const birth = createEvaluatedGrowthMeasurement({ id: 'birth-weight', type: 'weight', value: '3.455', unit: 'kg', measuredAt: '2026-08-01', source: 'birth_record', method: 'weight_scale' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(birth.evaluation.standardPackageId, 'ws-t-800-2022')
+  assert.equal(birth.evaluation.percentile, 50)
+  assert.equal(birth.evaluation.birthSizeCategory, 'appropriate-for-gestational-age')
+  assert.equal(birth.evaluation.dataQuality, 'sufficient')
+  const timestampBirth = evaluateGrowthMeasurement({ id: 'birth-timestamp', type: 'weight', value: '3.455', unit: 'kg', measuredAt: '2026-08-01T12:00:00.000Z', source: 'birth_record' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(timestampBirth.standardPackageId, 'ws-t-800-2022')
+
+  const current = createEvaluatedGrowthMeasurement({ id: 'current-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'caregiver_observation', method: 'weight_scale' }, baby, [birth], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(current.evaluation.standardPackageId, 'ws-t-423-2022')
+  assert.equal(current.evaluation.ageBasis, 'chronological')
+  assert.equal(current.evaluation.referencePosition, 'p50-p75')
+  assert.equal(current.evaluation.trajectoryStatus, 'insufficient_history')
+  assert.equal(current.evaluation.inputObservationIds.includes('current-weight'), true)
+})
+
+test('growth evaluator keeps birth and corrected-age standards isolated', () => {
+  const preterm = { id: 'baby-preterm', birthDate: '2026-06-01', sex: 'female', gestationalWeeks: 32, gestationalDays: 0 }
+  const context = getGrowthAgeContext(preterm, '2026-07-27', 'corrected')
+  assert.equal(context.ageDays, 0)
+  assert.equal(context.ageMonths, 0)
+  const correctedMeasurement = createEvaluatedGrowthMeasurement({ id: 'corrected-weight', type: 'weight', value: '3.2', measuredAt: '2026-07-27', source: 'caregiver_observation' }, { ...preterm, growthAgeBasis: 'corrected' }, [], { now: '2026-07-28T10:00:00.000Z' })
+  assert.equal(correctedMeasurement.ageBasis, 'corrected')
+  assert.equal(correctedMeasurement.evaluation.ageBasis, 'corrected')
+  const missingGestation = evaluateGrowthMeasurement({ id: 'birth-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-01', source: 'birth_record' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z' })
+  assert.equal(missingGestation.standardPackageId, 'ws-t-800-2022')
+  assert.equal(missingGestation.dataQuality, 'insufficient')
+  assert.match(missingGestation.limitations.join(' '), /24–42/)
+  const missingCorrected = evaluateGrowthMeasurement({ id: 'corrected-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-06', source: 'clinical', ageBasis: 'corrected' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z' })
+  assert.equal(missingCorrected.dataQuality, 'insufficient')
+  assert.match(missingCorrected.limitations.join(' '), /矫正年龄|整月参考/)
+  const multiple = evaluateGrowthMeasurement({ id: 'birth-multiple', type: 'weight', value: '3.2', measuredAt: '2026-06-01', source: 'birth_record' }, { ...preterm, birthMultiplicity: 'multiple' }, [], { now: '2026-07-01T10:00:00.000Z' })
+  assert.equal(multiple.dataQuality, 'insufficient')
+  assert.match(multiple.limitations.join(' '), /单胎/)
+})
+
+test('growth evaluator reports insufficient history and never fabricates reference values', () => {
+  const baby = { id: 'baby-limited', birthDate: '2026-08-01', sex: 'female', gestationalWeeks: 40, gestationalDays: 0 }
+  assert.match(validateGrowthMeasurement({ type: 'weight', value: '-1', measuredAt: '2026-08-06' }, baby, { now: '2026-08-06T10:00:00.000Z' }).join(' '), /正数/)
+  const invalid = evaluateGrowthMeasurement({ id: 'future', type: 'weight', value: '3.4', measuredAt: '2026-08-07', source: 'caregiver_observation' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(invalid.dataQuality, 'insufficient')
+  assert.equal(invalid.percentile, undefined)
+  assert.equal(invalid.trajectoryStatus, 'verify_measurement')
+  const valid = evaluateGrowthMeasurement({ id: 'valid', type: 'headCircumference', value: '33.9', measuredAt: '2026-08-06', source: 'caregiver_observation' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(valid.evaluation, undefined)
+  assert.equal(valid.trajectoryStatus, 'insufficient_history')
+  assert.equal(valid.percentile, 50)
+})
+
+test('growth evaluator covers invalid inputs, unsupported standard ages, and trajectory warnings', () => {
+  const baby = { id: 'baby-branches', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40 }
+  assert.equal(getGrowthAgeContext(baby, '2026-08-01', 'unknown').basis, 'chronological')
+  assert.match(getGrowthAgeContext({ ...baby, gestationalWeeks: null }, '2026-08-01', 'corrected').limitations.join(' '), /矫正年龄/)
+  assert.match(getGrowthAgeContext({ ...baby, gestationalWeeks: null }, '2026-08-01', 'postmenstrual').limitations.join(' '), /经后年龄/)
+  const preDue = getGrowthAgeContext({ ...baby, gestationalWeeks: 32 }, '2026-08-10', 'corrected')
+  assert.ok(preDue.ageDays < 0)
+  assert.match(preDue.limitations.join(' '), /尚未达到预产期/)
+  const postmenstrual = getGrowthAgeContext(baby, '2026-08-06', 'postmenstrual')
+  assert.equal(postmenstrual.postmenstrualAgeDays, 285)
+  const errors = validateGrowthMeasurement({ type: 'unknown', value: '0', measuredAt: 'not-a-date', source: 'birth_record' }, { birthDate: '2026-08-02' }, { now: '2026-08-06T10:00:00.000Z' })
+  assert.match(errors.join(' '), /不支持的成长指标/)
+  assert.match(errors.join(' '), /缺少用于选择标准的宝宝性别/)
+  assert.match(validateGrowthMeasurement({ type: 'weight', value: '3.2', measuredAt: '2026-07-31', source: 'birth_record' }, baby, { now: '2026-08-06T10:00:00.000Z' }).join(' '), /早于出生日期/)
+  assert.match(validateGrowthMeasurement({ type: 'weight', value: '3.2', measuredAt: '2026-08-02', source: 'birth_record' }, baby, { now: '2026-08-06T10:00:00.000Z' }).join(' '), /出生日期一致/)
+  assert.match(validateGrowthMeasurement({ type: 'weight', value: '3500', unit: 'g', measuredAt: '2026-08-06', source: 'clinical' }, baby, { now: '2026-08-06T10:00:00.000Z' }).join(' '), /单位必须为 kg/)
+  const lengthAtBirth = evaluateGrowthMeasurement({ id: 'birth-length', type: 'length', value: '50', measuredAt: '2026-08-01', source: 'birth_record' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(lengthAtBirth.dataQuality, 'sufficient')
+  assert.match(lengthAtBirth.limitations.join(' '), /辅助指标/)
+  const outOfRangeBirth = evaluateGrowthMeasurement({ id: 'birth-too-early', type: 'weight', value: '1.8', measuredAt: '2026-08-01', source: 'birth_record' }, { ...baby, gestationalWeeks: 23 }, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(outOfRangeBirth.dataQuality, 'insufficient')
+  assert.match(outOfRangeBirth.limitations.join(' '), /24–42/)
+  const unsupportedAge = evaluateGrowthMeasurement({ id: 'age-25', type: 'weight', value: '12', measuredAt: '2028-09-01', source: 'clinical' }, { ...baby, birthDate: '2026-08-01' }, [], { now: '2028-09-02T10:00:00.000Z' })
+  assert.equal(unsupportedAge.dataQuality, 'insufficient')
+  assert.match(unsupportedAge.limitations.join(' '), /官方标准缺少对应年龄或指标数据/)
+  const previous = createEvaluatedGrowthMeasurement({ id: 'previous', type: 'weight', value: '2.4', measuredAt: '2026-08-01', source: 'clinical' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  const shift = evaluateGrowthMeasurement({ id: 'shift', type: 'weight', value: '4.7', measuredAt: '2026-08-01', source: 'clinical' }, baby, [previous], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(shift.trajectoryStatus, 'shift_needs_review')
+  const verifyPrevious = createEvaluatedGrowthMeasurement({ id: 'verify-previous', type: 'weight', value: '3.2', measuredAt: '2026-08-01', source: 'clinical' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  const verify = evaluateGrowthMeasurement({ id: 'verify', type: 'weight', value: '5', measuredAt: '2026-08-01', source: 'clinical' }, baby, [verifyPrevious], { now: '2026-08-06T10:00:00.000Z' })
+  assert.equal(verify.trajectoryStatus, 'verify_measurement')
+  const postmenstrualEvaluation = evaluateGrowthMeasurement({ id: 'pma', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical', ageBasis: 'postmenstrual' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  assert.match(postmenstrualEvaluation.limitations.join(' '), /经后年龄仅保留/)
+  assert.equal(growthReferenceLabel({ referencePosition: 'p50-p75' }, 'en-US'), 'P50–P75')
+  assert.equal(growthReferenceLabel({}, 'zh-CN'), '暂无参考位置')
+  assert.equal(growthSourceLabel('parent-entered', 'en-US'), 'Caregiver observation')
+  assert.equal(growthTrajectoryLabel('verify_measurement', 'zh-CN'), '请复核这次测量')
 })
 
 test('legacy facts migrate into CareEvent without treating actor as performer', () => {

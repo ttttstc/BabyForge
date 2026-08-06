@@ -11,6 +11,7 @@ import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, bridgeLegacyChanges, mergeCareEvents } from '../domain/careEvents.js'
 import { concernsFromCareEvents } from '../domain/healthSupport.js'
 import { changedCareEvents, flushCareEventOutbox, mergePulledState, pullCareActors, pullCareEvents, enqueueCareEvent } from '../domain/eventSync.js'
+import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -185,7 +186,9 @@ export function App() {
 
   function createBaby(baby) {
     if (readOnly || !session) return
-    commitState((current) => ({ ...current, baby }))
+    const { birthMeasurements = [], ...profile } = baby
+    const measurements = birthMeasurements.map((input) => createEvaluatedGrowthMeasurement(input, profile, []))
+    commitState((current) => ({ ...current, baby: profile, growthMeasurements: [...current.growthMeasurements, ...measurements] }))
     navigate(ROUTES.today)
   }
 

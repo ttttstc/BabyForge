@@ -152,12 +152,14 @@ export function createGrowthMeasurement(input, options = {}) {
   const definition = GROWTH_TYPES.find((item) => item.id === type)
   const now = options.now || new Date().toISOString()
   return {
-    id: options.id || id('growth'),
+    id: input.id || options.id || id('growth'),
     type,
     value: String(input.value ?? '').trim(),
     unit: input.unit || definition.unit,
     measuredAt: input.measuredAt || localDateKey(),
-    source: input.source ? String(input.source).trim() : 'parent-entered',
+    source: input.source ? String(input.source).trim() : 'caregiver_observation',
+    method: input.method ? String(input.method).trim() : null,
+    ageBasis: input.ageBasis || null,
     note: input.note ? String(input.note).trim() : '',
     createdAt: now,
     updatedAt: now,

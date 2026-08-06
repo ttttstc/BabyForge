@@ -3,7 +3,7 @@ import { Maximize2, Minimize2, PanelBottom } from 'lucide-react'
 import { getAgeDays, getStage } from '../domain/baby.js'
 import { createObservation } from '../domain/observation.js'
 import { getAdminTasks, getDailyTasks, updateTaskLog, upsertAdminTaskRecord } from '../domain/carePlan.js'
-import { createGrowthMeasurement } from '../domain/carePlan.js'
+import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement } from '../domain/growth.js'
 import { createCareEvent, createConcern as createConcernRecord } from '../domain/careEvents.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { ROUTES } from '../app/router.js'
@@ -35,8 +35,12 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
   }
 
   function addGrowth(measurement) {
-    const next = measurement?.id ? measurement : createGrowthMeasurement(measurement || {})
-    setState((current) => ({ ...current, growthMeasurements: [...current.growthMeasurements, next] }))
+    setState((current) => {
+      const next = measurement?.id
+        ? { ...measurement, evaluation: evaluateGrowthMeasurement(measurement, current.baby, current.growthMeasurements) }
+        : createEvaluatedGrowthMeasurement(measurement || {}, current.baby, current.growthMeasurements)
+      return { ...current, growthMeasurements: [...current.growthMeasurements, next] }
+    })
   }
 
   function updateAdminTask(taskId, input) {
