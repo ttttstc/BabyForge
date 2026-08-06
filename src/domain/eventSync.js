@@ -77,12 +77,25 @@ export function changedCareEvents(previous = [], next = []) {
   })
 }
 
-export function mergePulledState(state, payload) {
+function mergeRecords(local = [], incoming = []) {
+  const byId = new Map(local.map((item) => [item.id, item]))
+  for (const item of incoming) byId.set(item.id, item)
+  return [...byId.values()]
+}
+
+export function mergePulledState(state, payload, { since = null } = {}) {
+  const incremental = Boolean(since)
   return {
     ...state,
     careEvents: mergeCareEvents(state.careEvents || [], payload?.events || []),
-    carePlanItems: payload?.carePlanItems?.length ? payload.carePlanItems : state.carePlanItems || [],
-    concerns: payload?.concerns?.length ? payload.concerns : state.concerns || [],
+    // A full pull is authoritative even when a collection is empty. An
+    // incremental pull contains only changed rows and must merge by id.
+    carePlanItems: incremental
+      ? mergeRecords(state.carePlanItems || [], payload?.carePlanItems || [])
+      : (Array.isArray(payload?.carePlanItems) ? payload.carePlanItems : []),
+    concerns: incremental
+      ? mergeRecords(state.concerns || [], payload?.concerns || [])
+      : (Array.isArray(payload?.concerns) ? payload.concerns : []),
     syncMeta: { ...(state.syncMeta || {}), status: 'online', lastPulledAt: payload?.pulledAt || new Date().toISOString() },
   }
 }

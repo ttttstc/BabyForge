@@ -19,13 +19,20 @@ export async function onRequestPatch({ request, env, params }) {
   try { body = await request.json() } catch { return json({ error: '请求格式不正确' }, 400) }
   const now = new Date().toISOString()
   const currentEvent = eventFromRow(current)
-  const input = safeEventInput({ ...currentEvent, ...(body?.event || body), id: current.id, babyId: current.baby_id }, {
-    now,
-    recordedById: current.recorded_by_id,
-    recordedByName: current.recorded_by_name,
-  })
+  const patchBody = body?.event || body
+  if (patchBody?.status === 'corrected') return json({ error: '修订状态由服务器在修改时生成，请省略 status' }, 422)
+  let input
+  try {
+    input = safeEventInput({ ...currentEvent, ...patchBody, id: current.id, babyId: current.baby_id }, {
+      now,
+      recordedBy: currentEvent.recordedBy,
+    }, { requireId: true, requireTimestamps: true })
+  } catch (error) {
+    return json({ error: error.message || '事件数据不正确', field: error.field || null }, 422)
+  }
   await saveRevision(env, current, auth.session.accountId, now)
-  const nextStatus = input.status === 'voided' ? 'voided' : (input.status === 'active' ? 'corrected' : input.status)
+  const statusWasProvided = Object.prototype.hasOwnProperty.call(patchBody || {}, 'status')
+  const nextStatus = statusWasProvided ? input.status : 'corrected'
   await env.DB.prepare(`
     UPDATE care_events SET type = ?, occurred_at = ?, recorded_at = ?, recorded_by_id = ?, recorded_by_name = ?, source = ?, payload_json = ?, related_concern_id = ?, updated_at = ?, version = version + 1, status = ?, updated_by = ?
     WHERE id = ?

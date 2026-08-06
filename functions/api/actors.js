@@ -46,6 +46,8 @@ export async function onRequestPost({ request, env }) {
   if (!displayName || displayName.length > 30) return json({ error: '记录人名称不正确' }, 422)
   const requestedId = String(body?.actor?.id || globalThis.crypto?.randomUUID?.() || `recorder-${Date.now()}`)
   const id = requestedId.startsWith(`${baby.householdId}:`) ? requestedId : `${baby.householdId}:${requestedId}`
+  const duplicate = await env.DB.prepare('SELECT id FROM care_actors WHERE household_id = ? AND display_name = ? AND id != ? AND active = 1').bind(baby.householdId, displayName, id).first()
+  if (duplicate) return json({ error: '记录人名称已存在' }, 409)
   const now = new Date().toISOString()
   await env.DB.prepare(`
     INSERT INTO care_actors (id, household_id, display_name, preset_id, active, created_at, updated_at)

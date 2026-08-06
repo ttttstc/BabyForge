@@ -5,6 +5,14 @@ export const EVENT_TYPES = new Set([
 export const EVENT_SOURCES = new Set(['caregiver_entered', 'doctor_entered', 'device_imported'])
 export const EVENT_STATUSES = new Set(['active', 'corrected', 'voided'])
 
+export class EventInputError extends Error {
+  constructor(field, message) {
+    super(message)
+    this.name = 'EventInputError'
+    this.field = field
+  }
+}
+
 export async function accessibleBaby(env, accountId, babyId) {
   return env.DB.prepare(`
     SELECT b.id, b.household_id AS householdId, b.nickname, b.birth_date AS birthDate,
@@ -76,24 +84,36 @@ export function concernFromRow(row) {
   }
 }
 
-export function safeEventInput(input = {}, fallback = {}) {
+export function safeEventInput(input = {}, fallback = {}, options = {}) {
   const event = input?.event || input
+  if (options.requireId && !event?.id) throw new EventInputError('id', '缺少事件 id')
+  if (!EVENT_TYPES.has(event?.type)) throw new EventInputError('type', `不支持的事件类型: ${event?.type || '空值'}`)
+  if (!EVENT_SOURCES.has(event?.source)) throw new EventInputError('source', `不支持的事件来源: ${event?.source || '空值'}`)
+  if (event?.status !== undefined && !EVENT_STATUSES.has(event.status)) throw new EventInputError('status', `不支持的事件状态: ${event.status}`)
   const id = String(event?.id || globalThis.crypto?.randomUUID?.() || `event-${Date.now()}`)
-  const type = EVENT_TYPES.has(event?.type) ? event.type : 'care_action'
-  const source = EVENT_SOURCES.has(event?.source) ? event.source : 'caregiver_entered'
-  const status = EVENT_STATUSES.has(event?.status) ? event.status : 'active'
+  const type = event.type
+  const source = event.source
+  const status = event.status || 'active'
   const recordedBy = event?.recordedBy && event.recordedBy.id && event.recordedBy.displayName
     ? { id: String(event.recordedBy.id), displayName: String(event.recordedBy.displayName) }
-    : { id: String(fallback.recordedById || 'account'), displayName: String(fallback.recordedByName || '记录人') }
+    : fallback.recordedBy?.id && fallback.recordedBy?.displayName
+      ? { id: String(fallback.recordedBy.id), displayName: String(fallback.recordedBy.displayName) }
+      : null
+  if (!recordedBy && options.requireRecordedBy) throw new EventInputError('recordedBy', '必须提供记录人')
+  const occurredAt = event?.occurredAt || fallback.occurredAt || fallback.now
+  const recordedAt = event?.recordedAt || fallback.recordedAt || fallback.now
+  if (options.requireTimestamps && !event?.occurredAt && !fallback.occurredAt) throw new EventInputError('occurredAt', '必须提供发生时间')
+  if (options.requireTimestamps && !event?.recordedAt && !fallback.recordedAt) throw new EventInputError('recordedAt', '必须提供记录时间')
+  if (event?.payload === null || typeof event?.payload !== 'object' || Array.isArray(event.payload)) throw new EventInputError('payload', 'payload 必须是对象')
   return {
     id,
     type,
     source,
     status,
-    occurredAt: event?.occurredAt || fallback.now,
-    recordedAt: event?.recordedAt || fallback.now,
+    occurredAt,
+    recordedAt,
     recordedBy,
-    payload: event?.payload && typeof event.payload === 'object' ? event.payload : {},
+    payload: event.payload,
     relatedConcernId: event?.relatedConcernId || null,
   }
 }

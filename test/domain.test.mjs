@@ -9,8 +9,12 @@ import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
 import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
-import { bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState } from '../src/domain/careEvents.js'
-import { changedCareEvents } from '../src/domain/eventSync.js'
+import { applyCareEventsToLegacy, bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState } from '../src/domain/careEvents.js'
+import { changedCareEvents, mergePulledState } from '../src/domain/eventSync.js'
+import { coalesceOutboxItem } from '../src/domain/localDb.js'
+import { safeEventInput } from '../functions/_shared/care.js'
+import { onRequestPost as onEventPost } from '../functions/api/events.js'
+import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -215,4 +219,57 @@ test('care event merge keeps newer server revision and detects local outbox oper
   assert.equal(mergeCareEvents([local], [remote])[0].payload.value, 'server')
   assert.deepEqual(changedCareEvents([], [local]).map((item) => item.operation), ['create'])
   assert.deepEqual(changedCareEvents([local], [{ ...local, ...remote, status: 'voided' }]).map((item) => item.operation), ['void'])
+})
+
+test('server event input rejects unknown values and missing recorder', () => {
+  assert.throws(() => safeEventInput({ id: 'event-1', type: 'unknown', source: 'caregiver_entered', payload: {} }, { now: '2026-08-05T10:00:00.000Z' }, { requireId: true, requireRecordedBy: true, requireTimestamps: true }), /不支持的事件类型/)
+  assert.throws(() => safeEventInput({ id: 'event-1', type: 'care_action', source: 'caregiver_entered', payload: {} }, { now: '2026-08-05T10:00:00.000Z' }, { requireId: true, requireRecordedBy: true, requireTimestamps: true }), /必须提供记录人/)
+  assert.throws(() => safeEventInput({ id: 'event-1', type: 'care_action', source: 'caregiver_entered', recordedBy: { id: 'nanny', displayName: '月嫂' }, payload: {} }, { now: '2026-08-05T10:00:00.000Z' }, { requireId: true, requireRecordedBy: true, requireTimestamps: true }), /必须提供发生时间/)
+})
+
+test('server revision wins over a future-dated local clock at the same version', () => {
+  const local = createCareEvent({ id: 'event-clock', version: 2, updatedAt: '2099-01-01T00:00:00Z', payload: { value: 'local' } })
+  const remote = { ...local, updatedAt: '2026-08-05T10:00:00Z', payload: { value: 'server' } }
+  assert.equal(mergeCareEvents([local], [remote])[0].payload.value, 'server')
+})
+
+test('legacy event application merges fields and removes voided records', () => {
+  const state = { taskLogs: [{ id: 'task-1', actor: 'nanny', status: 'done' }] }
+  const active = createCareEvent({ id: 'legacy-task-1', status: 'active', payload: { legacyCollection: 'taskLogs', legacyId: 'task-1', record: { id: 'task-1', status: 'pending' } } })
+  const merged = applyCareEventsToLegacy(state, [active])
+  assert.deepEqual(merged.taskLogs, [{ id: 'task-1', actor: 'nanny', status: 'pending' }])
+  const voided = applyCareEventsToLegacy(merged, [{ ...active, status: 'voided' }])
+  assert.deepEqual(voided.taskLogs, [])
+})
+
+test('outbox coalescing keeps create and sends a voided tombstone', () => {
+  const create = coalesceOutboxItem(null, { event: { id: 'event-outbox', status: 'active' }, operation: 'create' }, 'niwa')
+  const patched = coalesceOutboxItem(create, { event: { id: 'event-outbox', status: 'corrected' }, operation: 'patch' }, 'niwa')
+  const voided = coalesceOutboxItem(create, { event: { id: 'event-outbox', status: 'voided' }, operation: 'void' }, 'niwa')
+  assert.equal(patched.operation, 'create')
+  assert.equal(voided.operation, 'create')
+  assert.equal(voided.event.status, 'voided')
+})
+
+test('incremental pulls merge collections while full pulls can clear them', () => {
+  const state = { careEvents: [], carePlanItems: [{ id: 'old-plan' }], concerns: [{ id: 'old-concern' }], syncMeta: {} }
+  const full = mergePulledState(state, { events: [], carePlanItems: [], concerns: [], pulledAt: '2026-08-05T10:00:00Z' })
+  assert.deepEqual(full.carePlanItems, [])
+  assert.deepEqual(full.concerns, [])
+  const incremental = mergePulledState(state, { events: [], carePlanItems: [{ id: 'new-plan' }], concerns: [], pulledAt: '2026-08-05T11:00:00Z' }, { since: '2026-08-05T10:00:00Z' })
+  assert.deepEqual(incremental.carePlanItems.map((item) => item.id), ['old-plan', 'new-plan'])
+  assert.deepEqual(incremental.concerns.map((item) => item.id), ['old-concern'])
+})
+
+test('guest sessions are denied by every event write endpoint', async () => {
+  const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
+  const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) } }
+  const request = (method, body) => new Request('https://babyforge.test/api/events/event-1', {
+    method,
+    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  assert.equal((await onEventPost({ request: request('POST', {}), env })).status, 403)
+  assert.equal((await onEventPatch({ request: request('PATCH', {}), env, params: { id: 'event-1' } })).status, 403)
+  assert.equal((await onEventDelete({ request: request('DELETE'), env, params: { id: 'event-1' } })).status, 403)
 })

@@ -72,3 +72,4 @@ CREATE INDEX IF NOT EXISTS idx_care_event_revisions_event ON care_event_revision
 CREATE INDEX IF NOT EXISTS idx_care_plan_items_baby_updated ON care_plan_items(baby_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_concerns_baby_updated ON concerns(baby_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_care_actors_household ON care_actors(household_id, active);
+CREATE INDEX IF NOT EXISTS idx_baby_profiles_status ON baby_profiles(status);

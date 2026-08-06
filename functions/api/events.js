@@ -38,12 +38,15 @@ export async function onRequestGet({ request, env }) {
   const baby = await accessibleBaby(env, auth.session.accountId, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const since = url.searchParams.get('since') || null
+  // Capture the watermark before querying. Writes that happen while the three
+  // reads are in flight must be returned by the next incremental pull.
+  const pulledAt = new Date().toISOString()
   const [events, carePlanItems, concerns] = await Promise.all([
     loadEvents(env, baby.id, since),
     loadPlans(env, baby.id, since),
     loadConcerns(env, baby.id, since),
   ])
-  return json({ events, carePlanItems, concerns, pulledAt: new Date().toISOString() })
+  return json({ events, carePlanItems, concerns, pulledAt })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -59,7 +62,12 @@ export async function onRequestPost({ request, env }) {
   const baby = await accessibleBaby(env, auth.session.accountId, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const now = new Date().toISOString()
-  const event = safeEventInput(eventInput, { now, recordedById: auth.session.accountId, recordedByName: auth.session.displayName })
+  let event
+  try {
+    event = safeEventInput(eventInput, { now }, { requireId: true, requireRecordedBy: true, requireTimestamps: true })
+  } catch (error) {
+    return json({ error: error.message || '事件数据不正确', field: error.field || null }, 422)
+  }
   const existing = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(event.id).first()
   if (existing && existing.baby_id !== baby.id) return json({ error: '事件编号已被其他档案使用' }, 422)
   if (!existing) {
@@ -67,6 +75,29 @@ export async function onRequestPost({ request, env }) {
       INSERT INTO care_events (id, baby_id, type, occurred_at, recorded_at, recorded_by_id, recorded_by_name, source, payload_json, related_concern_id, created_at, updated_at, version, status, updated_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     `).bind(event.id, baby.id, event.type, event.occurredAt, event.recordedAt, event.recordedBy.id, event.recordedBy.displayName, event.source, JSON.stringify(event.payload), event.relatedConcernId, now, now, event.status, auth.session.accountId).run()
+  } else {
+    // Event IDs are idempotent within a baby. A differing same-baby payload is
+    // the latest submission under the product's last-write-wins rule.
+    const currentEvent = eventFromRow(existing)
+    const changed = currentEvent.type !== event.type
+      || currentEvent.occurredAt !== event.occurredAt
+      || currentEvent.recordedAt !== event.recordedAt
+      || currentEvent.recordedBy?.id !== event.recordedBy?.id
+      || currentEvent.recordedBy?.displayName !== event.recordedBy?.displayName
+      || currentEvent.source !== event.source
+      || currentEvent.status !== event.status
+      || currentEvent.relatedConcernId !== event.relatedConcernId
+      || JSON.stringify(currentEvent.payload) !== JSON.stringify(event.payload)
+    if (changed) {
+      await env.DB.prepare(`
+        INSERT OR IGNORE INTO care_event_revisions (id, event_id, version, snapshot_json, changed_at, changed_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(`${existing.id}:v${existing.version}`, existing.id, Number(existing.version) || 1, JSON.stringify(currentEvent), now, auth.session.accountId).run()
+      await env.DB.prepare(`
+        UPDATE care_events SET type = ?, occurred_at = ?, recorded_at = ?, recorded_by_id = ?, recorded_by_name = ?, source = ?, payload_json = ?, related_concern_id = ?, updated_at = ?, version = version + 1, status = ?, updated_by = ?
+        WHERE id = ?
+      `).bind(event.type, event.occurredAt, event.recordedAt, event.recordedBy.id, event.recordedBy.displayName, event.source, JSON.stringify(event.payload), event.relatedConcernId, now, event.status, auth.session.accountId, existing.id).run()
+    }
   }
   const row = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(event.id).first()
   return json({ event: eventFromRow(row) }, existing ? 200 : 201)

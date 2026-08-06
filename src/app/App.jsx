@@ -31,21 +31,42 @@ export function App() {
     sessionRef.current = session
   }, [session])
 
+  function updateSyncMeta(patch) {
+    const current = stateRef.current
+    const next = { ...current, syncMeta: { ...(current.syncMeta || {}), ...patch } }
+    stateRef.current = next
+    saveState(globalThis.localStorage, next, sessionRef.current?.username)
+    setState(next)
+    return next
+  }
+
   function commitState(updater) {
     if (readOnly) return
     const previous = stateRef.current
     const rawNext = typeof updater === 'function' ? updater(previous) : updater
     const next = bridgeLegacyChanges(previous, rawNext, { babyId: rawNext.baby?.id })
     const eventChanges = changedCareEvents(previous.careEvents || [], next.careEvents || [])
+    const nonEventWorkspaceChanged = JSON.stringify(previous.baby || null) !== JSON.stringify(next.baby || null)
+      || JSON.stringify(previous.questions || []) !== JSON.stringify(next.questions || [])
     stateRef.current = next
     saveState(globalThis.localStorage, next, session?.username)
     setState(next)
     if (session?.mode === 'cloudflare' && next.baby) {
       outboxSyncRef.current = outboxSyncRef.current
-        .catch(() => {})
         .then(async () => {
-          await Promise.all(eventChanges.map((change) => enqueueCareEvent(change.event, change.operation, session.username)))
-          await flushCareEventOutbox(session.username)
+          const eventSync = (async () => {
+            await Promise.all(eventChanges.map((change) => enqueueCareEvent(change.event, change.operation, session.username)))
+            const result = await flushCareEventOutbox(session.username)
+            updateSyncMeta({ status: result.pending ? 'offline' : 'online' })
+            return result
+          })()
+          const workspaceSync = nonEventWorkspaceChanged ? pushWorkspace(stateRef.current) : Promise.resolve(null)
+          const [result] = await Promise.all([eventSync, workspaceSync])
+          return result
+        })
+        .catch((error) => {
+          updateSyncMeta({ status: 'offline' })
+          console.warn('云端同步失败，将在下次同步时重试', error)
         })
     }
   }
@@ -56,15 +77,17 @@ export function App() {
     try {
       let current = stateRef.current
       const canWriteRemote = canEdit(sessionRef.current)
+      let queuedLegacyEvents = false
       if (canWriteRemote && !current.syncMeta?.legacyEventsQueued) {
         for (const event of (current.careEvents || []).filter((item) => item.legacyKey)) {
           await enqueueCareEvent(event, 'create', owner)
         }
-        current = { ...current, syncMeta: { ...(current.syncMeta || {}), legacyEventsQueued: true } }
+        queuedLegacyEvents = true
         stateRef.current = current
       }
-      const payload = await pullCareEvents(babyId, current.syncMeta?.lastPulledAt)
-      let next = mergePulledState(current, payload)
+      const since = current.syncMeta?.lastPulledAt || null
+      const payload = await pullCareEvents(babyId, since)
+      let next = mergePulledState(current, payload, { since })
       next = { ...next, careEvents: mergeCareEvents(current.careEvents || [], payload.events || []) }
       next = applyCareEventsToLegacy(next, next.careEvents)
       try {
@@ -76,10 +99,20 @@ export function App() {
       } catch {
         // Actor sync is best effort; event sync remains useful without it.
       }
+      if (canWriteRemote) {
+        const result = await flushCareEventOutbox(owner)
+        next = {
+          ...next,
+          syncMeta: {
+            ...(next.syncMeta || {}),
+            status: result.pending ? 'offline' : 'online',
+            ...(queuedLegacyEvents && result.pending === 0 ? { legacyEventsQueued: true } : {}),
+          },
+        }
+      }
       stateRef.current = next
       saveState(globalThis.localStorage, next, owner)
       setState(next)
-      if (canWriteRemote) await flushCareEventOutbox(owner)
     } catch {
       stateRef.current = { ...stateRef.current, syncMeta: { ...(stateRef.current.syncMeta || {}), status: 'offline' } }
       saveState(globalThis.localStorage, stateRef.current, owner)
@@ -148,7 +181,6 @@ export function App() {
   function createBaby(baby) {
     if (readOnly || !session) return
     commitState((current) => ({ ...current, baby }))
-    if (session.mode === 'cloudflare') void pushWorkspace({ ...stateRef.current, baby }).catch(() => {})
     navigate(ROUTES.today)
   }
 

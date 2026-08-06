@@ -17,6 +17,18 @@ function queueKey(owner, eventId) {
   return `${normalizeOwner(owner)}:${eventId}`
 }
 
+export function coalesceOutboxItem(existing, item, owner) {
+  // A create followed by patch/void stays a create so the server receives one
+  // complete event. A create+void intentionally sends a voided tombstone.
+  const operation = existing?.operation === 'create' && item.operation !== 'create' ? 'create' : item.operation
+  return {
+    ...item,
+    operation,
+    owner: normalizeOwner(owner),
+    queuedAt: existing?.queuedAt || item.queuedAt || new Date().toISOString(),
+  }
+}
+
 function openDatabase() {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null)
   return new Promise((resolve, reject) => {
@@ -63,10 +75,7 @@ export async function enqueueOutbox(item, owner) {
     const existingRequest = store.get(key)
     existingRequest.onsuccess = () => {
       const existing = existingRequest.result
-      // Coalesce offline edits without losing a pending create. A PATCH for
-      // an event that never reached D1 would otherwise remain stuck forever.
-      const operation = existing?.operation === 'create' && item.operation !== 'create' ? 'create' : item.operation
-      store.put({ ...item, operation, owner: normalizeOwner(owner), queuedAt: existing?.queuedAt || item.queuedAt || new Date().toISOString() }, key)
+      store.put(coalesceOutboxItem(existing, item, owner), key)
     }
     transaction.oncomplete = () => { db.close(); resolve() }
     transaction.onerror = () => { db.close(); reject(transaction.error) }

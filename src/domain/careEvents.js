@@ -130,6 +130,8 @@ function legacyEvent(collection, record, index, options = {}) {
 }
 
 function eventPayloadChanged(previous, next) {
+  // recordedBy is intentionally excluded: changing the selected recorder must
+  // not rewrite a historical fact. It is a snapshot of who entered the event.
   return JSON.stringify(previous?.payload) !== JSON.stringify(next?.payload)
     || previous?.occurredAt !== next?.occurredAt
 }
@@ -147,7 +149,8 @@ const LEGACY_COLLECTIONS = ['observations', 'taskLogs', 'growthMeasurements', 'a
 export function legacyEventsFromState(state = {}, options = {}) {
   const recordedBy = recorderForState(state, options)
   const events = []
-  for (const collection of LEGACY_COLLECTIONS) {
+  const collections = Array.isArray(options.legacyCollections) ? options.legacyCollections : LEGACY_COLLECTIONS
+  for (const collection of collections) {
     const values = Array.isArray(state[collection]) ? state[collection] : []
     values.forEach((record, index) => events.push(legacyEvent(collection, record, index, {
       ...options,
@@ -192,10 +195,13 @@ export function migrateLegacyState(state = {}, options = {}) {
 }
 
 export function bridgeLegacyChanges(previous = {}, next = {}, options = {}) {
-  const migrated = migrateLegacyState(next, options)
+  const migrated = migrateLegacyState(next, { ...options, legacyCollections: [] })
   const previousEvents = new Map((Array.isArray(previous.careEvents) ? previous.careEvents : []).map((event) => [event.id, event]))
   const events = new Map((Array.isArray(migrated.careEvents) ? migrated.careEvents : []).map((event) => [event.id, event]))
-  for (const generated of legacyEventsFromState(migrated, options)) {
+  const collections = !Array.isArray(previous.careEvents) || previous.careEvents.length === 0
+    ? LEGACY_COLLECTIONS
+    : LEGACY_COLLECTIONS.filter((collection) => JSON.stringify(previous[collection] || []) !== JSON.stringify(next[collection] || []))
+  for (const generated of legacyEventsFromState(migrated, { ...options, legacyCollections: collections })) {
     const prior = previousEvents.get(generated.id) || events.get(generated.id)
     if (!prior) {
       events.set(generated.id, generated)
@@ -220,7 +226,11 @@ export function mergeCareEvents(local = [], remote = []) {
   const byId = new Map(local.map((event) => [event.id, event]))
   for (const incoming of remote) {
     const current = byId.get(incoming.id)
-    if (!current || new Date(incoming.updatedAt || 0).getTime() >= new Date(current.updatedAt || 0).getTime()) {
+    const incomingVersion = Number(incoming.version) || 1
+    const currentVersion = Number(current?.version) || 0
+    // Server versions are authoritative. Equal versions are accepted too so a
+    // remote row can replace an optimistic local row with a skewed clock.
+    if (!current || incomingVersion >= currentVersion) {
       byId.set(incoming.id, createCareEvent(incoming))
     }
   }
@@ -234,7 +244,7 @@ export function applyCareEventsToLegacy(state = {}, events = []) {
   for (const event of events) {
     const legacy = event?.payload?.legacyCollection
     const record = event?.payload?.record
-    if (!collections.includes(legacy) || !record || event.status === 'voided') continue
+    if (!collections.includes(legacy) || !record) continue
     const list = next[legacy]
     const index = legacy === 'taskLogs'
       ? list.findIndex((item) => item.id === record.id || (item.taskId === record.taskId && item.date === record.date))
@@ -243,6 +253,10 @@ export function applyCareEventsToLegacy(state = {}, events = []) {
         : legacy === 'milestoneRecords'
           ? list.findIndex((item) => item.id === record.id || item.milestoneId === record.milestoneId)
           : list.findIndex((item) => item.id === record.id)
+    if (event.status === 'voided') {
+      if (index !== -1) next[legacy] = list.filter((_, itemIndex) => itemIndex !== index)
+      continue
+    }
     if (index === -1) next[legacy] = [...list, record]
     else next[legacy] = list.map((item, itemIndex) => itemIndex === index ? { ...item, ...record } : item)
   }
