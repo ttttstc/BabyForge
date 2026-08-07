@@ -231,7 +231,7 @@ export function validateCareRecordInput(input = {}) {
   if (category === 'medication' && !String(payload.medicationName || payload.name || '').trim()) errors.push({ field: 'payload.medicationName', message: '用药必须提供药品名称' })
   if (category === 'temperature') {
     numberError('value', '体温数值必须是数字')
-    if (payload.value === '' || payload.value === null || payload.value === undefined) errors.push({ field: 'category', message: '没有数值时应保存为体温观察' })
+    if (payload.value === '' || payload.value === null || payload.value === undefined) errors.push({ field: 'payload.value', message: '没有数值时应保存为体温观察' })
     if (!String(payload.unit || '').trim()) errors.push({ field: 'payload.unit', message: '体温必须提供单位' })
     if (!String(payload.method || '').trim()) errors.push({ field: 'payload.method', message: '体温必须提供测量部位或方法' })
   }

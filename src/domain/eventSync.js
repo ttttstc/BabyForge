@@ -92,6 +92,21 @@ export function changedCareEvents(previous = [], next = []) {
   })
 }
 
+export function rollbackCareEventChanges(previous = [], current = [], changes = []) {
+  const affectedIds = new Set()
+  for (const change of changes) {
+    const event = change?.event
+    if (event?.id) affectedIds.add(event.id)
+    if (event?.correctedFromId) affectedIds.add(event.correctedFromId)
+  }
+  if (!affectedIds.size) return current
+  const previousById = new Map(previous.map((event) => [event.id, event]))
+  return [
+    ...current.filter((event) => !affectedIds.has(event.id)),
+    ...[...affectedIds].map((id) => previousById.get(id)).filter(Boolean),
+  ]
+}
+
 function mergeRecords(local = [], incoming = [], normalize = (item) => item) {
   const byId = new Map(local.map((item) => [item.id, item]))
   for (const item of incoming) {

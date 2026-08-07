@@ -53,7 +53,11 @@ export function localDayKey(value = new Date()) {
 }
 
 function localDayBounds(day = localDayKey()) {
-  const start = new Date(`${day}T00:00:00`)
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day))
+  if (!match) return localDayBounds(localDayKey())
+  const start = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  if (start.getFullYear() !== Number(match[1]) || start.getMonth() !== Number(match[2]) - 1 || start.getDate() !== Number(match[3])) return localDayBounds(localDayKey())
+  start.setHours(0, 0, 0, 0)
   const end = new Date(start)
   end.setDate(end.getDate() + 1)
   return { start: start.getTime(), end: end.getTime() }
@@ -109,6 +113,8 @@ export function getDailyCareSummary(events = [], day = localDayKey()) {
   const sleep = daily.filter((event) => categoryOf(event) === 'sleep')
   const diapers = daily.filter((event) => categoryOf(event) === 'diaper')
   const medication = daily.filter((event) => categoryOf(event) === 'medication')
+  const temperature = daily.filter((event) => ['temperature', 'temperature_observation'].includes(categoryOf(event)))
+  const growth = daily.filter((event) => categoryOf(event) === 'growth_measurement' && ['weight', 'length'].includes(event.payload?.type))
   const wet = diapers.filter((event) => ['urine', 'both'].includes(event.payload?.kind)).length
   const stool = diapers.filter((event) => ['stool', 'both'].includes(event.payload?.kind)).length
   const bottleMl = bottle.reduce((sum, event) => sum + (Number(event.payload?.amountMl) || 0), 0)
@@ -140,6 +146,16 @@ export function getDailyCareSummary(events = [], day = localDayKey()) {
     medication: {
       count: medication.length,
       latest: latestEvent(medication),
+    },
+    temperature: {
+      count: temperature.length,
+      latest: latestEvent(temperature),
+    },
+    growth: {
+      count: growth.length,
+      weightCount: growth.filter((event) => event.payload?.type === 'weight').length,
+      lengthCount: growth.filter((event) => event.payload?.type === 'length').length,
+      latest: latestEvent(growth),
     },
   }
 }

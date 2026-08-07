@@ -167,6 +167,8 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
     return operation.then((result) => {
       if (result !== false) {
         closePanel()
+        setSelectedDay(localDayKey())
+        setTimelineFilter('')
         const query = new URLSearchParams(window.location.hash.split('?')[1] || '')
         if (query.get('return') === 'today') navigate(ROUTES.today)
       }
@@ -192,7 +194,10 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
     return commitWithFeedback((current) => ({
       ...current,
       careEvents: (current.careEvents || []).map((item) => item.id === event.id ? voidCareEvent(item) : item),
-    }), isEnglish ? 'Fact voided' : '事实已作废').catch(() => false)
+    }), isEnglish ? 'Fact voided' : '事实已作废').then((result) => result !== false).catch((error) => {
+      setEntryError(error?.message || (isEnglish ? 'Could not void. Retry.' : '作废失败，请重试。'))
+      return false
+    })
   }
 
   function editRecord(event) {
@@ -321,7 +326,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
           <div className="record-card-grid">{RECORD_CARDS.map((card) => <RecordCard key={card.id} card={card} active={activePanel === card.id} onClick={() => openPanel(card.id)} meta={cardMeta(card.id, state, snapshot, locale, dailySummary)} />)}</div>
         </section>
 
-        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} onSave={saveP0Record} onCancel={closePanel} />}
+        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} growthAgeBasis={state.baby.growthAgeBasis || 'chronological'} onSave={saveP0Record} onCancel={closePanel} />}
 
         {activePanel && !P0_PANEL_TYPES.has(activePanel) && <section className="record-entry-sheet" data-testid={`record-entry-${activePanel}`}>
           <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Light entry' : '低负荷记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={() => setActivePanel(null)} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>
@@ -382,8 +387,8 @@ function cardMeta(id, state, snapshot, locale, dailySummary) {
   if (id === 'diaper') return `${dailySummary?.diaper.totalCount || 0} ${isEnglish ? 'on selected day' : '所选日期'}`
   if (id === 'illness') return `${snapshot.current.known.filter((fact) => fact.dimension === 'illness').length || 0} ${isEnglish ? 'current observations' : '条当前观察'}`
   if (id === 'medication') return `${dailySummary?.medication.count || 0} ${isEnglish ? 'on selected day' : '所选日期'}`
-  if (id === 'temperature') return `${state.careEvents.filter((event) => ['temperature', 'temperature_observation'].includes(event.category) && event.status === 'active').length || 0} ${isEnglish ? 'raw records' : '条原始记录'}`
-  if (id === 'growth') return `${state.careEvents.filter((event) => event.category === 'growth_measurement' && event.status === 'active' && ['weight', 'length'].includes(event.payload?.type)).length || 0} ${isEnglish ? 'weight / length facts' : '条体重 / 身长事实'}`
+  if (id === 'temperature') return `${dailySummary?.temperature.count || 0} ${isEnglish ? 'on selected day' : '所选日期'}`
+  if (id === 'growth') return `${dailySummary?.growth.count || 0} ${isEnglish ? 'on selected day' : '所选日期'}`
   return ''
 }
 

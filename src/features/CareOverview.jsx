@@ -1,5 +1,5 @@
 import { Activity, AlertCircle, Baby, Clock3, Droplets, Moon, Pill } from 'lucide-react'
-import { eventFacts, eventTitle, formatDurationMinutes, formatEventTime, getCareSnapshot, getDailyCareSummary, getRecentCareEvents, localDayKey } from '../domain/careSummary.js'
+import { eventFacts, eventTitle, formatDurationMinutes, formatEventTime, getDailyCareSummary, getRecentCareEvents, localDayKey } from '../domain/careSummary.js'
 import { projectBabyState } from '../domain/babyState.js'
 import { navigate, ROUTES } from '../app/router.js'
 
@@ -12,7 +12,6 @@ export function CareOverview({ baby = null, careEvents = [], concerns = [], loca
   // BabyStateSnapshot is the canonical source for current metrics, changes,
   // conflicts, and concerns. careSummary is kept only for the presentation
   // timeline and its human-readable last-event labels.
-  const timelineSnapshot = getCareSnapshot(careEvents, concerns)
   const stateSnapshot = projectBabyState({ baby, events: careEvents, concerns })
   const recent = getRecentCareEvents(careEvents, 6)
   const daily = getDailyCareSummary(careEvents, localDayKey())
@@ -25,8 +24,8 @@ export function CareOverview({ baby = null, careEvents = [], concerns = [], loca
       <Metric type="diaper" icon={Droplets} label={isEnglish ? 'Diapers · today' : '尿布 · 今天'} value={daily.diaper.totalCount || '—'} detail={`${daily.diaper.wetCount} ${isEnglish ? 'wet' : '尿'} · ${daily.diaper.stoolCount} ${isEnglish ? 'stool' : '便'}`} />
       <Metric type="medication" icon={Pill} label={isEnglish ? 'Medication · today' : '用药 · 今天'} value={daily.medication.count || '—'} />
     </div>
-    <div className="care-overview-last"><span>{isEnglish ? 'Last feed' : '最近喂养'}</span><strong>{eventTitle(timelineSnapshot.lastFeeding, locale)}</strong><small>{formatEventTime(timelineSnapshot.lastFeeding, locale)}</small></div>
-    <div className="care-overview-last"><span>{isEnglish ? 'Last diaper' : '最近尿便'}</span><strong>{eventTitle(timelineSnapshot.lastDiaper, locale)}</strong><small>{formatEventTime(timelineSnapshot.lastDiaper, locale)}</small></div>
+    <div className="care-overview-last"><span>{isEnglish ? 'Last feed · today' : '今天最后喂养'}</span><strong>{eventTitle(daily.feeding.latest, locale)}</strong><small>{formatEventTime(daily.feeding.latest, locale)}</small></div>
+    <div className="care-overview-last"><span>{isEnglish ? 'Last diaper · today' : '今天最后尿便'}</span><strong>{eventTitle(daily.diaper.latest, locale)}</strong><small>{formatEventTime(daily.diaper.latest, locale)}</small></div>
     {openConcerns.length > 0 && <div className="care-overview-concerns"><strong><AlertCircle size={14} />{isEnglish ? 'Follow-up in progress' : '正在跟进'}</strong>{openConcerns.slice(0, 2).map((concern) => <p key={concern.id}>{text(concern.title, locale)}</p>)}</div>}
     <CareStateSummary snapshot={stateSnapshot} isEnglish={isEnglish} />
     <div className="care-timeline"><div className="inspector-section-title"><Clock3 size={16} /><span>{isEnglish ? 'Recent facts · view only' : '最近事实 · 仅查看'}</span></div>{recent.length === 0 ? <p className="care-empty">{isEnglish ? 'Saved facts will appear here.' : '已保存的事实会出现在这里。'}</p> : recent.map((event) => <article key={event.id} className="care-timeline-item"><span className="care-timeline-dot" /><div><strong>{eventTitle(event, locale)}</strong><small>{formatEventTime(event, locale)} · {eventFacts(event, locale)}</small></div></article>)}</div>

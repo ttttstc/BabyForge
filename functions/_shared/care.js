@@ -112,6 +112,8 @@ export function legacySourceForEvent(source) {
 }
 
 function validateCareRecordPayload(category, payload, occurredAt) {
+  // Keep this server-side mirror aligned with validateCareRecordInput in
+  // src/domain/careEvents.js; the Functions bundle cannot import the client module.
   if (!P0_CATEGORIES.has(category)) return
   const fail = (field, message) => { throw new EventInputError(field, message) }
   const time = new Date(occurredAt || '')

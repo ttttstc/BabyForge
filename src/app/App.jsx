@@ -10,7 +10,7 @@ import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
-import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
+import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
@@ -72,14 +72,10 @@ export function App() {
       // successful in the local timeline. The entry form remains mounted and
       // keeps its input for an explicit retry.
       if (eventChanges.length) {
-        const changedIds = new Set(eventChanges.map((change) => change.event.id))
-        const previousById = new Map((previous.careEvents || []).map((event) => [event.id, event]))
         const currentEvents = stateRef.current.careEvents || []
-        const restored = [
-          ...currentEvents.filter((event) => !changedIds.has(event.id)),
-          ...[...changedIds].map((id) => previousById.get(id)).filter(Boolean),
-        ]
+        const restored = rollbackCareEventChanges(previous.careEvents || [], currentEvents, eventChanges)
         const rolledBack = applyCareEventsToLegacy({ ...stateRef.current, careEvents: restored }, restored)
+        const changedIds = new Set(eventChanges.flatMap((change) => [change.event.id, change.event.correctedFromId].filter(Boolean)))
         pendingSyncRef.current = pendingSyncRef.current.filter((item) => !changedIds.has(item.event.id))
         stateRef.current = rolledBack
         saveState(globalThis.localStorage, rolledBack, session?.username)

@@ -19,7 +19,7 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
           <h2>{stageLabel}</h2>
           <p>{stageRange}</p>
         </div>
-        <CareOverview baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} readOnly={readOnly} />
+        <CareOverview baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} />
         <RecordsLink locale={locale} />
         <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
         <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={onAdminTaskUpdate} readOnly={readOnly} />

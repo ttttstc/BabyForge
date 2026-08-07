@@ -11,7 +11,7 @@ import {
   validateCareEvent,
   voidCareEvent,
 } from '../src/domain/careEvents.js'
-import { changedCareEvents, sendCareEvent } from '../src/domain/eventSync.js'
+import { changedCareEvents, rollbackCareEventChanges, sendCareEvent } from '../src/domain/eventSync.js'
 import { eventFromRow, safeEventInput } from '../functions/_shared/care.js'
 import { onRequestDelete, onRequestPatch } from '../functions/api/events/[id].js'
 import { eventCategoryLabel, eventKindLabel } from '../src/domain/careSummary.js'
@@ -82,6 +82,17 @@ test('canonical projections keep the latest action state and correction sends on
   assert.equal(correction[0].expectedVersion, 3)
 })
 
+test('failed correction rollback restores the original active event', () => {
+  const original = createCareEvent({ id: 'original', babyId: 'baby-1', category: 'language', version: 3, payload: { note: 'old' }, status: 'active' })
+  const correctedState = correctCareEvent([original], original.id, { payload: { note: 'new' } }, { now: '2026-08-06T10:00:00Z' })
+  const changes = changedCareEvents([original], correctedState)
+  const restored = rollbackCareEventChanges([original], correctedState, changes)
+  assert.equal(restored.length, 1)
+  assert.equal(restored[0].id, original.id)
+  assert.equal(restored[0].status, 'active')
+  assert.equal(restored[0].version, 3)
+})
+
 test('event transport maps all write operations and preserves API errors', async () => {
   const calls = []
   const fetchImpl = async (path, options) => {
@@ -120,6 +131,7 @@ test('server validates the six P0 record payloads without narrowing legacy categ
   assert.throws(() => safeEventInput({ ...base, category: 'bottle_feeding', payload: { milkType: 'formula' } }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /实际摄入量/)
   assert.throws(() => safeEventInput({ ...base, category: 'sleep', payload: { endedAt: '2026-08-07T07:00:00Z' } }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /结束时间必须晚于开始时间/)
   assert.throws(() => safeEventInput({ ...base, category: 'temperature', kind: 'measurement', payload: { value: 36.5, unit: '°C' } }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /测量部位或方法/)
+  assert.throws(() => safeEventInput({ ...base, category: 'temperature', kind: 'measurement', payload: { value: '', unit: '°C', method: 'axillary' } }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /体温观察/)
   assert.equal(safeEventInput({ ...base, category: 'temperature_observation' }, {}, { requireId: true, requireActor: true, requireTimestamps: true }).category, 'temperature_observation')
   assert.equal(safeEventInput({ ...base, category: 'language' }, {}, { requireId: true, requireActor: true, requireTimestamps: true }).category, 'language')
 })
