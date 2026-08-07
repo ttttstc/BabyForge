@@ -16,7 +16,7 @@ const COPY = {
   [LOCALES.zh]: {
     appName: 'BabyForge',
     workspaceSubtitle: '宝宝成长工作台',
-    nav: { today: '今天', records: '记录', stage: '阶段', pediatric: '常见儿科病', summary: '就医摘要', settings: '设置' },
+    nav: { today: '今天', records: '记录', stage: '阶段', pediatric: '常见儿科病', naibaAi: '奶爸AI', summary: '就医摘要', settings: '设置' },
     profile: (sex, days) => `${sex} · 出生后 ${days} 天`,
     researchPrototype: '0–28 天照护',
     clearLocalData: '清除本地数据',
@@ -70,7 +70,7 @@ const COPY = {
   [LOCALES.en]: {
     appName: 'BabyForge',
     workspaceSubtitle: 'Baby growth workspace',
-    nav: { today: 'Today', records: 'Records', stage: 'Stage', pediatric: 'Pediatric', summary: 'Care summary', settings: 'Settings' },
+    nav: { today: 'Today', records: 'Records', stage: 'Stage', pediatric: 'Pediatric', naibaAi: 'Naiba AI', summary: 'Care summary', settings: 'Settings' },
     profile: (sex, days) => `${sex} · day ${days}`,
     researchPrototype: 'Days 0–28 care',
     clearLocalData: 'Clear local data',

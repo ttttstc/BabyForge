@@ -75,7 +75,10 @@ function validateBasicInfoForm(form, isEnglish) {
 export function RecordCenter({ state, commitState, onClear, onLogout, readOnly = false, role = 'admin' }) {
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
-  const [activePanel, setActivePanel] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('panel') === 'illness' ? 'illness' : null)
+  const [activePanel, setActivePanel] = useState(() => {
+    const panel = new URLSearchParams(window.location.hash.split('?')[1] || '').get('panel')
+    return ['illness', 'feeding'].includes(panel) ? panel : null
+  })
   const [toast, setToast] = useState('')
   const [entryError, setEntryError] = useState('')
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
