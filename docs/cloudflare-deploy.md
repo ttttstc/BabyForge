@@ -54,4 +54,24 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 4. 管理员首次登录并建立宝宝档案后，再用游客账号验证只读权限。
 5. 确认 `POST /api/sync` 和 `POST /api/photos` 对游客返回 `403`，已授权且未 detached 的家庭成员才能读取 `/api/photos/:id`。
 6. 确认 `POST /api/events`、`PATCH /api/events/:id`、`DELETE /api/events/:id` 对游客返回 `403`，修改携带过期 `version` 时返回 `409`，纠正和作废仍保留原始事件。
+
+## 奶爸 AI 模型配置
+
+在 Cloudflare Pages 项目的 Settings → Variables and Secrets 中配置：
+
+- `OPENAI_API_KEY`：加密 Secret，只供 Pages Functions 使用。
+- `OPENAI_BASE_URL`：可选，自有或兼容 OpenAI 协议服务的 Base URL。
+- `OPENAI_MODEL`：可选，模型 ID；默认 `gpt-4o-mini`。
+- `OPENAI_USE_RESPONSES`：可选。兼容服务只支持 `/chat/completions` 时设为 `false`；未设置时使用 Agents SDK 默认 Responses 行为。
+
+本地 Pages Functions 联调可在 `wrangler.jsonc` 同目录创建未提交的 `.dev.vars`：
+
+```dotenv
+OPENAI_API_KEY="replace-me"
+OPENAI_BASE_URL="https://your-provider.example/v1"
+OPENAI_MODEL="your-model-id"
+OPENAI_USE_RESPONSES="false"
+```
+
+然后运行 `npx wrangler pages dev dist`。不要把 `.dev.vars` 或 API Key 提交到 Git。
 7. 如使用自定义域名，在 Cloudflare 控制台完成域名绑定后再分享链接。

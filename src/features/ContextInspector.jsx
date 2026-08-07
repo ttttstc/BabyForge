@@ -9,8 +9,11 @@ import { AdminTaskList } from './AdminTaskList.jsx'
 import { CareOverview } from './CareOverview.jsx'
 import { ConcernSupport } from './ConcernSupport.jsx'
 import { QuickRecordPanel } from './QuickRecordPanel.jsx'
+import { TodayFeedingRecommendation } from './TodayFeedingRecommendation.jsx'
+import { TodayAiAnalysis } from './TodayAiAnalysis.jsx'
+import { TodayGrowthPlan } from './TodayGrowthPlan.jsx'
 
-export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, baby = null, careEvents = [], concerns = [], onQuickRecord, onDeleteQuickRecord, onCreateConcern, onResolveConcern, locale = 'zh-CN', readOnly = false }) {
+export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, baby = null, careEvents = [], concerns = [], carePlanItems = [], onQuickRecord, onDeleteQuickRecord, onCreateConcern, onResolveConcern, locale = 'zh-CN', readOnly = false }) {
   const [concernOpen, setConcernOpen] = useState(false)
   const stageLabel = getStageLabel(stage, locale)
   const stageRange = getStageRangeLabel(stage, locale)
@@ -22,6 +25,9 @@ export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, a
           <h2>{stageLabel}</h2>
           <p>{stageRange}</p>
         </div>
+        <TodayFeedingRecommendation baby={baby} careEvents={careEvents} locale={locale} />
+        <TodayAiAnalysis baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} />
+        <TodayGrowthPlan baby={baby} careEvents={careEvents} concerns={concerns} carePlanItems={carePlanItems} locale={locale} />
         <CareOverview baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} onDeleteQuickRecord={onDeleteQuickRecord} readOnly={readOnly} />
         <QuickRecordPanel baby={baby} locale={locale} onRecord={onQuickRecord} onConcern={() => setConcernOpen(true)} readOnly={readOnly} />
         <ConcernSupport open={concernOpen} onOpenChange={setConcernOpen} locale={locale} concerns={concerns} onCreate={onCreateConcern} onResolve={onResolveConcern} readOnly={readOnly} />

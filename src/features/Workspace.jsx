@@ -108,6 +108,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
           adminTasks={adminTasks}
           onAdminTaskUpdate={updateAdminTask}
           careEvents={state.careEvents}
+          carePlanItems={state.carePlanItems}
           onDeleteQuickRecord={deleteQuickRecord}
           concerns={state.concerns}
           onQuickRecord={recordCareEvent}

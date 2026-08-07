@@ -1,4 +1,4 @@
-import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
+import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
@@ -10,6 +10,7 @@ const PRIMARY_NAV_ITEMS = [
   { route: ROUTES.stage, copyKey: 'stage', icon: CalendarRange },
   { route: ROUTES.pediatric, copyKey: 'pediatric', icon: Stethoscope },
   { route: ROUTES.experience, copyKey: 'experience', icon: BookOpen },
+  { route: ROUTES.naibaAi, copyKey: 'naibaAi', icon: Sparkles },
 ]
 
 export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {

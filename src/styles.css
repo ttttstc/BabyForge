@@ -1491,6 +1491,205 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .record-state-strip strong { font-size: 1.15rem; }
   .growth-readonly-note { align-items: flex-start; flex-direction: column; }
 }
+/* Naiba AI — evidence-first conversation and today's feeding reference. */
+.today-feeding-card { display: grid; gap: 10px; margin: 0 0 11px; padding: 14px; border: 1px solid rgba(235, 124, 107, .2); border-radius: 18px; background: linear-gradient(145deg, rgba(255, 246, 238, .96), rgba(255, 251, 244, .86)); box-shadow: 0 12px 28px rgba(87, 62, 43, .06); }
+.today-feeding-card.safety_action_required { border-color: rgba(194, 85, 70, .35); background: #fff0eb; }
+.today-feeding-card.needs_information, .today-feeding-card.unsupported { border-color: rgba(141, 107, 204, .25); background: #f7f3fc; }
+.today-feeding-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.today-feeding-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.today-feeding-title h2 { margin: 0; font-size: .92rem; letter-spacing: -.025em; }
+.today-feeding-icon { width: 31px; height: 31px; display: grid; place-items: center; color: #fffaf4; border-radius: 10px; background: var(--coral); box-shadow: 0 6px 12px rgba(235, 124, 107, .2); }
+.today-feeding-version { color: #9b8379; font-size: .5rem; font-weight: 800; letter-spacing: .05em; }
+.today-feeding-context { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: #8e766a; font-size: .56rem; }
+.today-feeding-context span:last-child { display: inline-flex; align-items: center; gap: 3px; }
+.today-feeding-items { display: grid; gap: 7px; }
+.today-feeding-item { display: grid; gap: 4px; padding: 10px; border: 1px solid rgba(117, 91, 70, .11); border-radius: 13px; background: rgba(255, 255, 255, .62); }
+.today-feeding-item.primary { border-color: rgba(235, 124, 107, .22); background: rgba(255, 255, 255, .8); }
+.today-feeding-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.today-feeding-item-top strong { color: #886c61; font-size: .58rem; }
+.today-feeding-item-top span { color: #a18e84; font-size: .52rem; }
+.today-feeding-item h3 { margin: 0; color: #5e4d4a; font-size: .77rem; }
+.today-feeding-item p { margin: 0; color: #7c6e67; font-size: .59rem; line-height: 1.4; }
+.today-feeding-item .today-feeding-quantity { color: #9e554b; font-size: .73rem; font-weight: 800; }
+.today-feeding-record { justify-self: start; margin-top: 2px; padding: 3px 6px; color: #8e6058; border: 0; border-radius: 6px; background: rgba(235, 124, 107, .1); cursor: pointer; font-size: .54rem; font-weight: 800; }
+.today-feeding-record:hover { color: #6f443f; background: rgba(235, 124, 107, .18); }
+.today-feeding-actions { display: flex; align-items: center; gap: 7px; }
+.today-feeding-actions button { display: inline-flex; align-items: center; gap: 4px; min-height: 27px; padding: 0 7px; border: 0; border-radius: 7px; cursor: pointer; font-size: .55rem; font-weight: 800; }
+.today-feeding-ai { color: #fffaf4; background: var(--coral); }
+.today-feeding-expand { color: #77628c; background: #eee9fa; }
+.today-feeding-details { display: grid; gap: 9px; padding-top: 8px; border-top: 1px solid rgba(117, 91, 70, .11); }
+.today-feeding-detail-section { display: grid; gap: 6px; }
+.today-feeding-detail-section ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.today-feeding-detail-section li { display: flex; justify-content: space-between; gap: 6px; color: #85776e; font-size: .56rem; }
+.today-feeding-detail-section li strong { color: #655550; text-align: right; }
+.today-feeding-detail-section a { display: flex; align-items: center; gap: 4px; color: #6e5d9a; font-size: .56rem; line-height: 1.3; text-decoration: none; }
+.today-feeding-detail-section a:hover { text-decoration: underline; }
+.today-feeding-detail-section small { color: #958980; font-size: .53rem; line-height: 1.35; }
+.today-feeding-safety, .today-feeding-missing { display: flex; align-items: flex-start; gap: 8px; padding: 10px; border-radius: 12px; background: rgba(255, 255, 255, .58); }
+.today-feeding-safety > svg { flex: 0 0 auto; color: #bd5c4e; }
+.today-feeding-safety strong, .today-feeding-missing strong { color: #7d4a42; font-size: .66rem; }
+.today-feeding-safety p, .today-feeding-missing p { margin: 3px 0 0; color: #806a62; font-size: .59rem; line-height: 1.45; }
+.today-feeding-missing { display: grid; gap: 4px; }
+.today-feeding-missing button { display: inline-flex; align-items: center; gap: 4px; justify-self: start; margin-top: 3px; padding: 5px 7px; color: #6e5d9a; border: 0; border-radius: 7px; background: #eee9fa; cursor: pointer; font-size: .57rem; font-weight: 800; }
+.today-ai-analysis { display: grid; gap: 9px; margin: 0 0 11px; padding: 14px; border: 1px solid rgba(141, 107, 204, .18); border-radius: 18px; background: linear-gradient(145deg, rgba(246, 242, 252, .96), rgba(255, 251, 244, .86)); }
+.today-ai-analysis header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.today-ai-analysis header h2 { margin: 0; color: #5d4e74; font-size: .9rem; letter-spacing: -.025em; }
+.today-ai-analysis header > svg { color: #8d6bcc; }
+.today-ai-analysis-copy { margin: 0; color: #71677e; font-size: .64rem; line-height: 1.5; }
+.today-ai-analysis-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.today-ai-analysis-metrics span { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 7px 8px; color: #8b7f93; border-radius: 9px; background: rgba(255, 255, 255, .62); font-size: .55rem; }
+.today-ai-analysis-metrics strong { color: #665475; font-size: .68rem; }
+.today-ai-analysis > button { display: inline-flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0; color: #6e5d9a; border: 0; background: transparent; cursor: pointer; font-size: .59rem; font-weight: 800; }
+.today-ai-analysis > button:hover { color: #4e3d76; }
+.today-ai-analysis > small { display: inline-flex; align-items: center; gap: 4px; color: #958a9d; font-size: .53rem; }
+.today-growth-plan { display: grid; gap: 9px; margin: 0 0 11px; padding: 14px; border: 1px solid rgba(91, 145, 112, .2); border-radius: 18px; background: linear-gradient(145deg, rgba(239, 247, 239, .96), rgba(255, 251, 244, .86)); }
+.today-growth-plan header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.today-growth-plan header h2 { margin: 0; color: #4f705c; font-size: .9rem; letter-spacing: -.025em; }
+.today-growth-plan header > svg { color: #5b9170; }
+.today-growth-plan > div { display: grid; gap: 7px; }
+.today-growth-plan article { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border-radius: 10px; background: rgba(255, 255, 255, .58); }
+.today-growth-plan article > span { display: grid; place-items: center; flex: 0 0 21px; width: 21px; height: 21px; color: #4f705c; border-radius: 50%; background: #dfeee4; font-size: .54rem; font-weight: 900; }
+.today-growth-plan article div { display: grid; gap: 2px; }
+.today-growth-plan article strong { color: #536d5c; font-size: .59rem; line-height: 1.4; }
+.today-growth-plan article small { color: #7c8d82; font-size: .53rem; line-height: 1.35; }
+.today-growth-plan > button { display: inline-flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0; color: #4f7a5e; border: 0; background: transparent; cursor: pointer; font-size: .59rem; font-weight: 800; }
+
+.naiba-ai-page { min-height: 100vh; background: radial-gradient(circle at 75% 0%, rgba(235, 124, 107, .1), transparent 29%), var(--canvas); }
+.naiba-ai-shell { width: min(1240px, calc(100% - 48px)); margin: 0 auto; padding: 27px 0 42px; }
+.naiba-ai-hero { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; gap: 22px; align-items: end; padding: 9px 4px 22px; }
+.naiba-ai-back { display: inline-flex; align-items: center; gap: 5px; align-self: start; padding: 0; color: #7b6d64; border: 0; background: transparent; cursor: pointer; font-size: .68rem; font-weight: 800; }
+.naiba-ai-back:hover { color: var(--coral); }
+.naiba-ai-hero h1 { margin: 0 0 7px; font-family: Georgia, serif; font-size: clamp(2.4rem, 5vw, 4.5rem); font-weight: 600; letter-spacing: -.075em; line-height: .94; }
+.naiba-ai-hero p:last-child { max-width: 680px; margin: 0; color: #756b63; font-size: .78rem; line-height: 1.55; }
+.naiba-beta-badge { display: inline-flex; align-items: center; gap: 5px; align-self: start; padding: 8px 10px; color: #6e5d9a; border: 1px solid rgba(141, 107, 204, .22); border-radius: 999px; background: #f3eefb; font-size: .59rem; font-weight: 800; white-space: nowrap; }
+.naiba-ai-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(285px, .75fr); gap: 16px; align-items: start; }
+.naiba-conversation, .naiba-evidence-rail { min-width: 0; }
+.naiba-conversation { display: grid; gap: 13px; min-height: 610px; padding: 20px; border: 1px solid var(--line); border-radius: 25px; background: rgba(255, 251, 244, .78); box-shadow: var(--shadow); }
+.naiba-context-strip { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 13px 14px; border: 1px solid rgba(118, 157, 116, .18); border-radius: 16px; background: #edf6ec; }
+.naiba-context-strip div { display: grid; gap: 3px; min-width: 0; }
+.naiba-context-strip strong { color: #4a6e5a; font-size: .72rem; }
+.naiba-context-strip span { color: #708575; font-size: .62rem; line-height: 1.4; }
+.naiba-context-status { display: inline-flex; align-items: center; gap: 4px; color: #56816d !important; white-space: nowrap; }
+.naiba-message-list { display: grid; align-content: start; gap: 11px; min-height: 290px; overflow: auto; padding: 2px 4px; }
+.naiba-message { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 8px; max-width: 84%; }
+.naiba-message.user { grid-template-columns: minmax(0, 1fr); justify-self: end; max-width: 74%; padding: 10px 12px; border-radius: 15px 15px 4px 15px; background: #f1eafa; }
+.naiba-message.user .naiba-message-role { display: none; }
+.naiba-message-role { width: 25px; height: 25px; display: grid; place-items: center; color: #fffaf4; border-radius: 8px; background: var(--coral); }
+.naiba-message p { margin: 0; color: #5e534d; font-size: .74rem; line-height: 1.65; white-space: pre-line; }
+.naiba-message.user p { color: #6e5d9a; }
+.naiba-thinking { color: #8f8178 !important; font-style: italic; }
+.naiba-suggestion-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.naiba-suggestion-row button { min-height: 30px; padding: 0 9px; color: #7b6a62; border: 1px solid rgba(117, 91, 70, .14); border-radius: 999px; background: rgba(255, 255, 255, .7); cursor: pointer; font-size: .6rem; }
+.naiba-suggestion-row button:hover { color: var(--coral); border-color: rgba(235, 124, 107, .35); }
+.naiba-composer { display: grid; gap: 8px; padding: 10px; border: 1px solid rgba(117, 91, 70, .14); border-radius: 16px; background: rgba(255, 255, 255, .76); }
+.naiba-composer textarea { min-height: 58px; resize: vertical; border: 0; background: transparent; box-shadow: none; }
+.naiba-composer textarea:focus { box-shadow: none; }
+.naiba-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.naiba-composer-actions button { display: inline-flex; align-items: center; gap: 4px; min-height: 31px; padding: 0 9px; border: 0; border-radius: 9px; cursor: pointer; font-size: .59rem; font-weight: 800; }
+.naiba-attach { display: inline-flex; align-items: center; gap: 4px; min-height: 31px; padding: 0 9px; color: #7e726b; border: 0; border-radius: 9px; background: #f4ece2; font-size: .59rem; font-weight: 800; }
+.naiba-send { color: #fffaf4; background: var(--coral); }
+.naiba-composer-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.naiba-evidence-rail { display: grid; gap: 10px; }
+.naiba-evidence-section, .naiba-boundary-note, .naiba-help-note { padding: 13px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); box-shadow: var(--shadow); }
+.naiba-evidence-heading { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0; color: #625650; border: 0; background: transparent; cursor: pointer; font-size: .68rem; font-weight: 800; }
+.naiba-evidence-heading span { display: inline-flex; align-items: center; gap: 5px; }
+.naiba-evidence-heading > svg { color: #a7978e; }
+.naiba-fact-list { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.naiba-fact-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid rgba(117, 91, 70, .1); color: #8b7c73; font-size: .6rem; }
+.naiba-fact-list strong { color: #5f504b; text-align: right; }
+.naiba-reference-state { display: flex; align-items: center; gap: 6px; margin-top: 11px; color: #766b64; font-size: .6rem; }
+.naiba-state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sage); }
+.naiba-state-dot.needs_information { background: #9b7cd0; }
+.naiba-state-dot.safety_action_required { background: var(--coral); }
+.naiba-reference-item { display: grid; gap: 3px; margin-top: 9px; padding: 9px; border-radius: 11px; background: #faf4ed; }
+.naiba-reference-item strong { color: #65554f; font-size: .63rem; }
+.naiba-reference-item span { color: #9d5c51; font-size: .62rem; font-weight: 800; line-height: 1.35; }
+.naiba-evidence-link { display: inline-flex; align-items: center; gap: 3px; margin-top: 10px; padding: 0; color: #6e5d9a; border: 0; background: transparent; cursor: pointer; font-size: .59rem; font-weight: 800; }
+.naiba-boundary-note { display: flex; align-items: flex-start; gap: 8px; color: #76634a; border-color: rgba(197, 154, 94, .22); background: var(--gold-soft); box-shadow: none; }
+.naiba-boundary-note > svg { flex: 0 0 auto; color: #b9822d; }
+.naiba-boundary-note strong { font-size: .62rem; }
+.naiba-boundary-note p { margin: 3px 0 0; color: #816e54; font-size: .58rem; line-height: 1.45; }
+.naiba-help-note { display: flex; align-items: flex-start; gap: 7px; color: #7a6d88; border-color: rgba(141, 107, 204, .18); background: #f3eefb; box-shadow: none; font-size: .59rem; line-height: 1.5; }
+.naiba-help-note > svg { flex: 0 0 auto; margin-top: 1px; color: #8d6bcc; }
+.naiba-draft-card { display: grid; gap: 9px; margin-top: 10px; padding: 12px; border: 1px solid rgba(235, 124, 107, .28); border-radius: 15px; background: #fff8ef; box-shadow: 0 8px 20px rgba(124, 91, 69, .08); }
+.naiba-draft-card.confirmed { border-color: rgba(93, 151, 112, .28); background: #f0f8ef; }
+.naiba-draft-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.naiba-draft-card header > div { display: grid; gap: 3px; }
+.naiba-draft-eyebrow { color: #a46a5c; font-size: .55rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.naiba-draft-card.confirmed .naiba-draft-eyebrow { color: #4e8560; }
+.naiba-draft-card header strong { color: #5f504b; font-size: .72rem; }
+.naiba-draft-status { padding: 3px 6px; color: #a46a5c; border: 1px solid rgba(235, 124, 107, .25); border-radius: 999px; font-size: .5rem; font-weight: 900; letter-spacing: .04em; }
+.naiba-draft-card.confirmed .naiba-draft-status { color: #4e8560; border-color: rgba(93, 151, 112, .25); }
+.naiba-draft-summary { margin: 0; color: #6c5b54; font-size: .68rem; font-weight: 800; line-height: 1.45; }
+.naiba-draft-confirmed-note { margin: 0; color: #58745d; font-size: .6rem; line-height: 1.45; }
+.naiba-draft-field { display: grid; gap: 4px; color: #84736b; font-size: .57rem; font-weight: 800; }
+.naiba-draft-field input, .naiba-draft-field select, .naiba-draft-field textarea { width: 100%; min-height: 31px; padding: 6px 8px; color: #5d504b; border: 1px solid rgba(117, 91, 70, .16); border-radius: 8px; background: rgba(255, 255, 255, .75); font-size: .64rem; }
+.naiba-draft-field textarea { resize: vertical; }
+.naiba-draft-field-grid { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 8px; }
+.naiba-draft-boundary { margin: 0; color: #927c68; font-size: .56rem; line-height: 1.45; }
+.naiba-draft-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.naiba-draft-actions button { min-height: 29px; padding: 0 8px; border: 0; border-radius: 8px; cursor: pointer; font-size: .57rem; font-weight: 800; }
+.naiba-draft-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.naiba-draft-dismiss { color: #806f67; background: #f2e8de; }
+.naiba-draft-confirm { color: #fffaf4; background: var(--coral); }
+.naiba-capability-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.naiba-capability-row button { min-height: 30px; padding: 0 10px; color: #355f55; border: 1px solid rgba(50, 87, 79, .18); border-radius: 999px; background: #f4f8f5; cursor: pointer; font-size: .57rem; font-weight: 800; }
+.naiba-capability-row button:hover { background: #eaf3ed; }
+.naiba-capability-row button:disabled { cursor: not-allowed; opacity: .5; }
+.naiba-attach { cursor: pointer; }
+.naiba-attach.disabled { cursor: not-allowed; opacity: .5; }
+.naiba-attach input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.naiba-artifact-card { margin-top: 10px; padding: 12px; color: #334943; border: 1px solid rgba(49, 86, 77, .16); border-radius: 15px; background: linear-gradient(145deg, #fff, #f7faf8); }
+.naiba-artifact-card > header { display: flex; align-items: center; gap: 7px; padding-bottom: 8px; border-bottom: 1px solid rgba(49, 86, 77, .1); }
+.naiba-artifact-card > header strong { flex: 1; font-size: .7rem; }
+.naiba-artifact-card > header span { color: #6b827c; font-size: .52rem; text-transform: uppercase; }
+.naiba-artifact-card p { margin: 7px 0 0; font-size: .62rem; line-height: 1.55; }
+.naiba-artifact-section { margin-top: 10px; }
+.naiba-artifact-section > strong { display: block; color: #315a51; font-size: .59rem; }
+.naiba-artifact-section ul { margin: 5px 0 0; padding-left: 16px; }
+.naiba-artifact-section li { margin: 3px 0; font-size: .6rem; line-height: 1.5; }
+.naiba-plan-list { display: grid; gap: 9px; margin-top: 10px; }
+.naiba-plan-list > section { display: flex; gap: 9px; align-items: flex-start; }
+.naiba-plan-list > section > span { display: grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; color: #315a51; border-radius: 50%; background: #dfeee5; font-size: .58rem; font-weight: 800; }
+.naiba-plan-list p { margin: 3px 0; }
+.naiba-plan-list small { color: #667b76; font-size: .54rem; }
+.naiba-report-fields { display: grid; gap: 7px; margin-top: 10px; }
+.naiba-report-fields > section { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; padding: 8px 9px; border-radius: 9px; background: rgba(226, 239, 231, .55); }
+.naiba-report-fields > section strong, .naiba-report-fields > section span { font-size: .6rem; }
+.naiba-report-fields small { grid-column: 1 / -1; color: #667b76; font-size: .53rem; }
+.naiba-report-edit-list { display: grid; gap: 9px; margin-top: 10px; }
+.naiba-report-edit-list fieldset { margin: 0; padding: 9px; border: 1px solid rgba(49, 86, 77, .14); border-radius: 11px; }
+.naiba-report-edit-list legend { padding: 0 5px; color: #607872; font-size: .53rem; }
+
+@media (max-width: 980px) {
+  .naiba-ai-shell { width: min(100% - 30px, 760px); }
+  .naiba-ai-hero { grid-template-columns: 1fr auto; }
+  .naiba-ai-hero .naiba-ai-back { grid-column: 1 / -1; }
+  .naiba-ai-layout { grid-template-columns: 1fr; }
+  .naiba-evidence-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .naiba-boundary-note, .naiba-help-note { grid-column: span 2; }
+}
+
+@media (max-width: 620px) {
+  .naiba-ai-shell { width: min(100% - 16px, 680px); padding-top: 15px; }
+  .naiba-ai-hero { display: block; padding-bottom: 16px; }
+  .naiba-ai-hero .naiba-beta-badge { margin-top: 11px; }
+  .naiba-ai-hero h1 { font-size: 3.1rem; }
+  .naiba-conversation { min-height: calc(100vh - 228px); padding: 14px; border-radius: 19px; }
+  .naiba-context-strip { display: grid; gap: 8px; }
+  .naiba-context-status { justify-self: start; }
+  .naiba-message { max-width: 94%; }
+  .naiba-message.user { max-width: 88%; }
+  .naiba-evidence-rail { grid-template-columns: 1fr; }
+  .naiba-boundary-note, .naiba-help-note { grid-column: auto; }
+  .today-feeding-context { align-items: flex-start; flex-direction: column; }
+  .naiba-draft-field-grid { grid-template-columns: 1fr; }
+  .naiba-capability-row { flex-wrap: nowrap; overflow-x: auto; }
+  .naiba-capability-row button { flex: 0 0 auto; }
+  .naiba-report-fields > section { grid-template-columns: 1fr; }
+  .naiba-report-fields small { grid-column: auto; }
+}
+
 /* Baby album: a soft photo bookshelf within the existing paper-and-coral system. */
 .baby-album-surface {
   position: relative;

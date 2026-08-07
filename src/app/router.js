@@ -9,6 +9,7 @@ export const ROUTES = {
   jaundice: '#/topic/jaundice',
   pediatric: '#/topic/pediatric-diseases',
   experience: '#/experience',
+  naibaAi: '#/naiba-ai',
   settings: '#/settings',
 }
 
