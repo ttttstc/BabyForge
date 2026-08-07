@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { runNaibaAgent } from './functions/_shared/naibaAgent.js'
+import { buildNaibaLocalAnswer } from './src/domain/naibaLocalAnswer.js'
 
 function jsonSse(value) {
   return `data: ${JSON.stringify(value)}\n\n`
@@ -20,10 +21,28 @@ function normalizeOpenAIBaseUrl(value) {
   return url.toString().replace(/\/$/, '')
 }
 
+async function runLocalAgentWithTimeout(input, timeoutMs = 15_000) {
+  let timer
+  try {
+    return await Promise.race([
+      runNaibaAgent(input),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('naiba-local-timeout')), timeoutMs) }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function localNaibaPlugin(mode) {
   const env = loadEnv(mode, process.cwd(), '')
   async function modelConfig() {
-    if (env.OPENAI_API_KEY) return { apiKey: env.OPENAI_API_KEY, baseURL: normalizeOpenAIBaseUrl(env.OPENAI_BASE_URL), model: env.OPENAI_MODEL || 'gpt-4o-mini', useResponses: env.OPENAI_USE_RESPONSES, provider: env.OPENAI_BASE_URL ? 'OpenAI-compatible' : 'OpenAI' }
+    if (env.OPENAI_API_KEY) {
+      const customGateway = Boolean(String(env.OPENAI_BASE_URL || '').trim())
+      // The supplied OpenAI-compatible gateway exposes chat completions, not
+      // the Responses endpoint. Keep OPENAI_USE_RESPONSES for official OpenAI
+      // deployments, but select the compatible protocol for local testing.
+      return { apiKey: env.OPENAI_API_KEY, baseURL: normalizeOpenAIBaseUrl(env.OPENAI_BASE_URL), model: env.OPENAI_MODEL || 'gpt-4o-mini', useResponses: customGateway ? 'false' : env.OPENAI_USE_RESPONSES, provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
+    }
     return null
   }
   return {
@@ -36,24 +55,30 @@ function localNaibaPlugin(mode) {
       })
       server.middlewares.use('/api/ai/chat', async (request, response, next) => {
         if (request.method !== 'POST') return next()
+        let body = {}
         try {
           const config = await modelConfig()
+          body = await readJson(request)
+          const message = String(body.message || '')
+          const locale = body.baby?.locale || 'zh-CN'
+          const recommendation = body.recommendation || null
           if (!config) {
-            response.statusCode = 503
-            response.setHeader('content-type', 'application/json; charset=utf-8')
-            response.end(JSON.stringify({ error: '本地未配置 OPENAI_API_KEY' }))
+            const fallback = buildNaibaLocalAnswer(message, { recommendation, locale })
+            response.statusCode = 200
+            response.setHeader('content-type', 'text/event-stream; charset=utf-8')
+            response.setHeader('cache-control', 'no-cache')
+            response.end(jsonSse({ type: 'message', delta: fallback }) + jsonSse({ type: 'meta', fallback: true, reason: 'model_not_configured' }) + jsonSse({ type: 'done' }))
             return
           }
-          const body = await readJson(request)
-          const output = await runNaibaAgent({
-            message: String(body.message || ''),
+          const output = await runLocalAgentWithTimeout({
+            message,
             skillId: String(body.skillId || 'triage_and_preassessment'),
             baby: body.baby,
             careEvents: Array.isArray(body.careEvents) ? body.careEvents : [],
             feedingReference: body.recommendation || null,
             decisionResult: null,
             conversationId: String(body.conversationId || ''),
-            locale: body.baby?.locale || 'zh-CN',
+            locale,
             ...config,
           })
           response.statusCode = 200
@@ -62,9 +87,11 @@ function localNaibaPlugin(mode) {
           response.end(jsonSse({ type: 'message', delta: output }) + jsonSse({ type: 'done' }))
         } catch (error) {
           server.config.logger.error(`[Naiba AI local] ${error?.message || error}`)
-          response.statusCode = 502
-          response.setHeader('content-type', 'application/json; charset=utf-8')
-          response.end(JSON.stringify({ error: '本地模型调用失败' }))
+          const fallback = buildNaibaLocalAnswer(body.message, { recommendation: body.recommendation, locale: body.baby?.locale || 'zh-CN' })
+          response.statusCode = 200
+          response.setHeader('content-type', 'text/event-stream; charset=utf-8')
+          response.setHeader('cache-control', 'no-cache')
+          response.end(jsonSse({ type: 'message', delta: fallback }) + jsonSse({ type: 'meta', fallback: true, reason: 'model_unavailable' }) + jsonSse({ type: 'done' }))
         }
       })
     },

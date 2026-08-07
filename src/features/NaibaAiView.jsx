@@ -4,33 +4,13 @@ import { getAgeDays } from '../domain/baby.js'
 import { createCareEvent } from '../domain/careEvents.js'
 import { draftText, isCareEventDraftIntent, parseCareEventDraft, validateCareEventDraft } from '../domain/careEventDraft.js'
 import { createReportFactDraft, executeNaibaSkill, parseMedicalReportText } from '../domain/naibaCapabilities.js'
-import { calculateFeedingRecommendation, feedingRecommendationText } from '../domain/feedingRecommendation.js'
+import { calculateFeedingRecommendation } from '../domain/feedingRecommendation.js'
 import { selectNaibaSkill } from '../domain/naibaSkills.js'
 import { extractDecisionFacts, parseDecisionAnswer, runDecisionUnit, selectDecisionUnit } from '../domain/decisionKernel.js'
+import { buildNaibaLocalAnswer } from '../domain/naibaLocalAnswer.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { NaibaCapabilityCard } from './NaibaCapabilityCard.jsx'
-
-function healthDecisionText(decision, locale) {
-  const isEnglish = locale === 'en-US'
-  if (decision?.status === 'safety_action_required') {
-    return isEnglish
-      ? `${decision.minimumAction} Do not wait for the remaining questions.`
-      : `${decision.minimumAction} 不要等待剩余问询完成。`
-  }
-  if (decision?.status === 'needs_information') {
-    const question = decision.nextQuestion?.label || (isEnglish ? 'the next key fact' : '下一个关键事实')
-    return isEnglish
-      ? `I will not draw a health conclusion yet. First, please tell me: ${question}? You can say “not sure”.`
-      : `我现在不会下健康结论。先请告诉我：${question}？如果不确定，可以直接说“不确定”。`
-  }
-  if (decision?.status === 'decision_ready') {
-    return isEnglish
-      ? 'The required facts are collected. I can now organize the next observation step; this is not a diagnosis.'
-      : '关键事实已经收集齐了。我现在可以整理下一步观察和沟通重点，但这不是诊断。'
-  }
-  return isEnglish ? 'This topic is outside the published decision rules.' : '当前问题超出已发布的决策规则覆盖范围。'
-}
 
 function isHealthMessage(message) {
   return /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|趴睡|侧睡|仰卧|同床|婴儿床|睡眠安全|枕头|厚被|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|safe sleep/i.test(String(message || ''))
@@ -46,26 +26,12 @@ function fileDataUrl(file) {
 }
 
 function localAnswer(message, recommendation, locale, decision) {
-  const isEnglish = locale === 'en-US'
-  const text = String(message || '').toLowerCase()
-  if (decision) return healthDecisionText(decision, locale)
-  if (/吃|奶|喂|饮食|辅食|量|feed|milk|food|feeding|amount/.test(text)) {
-    return feedingRecommendationText(recommendation, locale)
-  }
-  if (/记录|record|log/.test(text)) {
-    return isEnglish ? 'I can prepare a record draft, but actual intake must be confirmed before it is saved. Open the Record center to enter what the baby actually took.' : '我可以准备记录草稿，但实际摄入必须由你确认后才保存。请打开记录中心，填写宝宝实际吃下的内容。'
-  }
-  if (/呼吸|叫不醒|发青|breath|wake|blue/.test(text)) {
-    const decision = runDecisionUnit({ unitId: 'general_health_preassessment', facts: {} })
-    const question = decision.nextQuestion?.label || '宝宝现在是否容易唤醒'
-    return isEnglish ? `Before any conclusion, one key fact is needed: is the baby easy to wake right now? If breathing is difficult, lips are blue, or the baby cannot be woken, contact local emergency or pediatric services immediately.` : `在下结论前先确认一个关键事实：${question}？如果呼吸困难、嘴唇发青或叫不醒，请立即联系当地急救或儿科服务。`
-  }
-  return isEnglish ? 'I have received this question. I will first organize the baby facts, identify missing key information, and then use the approved knowledge pack. I will not infer a conclusion from missing facts.' : '我已收到这个问题。我会先整理宝宝事实，找出缺失的关键输入，再使用确定版本的知识库；缺失事实时不会轻易下结论。'
+  return buildNaibaLocalAnswer(message, { recommendation, locale, decision })
 }
 
 async function remoteAnswer(message, state, recommendation, skillId, decision, conversationId) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 45_000)
+  const timeout = setTimeout(() => controller.abort(), 20_000)
   let response
   try {
     response = await fetch('/api/ai/chat', {
@@ -100,7 +66,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
   const [conversationId] = useState(() => globalThis.crypto?.randomUUID?.() || `conversation-${Date.now()}`)
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
   const recommendation = useMemo(() => calculateFeedingRecommendation({ baby: state.baby, events: state.careEvents, locale }), [state.baby, state.careEvents, locale])
-  const [messages, setMessages] = useState(() => [{ id: 'welcome', role: 'assistant', text: isEnglish ? 'Tell me what you want to understand. I will show what I know, what is missing, and what evidence was used.' : '告诉我你想了解什么。我会先展示已知信息、缺失信息和本次使用的依据。' }])
+  const [messages, setMessages] = useState(() => [{ id: 'welcome', role: 'assistant', text: isEnglish ? 'Hi, I’m here with you. Tell me what is on your mind — feeding, sleep, diapers, or anything that feels different — and we’ll sort it out together.' : '嗨，我在这儿陪你。你可以直接说宝宝吃、睡、排便，或者哪里和平时不一样，我们一起慢慢捋清楚。' }])
   const [input, setInput] = useState(() => topic === 'feeding' ? (isEnglish ? 'Why this quantity?' : '为什么推荐这个量？') : topic === 'analysis' ? (isEnglish ? 'Please analyze today’s care records.' : '请分析今天的照护记录。') : '')
   const [busy, setBusy] = useState(false)
   const [factsOpen, setFactsOpen] = useState(true)
@@ -281,7 +247,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
   return <main className="naiba-ai-page">
     <Header route={ROUTES.naibaAi} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
     <div className="naiba-ai-shell">
-      <header className="naiba-ai-hero"><button type="button" className="naiba-ai-back" onClick={onBack}><ArrowLeft size={15} />{isEnglish ? 'Back to today' : '返回今日'}</button><div><p className="eyebrow">{isEnglish ? 'Decision-aware care assistant' : '信息充分性优先的照护助手'}</p><h1>{isEnglish ? 'Naiba AI' : '奶爸AI'}</h1><p>{isEnglish ? 'Ask freely. Before a health conclusion, I ask for the key facts first.' : '可以自由提问。涉及健康时，在下结论前先补齐关键事实。'}</p></div><span className="naiba-beta-badge"><ShieldCheck size={14} />{isEnglish ? 'Restricted beta' : '内部受限 Beta'}</span></header>
+      <header className="naiba-ai-hero"><button type="button" className="naiba-ai-back" onClick={onBack}><ArrowLeft size={15} />{isEnglish ? 'Back to today' : '返回今日'}</button><div><p className="eyebrow">{isEnglish ? 'A calm second pair of hands' : '新手爸妈的陪伴助手'}</p><h1>{isEnglish ? 'Naiba AI' : '奶爸AI'}</h1><p>{isEnglish ? 'Ask in your own words. I’ll help you make sense of what is happening.' : '不用组织得很专业，想到什么就说什么，我陪你把情况说清楚。'}</p></div><span className="naiba-beta-badge"><ShieldCheck size={14} />{isEnglish ? 'Restricted beta' : '内部受限 Beta'}</span></header>
       <div className="naiba-ai-layout">
         <section className="naiba-conversation" aria-label={isEnglish ? 'Naiba AI conversation' : '奶爸AI对话'}>
           <div className="naiba-context-strip"><div><strong>{isEnglish ? 'I know this baby' : '我已了解这个宝宝'}</strong><span>{state.baby.nickname} · {isEnglish ? `${ageDays} days old` : `出生后 ${ageDays} 天`} · {recommendation.feedingModeLabel || (isEnglish ? 'Feeding mode unknown' : '喂养方式待补充')}</span></div><span className="naiba-context-status"><CheckCircle2 size={14} />{isEnglish ? 'Facts stay separate from guesses' : '事实与推断分开'}</span></div>

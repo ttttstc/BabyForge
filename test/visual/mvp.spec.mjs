@@ -92,7 +92,9 @@ test('parent uploads, switches, and reloads album photos', async ({ page }) => {
 
 test('parent can take a daily shot and browse photos by date', async ({ page }) => {
   await createBaby(page)
-  await page.getByTestId('album-daily-input').setInputFiles('public/assets/login/login-hero.png')
+  const dailyInput = page.getByTestId('album-daily-input')
+  await expect(dailyInput).toHaveAttribute('capture', 'environment')
+  await dailyInput.setInputFiles('public/assets/login/login-hero.png')
   const dialog = page.getByRole('dialog', { name: '添加 1 张照片' })
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: /保存照片/ }).click()

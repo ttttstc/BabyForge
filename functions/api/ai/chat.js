@@ -5,6 +5,7 @@ import { selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
 import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
+import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
 
 function sse(events, status = 200) {
@@ -54,17 +55,7 @@ async function appendMessage(env, conversationId, role, content, skillId = null,
 }
 
 function localAnswer(message, recommendation = {}, decision = null) {
-  const value = String(message || '').toLowerCase()
-  if (decision?.status === 'safety_action_required') return `${decision.minimumAction} 不要等待剩余问询完成。`
-  if (decision?.status === 'needs_information') return `我现在不会下健康结论。先请告诉我：${decision.nextQuestion?.label || '下一个关键事实'}？如果不确定，可以直接说“不确定”。`
-  if (decision?.status === 'decision_ready') return '关键事实已经收集齐了。我现在可以整理下一步观察和沟通重点，但这不是诊断。'
-  const isFeeding = /吃|奶|喂|饮食|辅食|量|feed|milk|food|feeding|amount/.test(value)
-  if (recommendation.status === 'safety_action_required') return recommendation.message
-  if (isFeeding && recommendation.recommendations?.length) {
-    return recommendation.recommendations.map((item) => `${item.title}：${item.quantity}\n${item.detail}`).join('\n\n')
-  }
-  if (recommendation.status === 'needs_information') return recommendation.message || '请先补充当前缺失的关键事实。'
-  return '我已收到。我会先核对宝宝事实和知识依据；缺失信息时不会轻易下结论。'
+  return buildNaibaLocalAnswer(message, { recommendation, decision, locale: 'zh-CN' })
 }
 
 async function loadAuthorizedContext(env, accountId, babyId) {
