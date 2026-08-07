@@ -3,15 +3,19 @@ import { Onboarding } from '../features/Onboarding.jsx'
 import { Workspace } from '../features/Workspace.jsx'
 import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
 import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
+import { ExperienceView } from '../features/ExperienceView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
+import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
+import { clearExperienceCache } from '../domain/experienceApi.js'
+import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -42,7 +46,7 @@ export function App() {
     return next
   }
 
-  function commitState(updater) {
+  function commitState(updater, options = {}) {
     if (readOnly) return Promise.resolve(false)
     const previous = stateRef.current
     const rawNext = typeof updater === 'function' ? updater(previous) : updater
@@ -54,7 +58,7 @@ export function App() {
     stateRef.current = next
     saveState(globalThis.localStorage, next, session?.username)
     setState(next)
-    if (session?.mode !== 'cloudflare' || !next.baby) return Promise.resolve(true)
+    if (options.skipSync || session?.mode !== 'cloudflare' || !next.baby) return Promise.resolve(true)
     if (eventChanges.length) {
       pendingSyncRef.current = [...pendingSyncRef.current.filter((item) => !eventChanges.some((change) => change.event.id === item.event.id)), ...eventChanges]
     }
@@ -248,6 +252,7 @@ export function App() {
 
   async function handleLogout() {
     await logout()
+    clearExperienceCache({ storage: globalThis.localStorage })
     setSession(null)
     const initial = createInitialState()
     stateRef.current = initial
@@ -256,12 +261,27 @@ export function App() {
     navigate(ROUTES.login)
   }
 
-  function clearWorkspace() {
+  async function clearWorkspace() {
+    const babyId = stateRef.current.baby?.id
+    if (babyId) {
+      try {
+        await clearLocalBabyAlbum(babyId)
+      } catch (error) {
+        console.warn('[BabyForge] Failed to clear local baby album', error)
+        const message = stateRef.current.preferences.locale === 'en-US'
+          ? 'The local album could not be cleared. Your workspace was kept; please try again.'
+          : '本地相册清理失败，工作区未清除，请重试。'
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message)
+        return false
+      }
+    }
+    clearExperienceCache({ storage: globalThis.localStorage })
     clearState(globalThis.localStorage, session?.username)
     const initial = createInitialState()
     stateRef.current = initial
     setState(initial)
     navigate(session && canEdit(session) ? ROUTES.onboarding : ROUTES.login)
+    return true
   }
 
   if (!session || route === ROUTES.login || (session?.role === 'guest' && !state.baby)) {
@@ -288,5 +308,13 @@ export function App() {
     return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
   }
 
-  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  if (route === ROUTES.experience) {
+    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  }
+
+  if (route === ROUTES.naibaAi) {
+    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  }
+
+  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />
 }

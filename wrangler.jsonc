@@ -2,6 +2,11 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "babyforge",
   "compatibility_date": "2026-08-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "alias": {
+    "@openai/agents-core/_shims": "./node_modules/@openai/agents-core/dist/shims/shims-browser.mjs",
+    "@openai/agents-core/_shims/config": "./node_modules/@openai/agents-core/dist/shims/config-browser.mjs"
+  },
   "pages_build_output_dir": "dist",
   "d1_databases": [
     {
@@ -9,6 +14,13 @@
       "database_name": "babyforge",
       "database_id": "cff73234-9527-49c5-8bed-ca15bf295263",
       "migrations_dir": "./migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BABY_PHOTOS",
+      "bucket_name": "babyforge-photos",
+      "preview_bucket_name": "babyforge-photos-preview"
     }
   ]
 }

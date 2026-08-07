@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { getAgeDays, getStage, getTodayPriorities } from '../src/domain/baby.js'
+import { getAgeDays, getStage, getStageLabel, getStageRangeLabel, getStages, getTodayPriorities } from '../src/domain/baby.js'
 import { createObservation } from '../src/domain/observation.js'
 import { buildDoctorSummary } from '../src/domain/doctorSummary.js'
 import { evaluateMedicalTopic } from '../src/domain/safety.js'
@@ -15,25 +15,103 @@ import { coalesceOutboxItem } from '../src/domain/localDb.js'
 import { safeEventInput } from '../functions/_shared/care.js'
 import { onRequestPost as onEventPost } from '../functions/api/events.js'
 import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
+import { onRequestPost as onPhotoPost } from '../functions/api/photos.js'
+import { onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
+import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
 
-test('age and stage boundaries follow the 0–28 day MVP contract', () => {
+test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
   assert.equal(getAgeDays('2026-07-29', '2026-08-05'), 7)
   assert.equal(getStage(0).id, 'newborn-early')
   assert.equal(getStage(7).id, 'newborn-early')
   assert.equal(getStage(8).id, 'newborn-adaptation')
   assert.equal(getStage(28).id, 'newborn-adaptation')
-  assert.equal(getStage(29).id, 'out-of-scope')
+  assert.equal(getStage(29).id, 'infant-1-2-months')
+  assert.equal(getStage(59).id, 'infant-1-2-months')
+  assert.equal(getStage(60).id, 'infant-2-3-months')
+  assert.equal(getStage(729).id, 'toddler-18-24-months')
+  assert.equal(getStage(730).id, 'child-2-3-years')
+  assert.equal(getStage(2191).id, 'child-5-6-years')
+  assert.equal(getStage(2192).id, 'out-of-scope')
+  assert.equal(getStages().length, 15)
 })
 
-test('today always exposes the three agreed priorities', () => {
+test('experience age bands cover 0–36 months without changing care stages', () => {
+  assert.equal(getContentAgeBandForBaby('2026-08-05', '2026-08-05').band.id, 'newborn')
+  assert.equal(getContentAgeBandForBaby('2026-07-07', '2026-08-05').band.id, 'young-infant')
+  assert.equal(getContentAgeBandForBaby('2026-06-05', '2026-08-05').band.id, 'young-infant')
+  assert.equal(getContentAgeBandForBaby('2026-05-05', '2026-08-05').band.id, 'early-infant')
+  assert.equal(getContentAgeBandForBaby('2023-08-05', '2026-08-05').band.id, 'young-toddler')
+  assert.equal(getContentAgeBandForBaby('2023-07-05', '2026-08-05').band, null)
+  assert.throws(() => getContentAgeBandForBaby('2026-08-06', '2026-08-05'), /future/)
+})
+
+test('experience queries and cache keys contain only band, category, and locale', () => {
+  const age = getContentAgeBandForBaby('2026-08-01', '2026-08-05')
+  assert.match(buildExperienceQuery(age.band, 'feeding'), /0到28天新生儿/)
+  assert.match(buildExperienceQuery(age.band, 'feeding'), /拍嗝/)
+  assert.equal(getExperienceCacheKey({ babyId: 'baby-1', bandId: age.band.id, categoryId: 'feeding' }), 'babyforge:experience:v1:baby-1:zh-CN:newborn:feeding')
+})
+
+test('experience result filtering keeps trusted professional links and drops unsafe or promotional results', () => {
+  const band = getContentAgeBandForBaby('2026-08-01', '2026-08-05').band
+  const sources = [{ domain: 'nhc.gov.cn', name: '国家卫生健康委员会', enabled: true }]
+  const professional = normalizeExperienceResult({ title: '新生儿安全睡眠科普', url: 'https://www.nhc.gov.cn/article?utm_source=test', content: '介绍安全睡眠环境和睡姿，提醒家长不要自行用药。', score: 0.9 }, { band, categoryId: 'health', sources })
+  assert.equal(professional.sourceType, 'professional')
+  assert.equal(professional.url, 'https://www.nhc.gov.cn/article')
+  assert.equal(normalizeExperienceResult({ title: '新生儿健康偏方', url: 'https://example.com/a', content: '祖传偏方可以治疗黄疸。', score: 0.9 }, { band, categoryId: 'health', sources }), null)
+  assert.equal(normalizeExperienceResult({ title: '新生儿奶粉优惠', url: 'https://example.com/a', content: '立即购买奶粉，限时优惠。', score: 0.9 }, { band, categoryId: 'feeding', sources }), null)
+  assert.ok(normalizeExperienceResult({ title: '新生儿配方奶喂养观察', url: 'https://example.com/feeding', content: '介绍配方奶喂养时的观察方法，不构成购买建议。', score: 0.8 }, { band, categoryId: 'feeding', sources }))
+  assert.equal(normalizeExperienceResult({ title: 'Newborn feeding guide', url: 'https://example.com/en', content: 'A general guide for feeding.', score: 0.8 }, { band, categoryId: 'feeding', sources }), null)
+  assert.equal(normalizeArticleUrl('javascript:alert(1)'), null)
+})
+
+test('experience result sorting diversifies adjacent sources and cache state is explicit', () => {
+  const articles = sortExperienceResults([
+    { id: 'a', sourceType: 'professional', sourceDomain: 'a.cn', score: 0.9 },
+    { id: 'b', sourceType: 'professional', sourceDomain: 'a.cn', score: 0.8 },
+    { id: 'c', sourceType: 'professional', sourceDomain: 'b.cn', score: 0.7 },
+  ])
+  assert.deepEqual(articles.map((item) => item.id), ['a', 'c', 'b'])
+  assert.equal(sortExperienceResults([
+    { id: 'a1', sourceDomain: 'a.cn', score: 1 },
+    { id: 'a2', sourceDomain: 'a.cn', score: 0.9 },
+    { id: 'a3', sourceDomain: 'a.cn', score: 0.8 },
+    { id: 'a4', sourceDomain: 'a.cn', score: 0.7 },
+  ]).length, 3)
+  assert.equal(getCacheState({ generatedAt: '2026-08-05T00:00:00.000Z', expiresAt: '2026-08-06T00:00:00.000Z', staleUntil: '2026-08-12T00:00:00.000Z' }, Date.parse('2026-08-05T12:00:00.000Z')), 'fresh')
+  assert.equal(getCacheState({ generatedAt: '2026-08-05T00:00:00.000Z', expiresAt: '2026-08-06T00:00:00.000Z', staleUntil: '2026-08-12T00:00:00.000Z' }, Date.parse('2026-08-07T00:00:00.000Z')), 'stale')
+})
+
+test('today priorities follow the current age stage', () => {
   assert.deepEqual(
     getTodayPriorities().map((item) => item.id),
     ['feeding', 'elimination', 'safe-sleep'],
   )
+  assert.deepEqual(
+    getTodayPriorities('child-5-6-years').map((item) => item.id),
+    ['routine', 'movement', 'independence'],
+  )
+  assert.equal(getTodayPriorities('child-5-6-years').some((item) => item.id === 'safe-sleep'), false)
+})
+
+test('stage labels keep locale fallbacks in the requested language', () => {
+  assert.equal(getStageLabel({ label: '中文' }, 'en-US'), '')
+  assert.equal(getStageRangeLabel({ rangeLabel: '中文范围' }, 'en-US'), '')
+  assert.equal(getStageLabel({ label: '中文', labelEn: 'English' }, 'en-US'), 'English')
+})
+
+test('every 0–6 stage has a concrete caregiver review prompt', () => {
+  getStages().forEach((stage) => {
+    const milestone = getStageMilestones(stage.id)[0]
+    assert.ok(milestone?.title?.zh && milestone?.title?.en)
+    assert.ok(milestone?.detail?.zh && milestone?.detail?.en)
+    assert.ok(milestone?.dueLabel || Number.isFinite(milestone?.dueDay))
+  })
 })
 
 test('observation records preserve facts, units, and parent provenance', () => {
@@ -203,6 +281,7 @@ test('care plan keeps low-burden task feedback, milestones, and growth facts', (
   assert.ok(adminTasks.some((item) => item.id === 'birth-certificate' && item.state === 'due'))
   const adminRecords = upsertAdminTaskRecord([], 'birth-certificate', { status: 'done' }, '2026-08-05T10:00:00.000Z')
   assert.equal(getAdminTasks('newborn-early', 7, adminRecords).find((item) => item.id === 'birth-certificate').status, 'done')
+  assert.deepEqual(getDailyTasks([], new Date('2026-08-05T12:00:00'), 'child-5-6-years').map((item) => item.id), ['routine', 'movement', 'independence'])
 })
 
 test('official growth packages evaluate birth and postnatal measurements deterministically', () => {
@@ -428,6 +507,43 @@ test('guest sessions are denied by every event write endpoint', async () => {
   assert.equal((await onEventPost({ request: request('POST', {}), env })).status, 403)
   assert.equal((await onEventPatch({ request: request('PATCH', {}), env, params: { id: 'event-1' } })).status, 403)
   assert.equal((await onEventDelete({ request: request('DELETE'), env, params: { id: 'event-1' } })).status, 403)
+})
+
+test('album validates raster files and falls back to file time when EXIF is absent', async () => {
+  const lastModified = Date.parse('2026-08-06T02:30:00.000Z')
+  const photo = { name: 'first-day.jpg', type: 'image/jpeg', size: 1024, lastModified }
+  assert.equal(isSupportedPhoto(photo), true)
+  assert.equal(isSupportedPhoto({ ...photo, name: 'unsafe.svg', type: 'image/svg+xml' }), false)
+  assert.equal(isSupportedPhoto({ ...photo, size: MAX_PHOTO_BYTES + 1 }), false)
+  assert.equal(Date.parse(dateTimeInputToIso('2026-08-06T10:30')) > 0, true)
+  assert.deepEqual(await detectPhotoTime(photo), { takenAt: '2026-08-06T02:30:00.000Z', timeSource: 'file' })
+  const uploadFallback = await detectPhotoTime({ ...photo, lastModified: 0 })
+  assert.equal(uploadFallback.timeSource, 'upload')
+  assert.notEqual(uploadFallback.takenAt, '1970-01-01T00:00:00.000Z')
+})
+
+test('guest sessions cannot upload album photos', async () => {
+  const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
+  const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) }, BABY_PHOTOS: {} }
+  const request = new Request('https://babyforge.test/api/photos', { method: 'POST', headers: { cookie: 'babyforge_session=token' } })
+  assert.equal((await onPhotoPost({ request, env })).status, 403)
+})
+
+test('detached baby profiles cannot read retained cloud album URLs', async () => {
+  const env = {
+    DB: {
+      prepare: (sql) => ({
+        bind: () => ({
+          first: async () => sql.includes('auth_sessions')
+            ? { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-1', username: 'parent', role: 'admin', display_name: '家长' }
+            : { id: 'photo-1', object_key: 'babies/baby-1/photos/photo-1', content_type: 'image/jpeg', baby_status: 'detached' },
+        }),
+      }),
+    },
+    BABY_PHOTOS: { get: async () => assert.fail('detached photo must not reach R2') },
+  }
+  const request = new Request('https://babyforge.test/api/photos/photo-1', { headers: { cookie: 'babyforge_session=token' } })
+  assert.equal((await onPhotoGet({ request, env, params: { id: 'photo-1' } })).status, 404)
 })
 
 test('quick care records produce a personal 24-hour snapshot', () => {

@@ -8,23 +8,32 @@ export const ROUTES = {
   stage: '#/stage/newborn',
   jaundice: '#/topic/jaundice',
   pediatric: '#/topic/pediatric-diseases',
-  settings: '#/settings',
+  experience: '#/experience',
+  naibaAi: '#/naiba-ai',
   summary: '#/doctor-summary',
+  settings: '#/settings',
 }
 
 export function navigate(route) {
   window.location.hash = route.slice(1)
 }
 
-function hashRoute() {
+function rawHashRoute() {
   return (window.location.hash || ROUTES.onboarding).split('?')[0]
+}
+
+function hashRoute() {
+  return rawHashRoute()
 }
 
 export function useHashRoute() {
   const [route, setRoute] = useState(hashRoute)
 
   useEffect(() => {
-    const update = () => setRoute(hashRoute())
+    const update = () => {
+      setRoute(hashRoute())
+    }
+    update()
     window.addEventListener('hashchange', update)
     return () => window.removeEventListener('hashchange', update)
   }, [])

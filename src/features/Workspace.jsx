@@ -7,14 +7,15 @@ import { ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { LeftRail } from './LeftRail.jsx'
 import { StageSurface } from './StageSurface.jsx'
+import { BabyAlbum } from './BabyAlbum.jsx'
 import { ContextInspector } from './ContextInspector.jsx'
 import { StageDashboard } from './StageDashboard.jsx'
 
-export function Workspace({ route, state, setState, onClear, onLogout, readOnly = false, role = 'admin' }) {
+export function Workspace({ route, state, setState, onClear, onLogout, readOnly = false, role = 'admin', cloudMode = false }) {
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
   const stage = useMemo(() => getStage(ageDays), [ageDays])
   const topicMode = route === ROUTES.jaundice
-  const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs), [state.taskLogs])
+  const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs, undefined, stage.id), [state.taskLogs, stage.id])
   const adminTasks = useMemo(() => getAdminTasks(stage.id, ageDays, state.adminTaskRecords), [stage.id, ageDays, state.adminTaskRecords])
 
   function updatePreference(key, value) {
@@ -84,16 +85,20 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
       <Header route={route} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => updatePreference('currentRecorderId', value)} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="workspace-grid">
         <LeftRail baby={state.baby} ageDays={ageDays} stage={stage} locale={state.preferences.locale} />
-        <StageSurface
-          key={topicMode ? 'topic' : 'stage'}
-          topicMode={topicMode}
-          sex={state.baby.sex}
-          locale={state.preferences.locale}
-          sceneMode={state.preferences.sceneMode}
-          onSceneModeChange={(value) => updatePreference('sceneMode', value)}
-          performanceMode={state.preferences.performanceMode}
-          onPerformanceModeChange={(value) => updatePreference('performanceMode', value)}
-        />
+        {route === ROUTES.today ? (
+          <BabyAlbum key={state.baby.id} baby={state.baby} locale={state.preferences.locale} readOnly={readOnly} remote={cloudMode} />
+        ) : (
+          <StageSurface
+            key={topicMode ? 'topic' : 'stage'}
+            topicMode={topicMode}
+            sex={state.baby.sex}
+            locale={state.preferences.locale}
+            sceneMode={state.preferences.sceneMode}
+            onSceneModeChange={(value) => updatePreference('sceneMode', value)}
+            performanceMode={state.preferences.performanceMode}
+            onPerformanceModeChange={(value) => updatePreference('performanceMode', value)}
+          />
+        )}
         <ContextInspector
           baby={state.baby}
           topicMode={topicMode}
@@ -103,6 +108,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
           adminTasks={adminTasks}
           onAdminTaskUpdate={updateAdminTask}
           careEvents={state.careEvents}
+          carePlanItems={state.carePlanItems}
           onDeleteQuickRecord={deleteQuickRecord}
           concerns={state.concerns}
           onQuickRecord={recordCareEvent}

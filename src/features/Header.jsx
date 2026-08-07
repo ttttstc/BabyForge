@@ -1,17 +1,28 @@
-import { Baby, CalendarRange, ClipboardPlus, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
+import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
 
+const PRIMARY_NAV_ITEMS = [
+  { route: ROUTES.today, copyKey: 'today', icon: House },
+  { route: ROUTES.records, copyKey: 'records', icon: ClipboardPlus },
+  { route: ROUTES.stage, copyKey: 'stage', icon: CalendarRange },
+  { route: ROUTES.pediatric, copyKey: 'pediatric', icon: Stethoscope },
+  { route: ROUTES.experience, copyKey: 'experience', icon: BookOpen },
+  { route: ROUTES.naibaAi, copyKey: 'naibaAi', icon: Sparkles },
+]
+
 export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
   const copy = getCopy(locale)
-  const items = [
-    { route: ROUTES.today, label: copy.nav.today, icon: House },
-    { route: ROUTES.records, label: copy.nav.records, icon: ClipboardPlus },
-    { route: ROUTES.stage, label: copy.nav.stage, icon: CalendarRange },
-    { route: ROUTES.pediatric, label: copy.nav.pediatric, icon: Stethoscope },
-    { route: ROUTES.summary, label: copy.nav.summary, icon: FileHeart },
-  ]
+  const primaryNavRef = useRef(null)
+
+  useEffect(() => {
+    const isMobile = typeof window.matchMedia !== 'function' || window.matchMedia('(max-width: 820px)').matches
+    if (!isMobile) return
+    const active = primaryNavRef.current?.querySelector('[aria-current="page"]')
+    active?.scrollIntoView?.({ block: 'nearest', inline: 'center' })
+  }, [route])
 
   return (
     <header className="app-header">
@@ -23,17 +34,17 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
         <span className="baby-avatar">{baby.nickname.slice(0, 1)}</span>
         <span><strong>{baby.nickname}</strong><small>{copy.profile(getSexLabel(baby.sex, locale), ageDays)}</small></span>
       </div>
-      <nav aria-label="主导航">
-        {items.map(({ route: target, label, icon: Icon }) => (
-          <button key={target} className={route === target ? 'active' : ''} onClick={() => navigate(target)}>
-            <Icon size={17} />{label}
+      <nav ref={primaryNavRef} aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
+        {PRIMARY_NAV_ITEMS.map(({ route: target, copyKey, icon: Icon }) => (
+          <button key={target} type="button" className={route === target ? 'active' : ''} aria-current={route === target ? 'page' : undefined} onClick={() => navigate(target)}>
+            <Icon size={17} />{copy.nav[copyKey]}
           </button>
         ))}
       </nav>
       <div className="header-actions">
         <label className="recorder-picker">
-          <span>{locale === 'en-US' ? 'Entered by' : '记录人'}</span>
-          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current recorder' : '当前记录人'}>
+          <span>{locale === 'en-US' ? 'Current role' : '当前角色'}</span>
+          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current role' : '当前角色'}>
             {careActors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
           </select>
         </label>

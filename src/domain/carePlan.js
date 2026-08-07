@@ -30,6 +30,101 @@ export const CARE_TASKS = [
   },
 ]
 
+const STAGE_DAILY_TASKS = {
+  infant: [
+    {
+      id: 'feeding',
+      icon: 'feeding',
+      title: { zh: '观察吃奶和进食', en: 'Notice feeding and eating' },
+      action: { zh: '记录进食方式与和平时相比的变化。', en: 'Record how feeding or eating compares with this baby’s usual pattern.' },
+      acceptance: { zh: '完成一次进食观察并留下时间和看到的事实。', en: 'Observe one feed or meal and leave the time and observable facts.' },
+      why: { zh: '持续的照护观察比凭印象回忆更容易交接。', en: 'A concrete observation is easier to hand off than a memory.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'interaction',
+      icon: 'interaction',
+      title: { zh: '留意清醒互动', en: 'Notice awake interaction' },
+      action: { zh: '记录宝宝回应声音、表情和互动的具体片段。', en: 'Record a concrete moment of responding to sounds, faces, or interaction.' },
+      acceptance: { zh: '写下一次互动发生的时间和宝宝的具体回应，不做能力评分。', en: 'Write the time and concrete response without scoring development.' },
+      why: { zh: '具体场景能帮助下一位照护者理解宝宝自己的节律。', en: 'Concrete scenes help the next caregiver understand this baby’s rhythm.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'sleep-rhythm',
+      icon: 'sleep',
+      title: { zh: '记录睡眠节律', en: 'Note the sleep rhythm' },
+      action: { zh: '记下入睡、醒来和需要安抚的时间点。', en: 'Note when the baby fell asleep, woke up, or needed soothing.' },
+      acceptance: { zh: '留下至少一个睡眠片段的时间和照护事实，不解释是否正常。', en: 'Leave one sleep interval with its time and care facts without judging it.' },
+      why: { zh: '按宝宝自己的节律记录，比套用固定标准更有用。', en: 'This baby’s own rhythm is more useful than a fixed standard.' },
+      duration: { zh: '约 1 分钟', en: 'About 1 min' },
+    },
+  ],
+  toddler: [
+    {
+      id: 'meals',
+      icon: 'feeding',
+      title: { zh: '观察一餐进食', en: 'Notice one meal' },
+      action: { zh: '记录孩子吃了什么、如何参与和需要什么支持。', en: 'Record what the child ate, how they joined in, and what support they needed.' },
+      acceptance: { zh: '完成一次进食观察并留下时间和看到的事实。', en: 'Observe one meal and leave the time and observable facts.' },
+      why: { zh: '具体记录方便家庭交接，也避免用印象替代事实。', en: 'Concrete notes make handoffs easier and avoid replacing facts with impressions.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'movement',
+      icon: 'movement',
+      title: { zh: '留出一次主动活动', en: 'Make room for active play' },
+      action: { zh: '记录孩子今天主动移动、游戏或探索的片段。', en: 'Record a moment of active movement, play, or exploration today.' },
+      acceptance: { zh: '留下一个具体活动场景和孩子需要的支持，不做能力评分。', en: 'Leave one concrete activity scene and the support needed without scoring development.' },
+      why: { zh: '保留实际场景，帮助照护者接着支持孩子。', en: 'A real scene helps caregivers continue the right support.' },
+      duration: { zh: '约 5 分钟', en: 'About 5 min' },
+    },
+    {
+      id: 'communication',
+      icon: 'interaction',
+      title: { zh: '记录一次表达', en: 'Record one way of communicating' },
+      action: { zh: '记下孩子用语言、动作或表情表达需要的场景。', en: 'Record a moment when the child used words, gestures, or expressions to communicate.' },
+      acceptance: { zh: '留下发生场景和孩子的表达方式，不做能力评分。', en: 'Leave the scene and the way the child communicated without scoring development.' },
+      why: { zh: '把可复述的场景留给下一位照护者。', en: 'A repeatable scene is easier to share with the next caregiver.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+  ],
+  child: [
+    {
+      id: 'routine',
+      icon: 'routine',
+      title: { zh: '回顾今天的生活节律', en: 'Review today’s routine' },
+      action: { zh: '记录睡眠、进食和活动中最值得交接的一件事。', en: 'Record the one sleep, meal, or activity fact worth handing off.' },
+      acceptance: { zh: '留下一个带时间的生活事实，另一位照护者能按记录复述。', en: 'Leave one timed routine fact another caregiver can repeat.' },
+      why: { zh: '简短交接比事后凭印象回忆更可靠。', en: 'A short handoff is more reliable than recalling the day later.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+    {
+      id: 'movement',
+      icon: 'movement',
+      title: { zh: '安排一次主动活动', en: 'Make room for active play' },
+      action: { zh: '记录孩子今天主动游戏、运动或户外活动的片段。', en: 'Record a moment of active play, movement, or outdoor time today.' },
+      acceptance: { zh: '留下一个具体活动场景和孩子需要的支持，不做能力评分。', en: 'Leave one concrete activity scene and the support needed without scoring development.' },
+      why: { zh: '具体场景能帮助家庭持续提供合适的支持。', en: 'Concrete scenes help the family continue useful support.' },
+      duration: { zh: '约 5 分钟', en: 'About 5 min' },
+    },
+    {
+      id: 'independence',
+      icon: 'independence',
+      title: { zh: '留意一次自主尝试', en: 'Notice one independent attempt' },
+      action: { zh: '记录孩子自己完成日常小事时需要的支持。', en: 'Record what support the child needed while trying a daily task independently.' },
+      acceptance: { zh: '留下一个具体任务和支持方式，不比较或评分。', en: 'Leave one concrete task and support approach without comparing or scoring.' },
+      why: { zh: '把孩子自己的进步和需要交接给下一位照护者。', en: 'Share the child’s own progress and support needs with the next caregiver.' },
+      duration: { zh: '约 2 分钟', en: 'About 2 min' },
+    },
+  ],
+}
+
+function dailyTaskDefinitions(stageId = 'newborn-early') {
+  const group = stageId?.startsWith('infant') ? 'infant' : stageId?.startsWith('toddler') ? 'toddler' : stageId?.startsWith('child') ? 'child' : null
+  return STAGE_DAILY_TASKS[group] || CARE_TASKS
+}
+
 export const STAGE_MILESTONES = {
   'newborn-early': [
     { id: 'first-visit-plan', dueDay: 1, title: { zh: '准备新生儿访视资料', en: 'Prepare newborn visit notes' }, detail: { zh: '把出生信息、喂养方式和想问的问题放在一起。', en: 'Gather birth details, feeding mode, and questions in one place.' } },
@@ -42,6 +137,45 @@ export const STAGE_MILESTONES = {
     { id: 'care-team-language', dueDay: 14, title: { zh: '统一照护者描述方式', en: 'Align caregiver language' }, detail: { zh: '用时间、部位、变化、来源四类事实交接。', en: 'Use time, location, change, and source for handoffs.' } },
     { id: 'health-visit-questions', dueDay: 21, title: { zh: '准备儿童保健问题', en: 'Prepare health-visit questions' }, detail: { zh: '从记录中挑出最想向专业人员确认的三件事。', en: 'Choose up to three questions from your records.' } },
     { id: 'adaptation-review', dueDay: 28, title: { zh: '完成 0–28 天回顾', en: 'Review the first 28 days' }, detail: { zh: '查看阶段事项、成长测量和观察时间线。', en: 'Review stage tasks, measurements, and the observation timeline.' } },
+  ],
+  'infant-1-2-months': [
+    { id: 'infant-1-2-month-review', dueDay: 45, dueLabel: { zh: '1–2 个月阶段', en: 'Months 1–2' }, title: { zh: '回顾 1–2 个月观察', en: 'Review months 1–2 observations' }, detail: { zh: '整理吃奶、睡眠和清醒互动中的稳定事实，不与同龄宝宝比较。', en: 'Gather steady facts about feeding, sleep, and awake interaction without comparing babies.' } },
+  ],
+  'infant-2-3-months': [
+    { id: 'infant-2-3-month-interaction', dueDay: 75, dueLabel: { zh: '2–3 个月阶段', en: 'Months 2–3' }, title: { zh: '记录清醒互动节律', en: 'Notice awake interaction rhythms' }, detail: { zh: '记录宝宝何时更容易清醒、回应和休息，留给照护者交接。', en: 'Notice when the baby is more ready to be awake, respond, and rest for caregiver handoffs.' } },
+  ],
+  'infant-3-4-months': [
+    { id: 'infant-3-4-month-movement', dueDay: 105, dueLabel: { zh: '3–4 个月阶段', en: 'Months 3–4' }, title: { zh: '观察动作变化', en: 'Observe movement changes' }, detail: { zh: '记录抬头、伸手和身体转动等看到的动作变化，不做能力评分。', en: 'Record observed changes such as head control, reaching, and turning without scoring development.' } },
+  ],
+  'infant-4-6-months': [
+    { id: 'infant-4-6-month-exploration', dueDay: 150, dueLabel: { zh: '4–6 个月阶段', en: 'Months 4–6' }, title: { zh: '记录新的探索事实', en: 'Record new exploration facts' }, detail: { zh: '把伸手、抓握、声音和新的进食事实分开记录，保留发生时间。', en: 'Record reaching, grasping, sounds, and new feeding facts separately with their dates.' } },
+  ],
+  'infant-6-9-months': [
+    { id: 'infant-6-9-month-safety', dueDay: 225, dueLabel: { zh: '6–9 个月阶段', en: 'Months 6–9' }, title: { zh: '检查移动空间安全', en: 'Check the moving space' }, detail: { zh: '随着翻身、爬行或坐起变化，重新检查地面、家具和可触及物品。', en: 'As rolling, crawling, or sitting changes, recheck floors, furniture, and reachable objects.' } },
+  ],
+  'infant-9-12-months': [
+    { id: 'infant-9-12-month-communication', dueDay: 315, dueLabel: { zh: '9–12 个月阶段', en: 'Months 9–12' }, title: { zh: '整理声音和手势互动', en: 'Review sounds and gestures' }, detail: { zh: '记录宝宝用声音、表情或手势表达需求的具体场景。', en: 'Record concrete moments when the baby uses sounds, expressions, or gestures to communicate.' } },
+  ],
+  'toddler-12-15-months': [
+    { id: 'toddler-12-15-month-review', dueDay: 410, dueLabel: { zh: '12–15 个月阶段', en: 'Months 12–15' }, title: { zh: '完成一岁后成长回顾', en: 'Review the first year after birth' }, detail: { zh: '把移动、沟通、进食和日常照护中最有变化的事实整理出来。', en: 'Gather the biggest changes in movement, communication, feeding, and daily care.' } },
+  ],
+  'toddler-15-18-months': [
+    { id: 'toddler-15-18-month-independence', dueDay: 500, dueLabel: { zh: '15–18 个月阶段', en: 'Months 15–18' }, title: { zh: '记录自主尝试', en: 'Record independent attempts' }, detail: { zh: '记录宝宝尝试自己走、拿、吃或表达时需要什么支持。', en: 'Record what support the baby needs while trying to walk, hold, eat, or communicate independently.' } },
+  ],
+  'toddler-18-24-months': [
+    { id: 'toddler-18-24-month-handoff', dueDay: 620, dueLabel: { zh: '18–24 个月阶段', en: 'Months 18–24' }, title: { zh: '更新日常照护交接', en: 'Refresh the daily care handoff' }, detail: { zh: '把睡眠、进食、情绪和安抚方式更新成全家都能复述的事实。', en: 'Update sleep, feeding, emotions, and soothing facts so every caregiver can repeat them.' } },
+  ],
+  'child-2-3-years': [
+    { id: 'child-2-3-year-review', dueDay: 820, dueLabel: { zh: '2–3 岁阶段', en: 'Years 2–3' }, title: { zh: '回顾两岁阶段变化', en: 'Review the second-year changes' }, detail: { zh: '整理语言、游戏、生活自理和家庭节律中的具体变化。', en: 'Gather concrete changes in language, play, self-care, and family routines.' } },
+  ],
+  'child-3-4-years': [
+    { id: 'child-3-4-year-observation', dueDay: 1180, dueLabel: { zh: '3–4 岁阶段', en: 'Years 3–4' }, title: { zh: '观察游戏、表达和自理', en: 'Observe play, expression, and self-care' }, detail: { zh: '用具体场景记录孩子如何游戏、表达想法和完成日常小事。', en: 'Use concrete scenes to record play, expression, and everyday self-care.' } },
+  ],
+  'child-4-5-years': [
+    { id: 'child-4-5-year-routine', dueDay: 1540, dueLabel: { zh: '4–5 岁阶段', en: 'Years 4–5' }, title: { zh: '整理情绪和日常节律', en: 'Review emotions and routines' }, detail: { zh: '记录触发情绪变化的场景、有效的安抚方式和一天的主要节律。', en: 'Record situations linked to emotional changes, helpful soothing, and the day’s main routines.' } },
+  ],
+  'child-5-6-years': [
+    { id: 'child-5-6-year-review', dueDay: 1900, dueLabel: { zh: '5–6 岁阶段', en: 'Years 5–6' }, title: { zh: '完成入学前成长回顾', en: 'Complete a pre-school-age review' }, detail: { zh: '整理生活自理、沟通、游戏和家庭需要继续支持的事实。', en: 'Gather facts about self-care, communication, play, and support the family wants to continue.' } },
   ],
 }
 
@@ -122,9 +256,9 @@ export function localDateKey(value = new Date()) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 10)
 }
 
-export function getDailyTasks(taskLogs = [], date = new Date()) {
+export function getDailyTasks(taskLogs = [], date = new Date(), stageId = 'newborn-early') {
   const dateKey = localDateKey(date)
-  return CARE_TASKS.map((task) => {
+  return dailyTaskDefinitions(stageId).map((task) => {
     const log = taskLogs.find((item) => item.taskId === task.id && item.date === dateKey)
     return { ...task, date: dateKey, status: log?.status || 'pending', log: log || null }
   })
