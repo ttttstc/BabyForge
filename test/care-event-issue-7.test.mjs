@@ -115,6 +115,15 @@ test('server input defaults unclear source to unknown and rejects direct correct
   assert.equal(safeEventInput({ ...base, correctedFromId: 'event-0' }, {}, { allowCorrectedFromId: true, requireId: true, requireActor: true, requireTimestamps: true }).correctedFromId, 'event-0')
 })
 
+test('server validates the six P0 record payloads without narrowing legacy categories', () => {
+  const base = { id: 'p0', babyId: 'baby-1', occurredAt: '2026-08-07T08:00:00Z', recordedAt: '2026-08-07T08:00:00Z', actor: { id: 'parent', displayName: '爸爸' }, source: 'caregiver', payload: {} }
+  assert.throws(() => safeEventInput({ ...base, category: 'bottle_feeding', payload: { milkType: 'formula' } }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /实际摄入量/)
+  assert.throws(() => safeEventInput({ ...base, category: 'sleep', payload: { endedAt: '2026-08-07T07:00:00Z' } }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /结束时间必须晚于开始时间/)
+  assert.throws(() => safeEventInput({ ...base, category: 'temperature', kind: 'measurement', payload: { value: 36.5, unit: '°C' } }, {}, { requireId: true, requireActor: true, requireTimestamps: true }), /测量部位或方法/)
+  assert.equal(safeEventInput({ ...base, category: 'temperature_observation' }, {}, { requireId: true, requireActor: true, requireTimestamps: true }).category, 'temperature_observation')
+  assert.equal(safeEventInput({ ...base, category: 'language' }, {}, { requireId: true, requireActor: true, requireTimestamps: true }).category, 'language')
+})
+
 test('summary labels keep canonical kind and open categories readable', () => {
   assert.equal(eventKindLabel('measurement', 'zh-CN'), '测量')
   assert.equal(eventCategoryLabel('oxygen_saturation', 'zh-CN'), '血氧饱和度')

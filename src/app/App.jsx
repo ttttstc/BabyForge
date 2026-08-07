@@ -67,21 +67,24 @@ export function App() {
       : Promise.resolve(true)
     const workspaceSync = nonEventWorkspaceChanged ? pushWorkspace(stateRef.current) : Promise.resolve(null)
     return Promise.all([eventSync, workspaceSync]).then(() => true).catch((error) => {
-      // A failed create is optimistic local state only. Remove it so the form
-      // can safely retry without posting the same fact under a new UUID.
-      const createdIds = new Set(eventChanges.filter((change) => change.operation === 'create').map((change) => change.event.id))
-      if (createdIds.size) {
-        const rolledBack = applyCareEventsToLegacy({
-          ...stateRef.current,
-          careEvents: (stateRef.current.careEvents || []).filter((event) => !createdIds.has(event.id)),
-        }, (stateRef.current.careEvents || []).filter((event) => !createdIds.has(event.id)))
-        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !createdIds.has(item.event.id))
+      // Event writes are optimistic. Revert every event touched by this
+      // commit, including corrections and voids, so a failed save never looks
+      // successful in the local timeline. The entry form remains mounted and
+      // keeps its input for an explicit retry.
+      if (eventChanges.length) {
+        const changedIds = new Set(eventChanges.map((change) => change.event.id))
+        const previousById = new Map((previous.careEvents || []).map((event) => [event.id, event]))
+        const currentEvents = stateRef.current.careEvents || []
+        const restored = [
+          ...currentEvents.filter((event) => !changedIds.has(event.id)),
+          ...[...changedIds].map((id) => previousById.get(id)).filter(Boolean),
+        ]
+        const rolledBack = applyCareEventsToLegacy({ ...stateRef.current, careEvents: restored }, restored)
+        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !changedIds.has(item.event.id))
         stateRef.current = rolledBack
         saveState(globalThis.localStorage, rolledBack, session?.username)
         setState(rolledBack)
       }
-      // Corrections and voids keep their stable event id/version in local
-      // state and pendingSyncRef so a manual retry can safely resume them.
       updateSyncMeta({ status: 'offline' })
       throw error
     })
