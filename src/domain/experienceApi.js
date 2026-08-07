@@ -1,5 +1,7 @@
 import { getCacheState, getExperienceCacheKey } from './experience.js'
 
+export const EXPERIENCE_REQUEST_TIMEOUT_MS = 8000
+
 function readJson(storage, key) {
   try {
     const value = JSON.parse(storage?.getItem(key) || 'null')
@@ -23,17 +25,45 @@ export function readExperienceCache({ storage = globalThis.localStorage, babyId,
 
 export function writeExperienceCache({ storage = globalThis.localStorage, babyId, bandId, categoryId, locale = 'zh-CN', value }) {
   const key = getExperienceCacheKey({ babyId, bandId, categoryId, locale })
-  storage?.setItem(key, JSON.stringify(value))
+  try { storage?.setItem(key, JSON.stringify(value)) } catch { /* Cache storage is optional. */ }
   return value
 }
 
-export async function fetchExperience({ babyId, categoryId, refresh = false, fetchImpl = globalThis.fetch }) {
+function requestError(message, code) {
+  const error = new Error(message)
+  error.name = 'ExperienceRequestError'
+  error.code = code
+  return error
+}
+
+export async function fetchExperience({ babyId, categoryId, refresh = false, fetchImpl = globalThis.fetch, signal, timeoutMs = EXPERIENCE_REQUEST_TIMEOUT_MS }) {
   if (typeof fetchImpl !== 'function') throw new Error('经验服务不可用')
   const params = new URLSearchParams({ babyId: String(babyId), category: categoryId })
   if (refresh) params.set('refresh', '1')
-  const response = await fetchImpl(`/api/experience?${params.toString()}`, { credentials: 'include' })
-  let payload
-  try { payload = await response.json() } catch { payload = null }
-  if (!response.ok) throw new Error(payload?.error || '经验文章暂时无法加载')
-  return payload
+  const controller = new AbortController()
+  let timedOut = false
+  let timer
+  const onExternalAbort = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  else signal?.addEventListener('abort', onExternalAbort, { once: true })
+  if (!controller.signal.aborted && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, timeoutMs)
+  }
+  try {
+    const response = await fetchImpl(`/api/experience?${params.toString()}`, { credentials: 'include', signal: controller.signal })
+    let payload
+    try { payload = await response.json() } catch { payload = null }
+    if (!response.ok) throw new Error(payload?.error || '经验文章暂时无法加载')
+    return payload
+  } catch (error) {
+    if (timedOut) throw requestError('经验查询超时，请稍后重试。', 'EXPERIENCE_TIMEOUT')
+    if (signal?.aborted || controller.signal.aborted) throw requestError('经验查询已取消。', 'EXPERIENCE_ABORTED')
+    throw error
+  } finally {
+    if (timer) clearTimeout(timer)
+    signal?.removeEventListener('abort', onExternalAbort)
+  }
 }

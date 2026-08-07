@@ -73,3 +73,12 @@ test('experience searches categories lazily and keeps the mobile route reachable
   await expect(page.getByRole('heading', { name: 'feeding 阶段经验', exact: true })).toBeVisible()
   expect(requestedCategories).toEqual(['recommended', 'feeding'])
 })
+
+test('experience search failure stays inside the experience surface', async ({ page }) => {
+  await page.route('**/api/experience*', (route) => route.abort())
+  await createBaby(page)
+  await page.getByRole('button', { name: '经验', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '经验', exact: true })).toBeVisible()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('button', { name: '阶段', exact: true })).toBeVisible()
+})

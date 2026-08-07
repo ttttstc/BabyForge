@@ -38,19 +38,32 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
   const [errors, setErrors] = useState({})
   const [copiedId, setCopiedId] = useState('')
   const categoryNavRef = useRef(null)
+  const requestControllersRef = useRef(new Map())
+
+  useEffect(() => () => {
+    for (const controller of requestControllersRef.current.values()) controller.abort()
+    requestControllersRef.current.clear()
+  }, [])
 
   const loadCategory = useCallback(async (categoryId, refresh = false) => {
     if (!age.band) return
+    requestControllersRef.current.get(categoryId)?.abort()
+    const controller = new AbortController()
+    requestControllersRef.current.set(categoryId, controller)
     setLoadingCategory(categoryId)
     setErrors((current) => ({ ...current, [categoryId]: '' }))
     try {
-      const payload = await fetchExperience({ babyId: state.baby.id, categoryId, refresh })
+      const payload = await fetchExperience({ babyId: state.baby.id, categoryId, refresh, signal: controller.signal })
+      if (controller.signal.aborted) return
       writeExperienceCache({ babyId: state.baby.id, bandId: age.band.id, categoryId, locale: 'zh-CN', value: payload })
       setFeeds((current) => ({ ...current, [categoryId]: payload }))
     } catch (error) {
-      setErrors((current) => ({ ...current, [categoryId]: error.message || (isEnglish ? 'Unable to update articles.' : '文章暂时无法更新。') }))
+      if (error?.code !== 'EXPERIENCE_ABORTED') setErrors((current) => ({ ...current, [categoryId]: error.message || (isEnglish ? 'Unable to update articles.' : '文章暂时无法更新。') }))
     } finally {
-      setLoadingCategory((current) => current === categoryId ? null : current)
+      if (requestControllersRef.current.get(categoryId) === controller) {
+        requestControllersRef.current.delete(categoryId)
+        setLoadingCategory((current) => current === categoryId ? null : current)
+      }
     }
   }, [age.band, isEnglish, state.baby.id])
 

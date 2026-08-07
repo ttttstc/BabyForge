@@ -16,6 +16,7 @@ export const TRUSTED_PROFESSIONAL_SOURCES = [
 ]
 
 const TAVILY_URL = 'https://api.tavily.com/search'
+const TAVILY_TIMEOUT_MS = 8000
 const CACHE_PATH = '/__babyforge_experience_cache__/'
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 
@@ -63,7 +64,30 @@ function tavilyError(response, body) {
   return error
 }
 
-export async function searchExperience({ env, band, categoryId }) {
+async function fetchTavily(input, init, timeoutMs = TAVILY_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal })
+    let payload
+    try { payload = await response.json() } catch (error) {
+      if (controller.signal.aborted) throw error
+      payload = null
+    }
+    return { response, payload }
+  } catch (error) {
+    if (controller.signal.aborted) {
+      const timeoutError = new Error('Tavily 查询超时')
+      timeoutError.status = 504
+      throw timeoutError
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export async function searchExperience({ env, band, categoryId, timeoutMs = TAVILY_TIMEOUT_MS }) {
   const apiKey = String(env?.TAVILY_API_KEY || '').trim()
   if (!apiKey) {
     const error = new Error('TAVILY_API_KEY 未配置')
@@ -81,20 +105,20 @@ export async function searchExperience({ env, band, categoryId }) {
     country: 'china',
   }
   if (categoryId === 'health') body.include_domains = TRUSTED_PROFESSIONAL_SOURCES.map((source) => source.domain)
-  let response
+  let result
   try {
-    response = await fetch(TAVILY_URL, {
+    result = await fetchTavily(TAVILY_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
-    })
-  } catch {
-    const error = new Error('Tavily 暂时无法连接')
-    error.status = 502
-    throw error
+    }, timeoutMs)
+  } catch (error) {
+    if (error?.status === 504) throw error
+    const connectionError = new Error('Tavily 暂时无法连接')
+    connectionError.status = 502
+    throw connectionError
   }
-  let payload
-  try { payload = await response.json() } catch { payload = null }
+  const { response, payload } = result
   if (!response.ok) throw tavilyError(response, payload)
   const articles = (Array.isArray(payload?.results) ? payload.results : [])
     .map((result) => normalizeExperienceResult(result, { band, categoryId, sources: TRUSTED_PROFESSIONAL_SOURCES }))
@@ -115,7 +139,7 @@ export async function loadOrSearchExperience({ requestUrl, env, band, categoryId
     await writeExperienceCache(requestUrl, key, envelope, waitUntil)
     return { ...envelope, cacheState: 'generated' }
   } catch (error) {
-    if (cached && cachedState === 'stale') return { ...cached, cacheState: 'stale', error: error.message }
+    if (cached && ['fresh', 'stale'].includes(cachedState)) return { ...cached, cacheState: cachedState, error: error.message }
     throw error
   }
 }

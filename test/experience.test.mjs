@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getContentAgeBandForBaby } from '../src/domain/experience.js'
+import { fetchExperience } from '../src/domain/experienceApi.js'
 import { onRequestGet } from '../functions/api/experience.js'
 import { searchExperience } from '../functions/_shared/experience.js'
 
@@ -44,6 +45,37 @@ test('Tavily search sends only server-generated query context and returns filter
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('stalled Tavily requests time out without holding the server request open', async () => {
+  const originalFetch = globalThis.fetch
+  try {
+    globalThis.fetch = async (_url, init) => new Promise((_, reject) => {
+      init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    })
+    const band = getContentAgeBandForBaby('2026-08-01', '2026-08-05').band
+    await assert.rejects(
+      searchExperience({ env: { TAVILY_API_KEY: 'test-key' }, band, categoryId: 'feeding', timeoutMs: 10 }),
+      (error) => error.status === 504,
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('experience client aborts stalled requests and exposes a local timeout error', async () => {
+  let aborted = false
+  const fetchImpl = async (_url, init) => new Promise((_, reject) => {
+    init.signal.addEventListener('abort', () => {
+      aborted = true
+      reject(new DOMException('aborted', 'AbortError'))
+    }, { once: true })
+  })
+  await assert.rejects(
+    fetchExperience({ babyId: 'baby-1', categoryId: 'recommended', fetchImpl, timeoutMs: 10 }),
+    (error) => error.code === 'EXPERIENCE_TIMEOUT',
+  )
+  assert.equal(aborted, true)
 })
 
 test('experience API denies guest refresh and returns unavailable for ages beyond 36 months', async () => {
