@@ -7,7 +7,7 @@ import { getCopy, getLocaleLabel } from '../domain/i18n.js'
 const PRIMARY_NAV_ITEMS = [
   { route: ROUTES.today, copyKey: 'today', icon: House },
   { route: ROUTES.records, copyKey: 'records', icon: ClipboardPlus },
-  { route: ROUTES.stage, copyKey: 'stage', icon: CalendarRange },
+  { route: ROUTES.growth, copyKey: 'growth', icon: CalendarRange },
   { route: ROUTES.pediatric, copyKey: 'pediatric', icon: Stethoscope },
   { route: ROUTES.experience, copyKey: 'experience', icon: BookOpen },
   { route: ROUTES.naibaAi, copyKey: 'naibaAi', icon: Sparkles },

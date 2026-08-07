@@ -5,7 +5,12 @@ export const ROUTES = {
   onboarding: '#/onboarding',
   today: '#/today',
   records: '#/records',
-  stage: '#/stage/newborn',
+  growth: '#/growth',
+  growthChart: '#/growth/chart',
+  growthStage: '#/growth/stage',
+  growthHistory: '#/growth/history',
+  // Kept as an internal alias while existing surfaces migrate to Growth.
+  stage: '#/growth',
   jaundice: '#/topic/jaundice',
   pediatric: '#/topic/pediatric-diseases',
   experience: '#/experience',
@@ -15,36 +20,47 @@ export const ROUTES = {
 
 const LEGACY_ROUTE_ALIASES = {
   '#/doctor-summary': ROUTES.records,
+  '#/stage': ROUTES.growth,
+  '#/stage/newborn': ROUTES.growth,
 }
 
 export function navigate(route) {
   window.location.hash = route.slice(1)
 }
 
-function rawHashRoute() {
-  return (window.location.hash || ROUTES.onboarding).split('?')[0]
+function hashValue() {
+  return globalThis.window?.location?.hash || ROUTES.onboarding
 }
 
-function hashRoute() {
-  const rawRoute = rawHashRoute()
-  return LEGACY_ROUTE_ALIASES[rawRoute] || rawRoute
+export function parseHashLocation(value = hashValue()) {
+  const normalized = String(value || ROUTES.onboarding).startsWith('#') ? String(value || ROUTES.onboarding) : `#${value}`
+  const [pathname, query = ''] = normalized.slice(1).split('?')
+  const rawRoute = `#${pathname || ROUTES.onboarding.slice(1)}`
+  const route = LEGACY_ROUTE_ALIASES[rawRoute] || rawRoute
+  const search = query ? `?${query}` : ''
+  return { route, search, query, params: new URLSearchParams(query) }
 }
 
-export function useHashRoute() {
-  const [route, setRoute] = useState(hashRoute)
+export function useHashLocation() {
+  const [location, setLocation] = useState(() => parseHashLocation())
 
   useEffect(() => {
     const update = () => {
-      const nextRoute = hashRoute()
-      if (rawHashRoute() !== nextRoute) {
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextRoute}`)
+      const nextLocation = parseHashLocation()
+      const canonicalHash = `${nextLocation.route}${nextLocation.search}`
+      if (hashValue() !== canonicalHash && globalThis.window?.history) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${canonicalHash}`)
       }
-      setRoute(nextRoute)
+      setLocation(nextLocation)
     }
     update()
     window.addEventListener('hashchange', update)
     return () => window.removeEventListener('hashchange', update)
   }, [])
 
-  return route
+  return location
+}
+
+export function useHashRoute() {
+  return useHashLocation().route
 }

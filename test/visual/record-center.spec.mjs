@@ -67,8 +67,8 @@ test('record center keeps profile, feeding, illness, and medication entry togeth
   expect(savedWorkspace.concerns).toHaveLength(1)
   expect(savedWorkspace.careEvents.some((event) => event.category === 'concern_open' && event.payload.concernId === savedWorkspace.concerns[0].id)).toBeTruthy()
 
-  await page.getByRole('button', { name: '阶段', exact: true }).click()
-  await expect(page.getByText('新增测量统一在记录中心录入。')).toBeVisible()
+  await page.getByRole('button', { name: '成长', exact: true }).click()
+  await expect(page.getByRole('button', { name: '去记录中心录入成长测量' })).toBeVisible()
   await expect(page.getByLabel('成长数值')).toHaveCount(0)
   await page.getByRole('button', { name: '设置' }).click()
   await expect(page.getByText('宝宝信息统一在记录中心维护')).toBeVisible()

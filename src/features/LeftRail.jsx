@@ -39,7 +39,7 @@ export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
           {visibleStages.map((item) => {
             const active = stage.id === item.id
             const completed = ageDays > item.max
-            return <button className={`timeline-item ${active ? 'active' : ''}`} key={item.id} onClick={() => navigate(ROUTES.stage)} aria-current={active ? 'step' : undefined}>
+            return <button className={`timeline-item ${active ? 'active' : ''}`} key={item.id} onClick={() => navigate(ROUTES.growth)} aria-current={active ? 'step' : undefined}>
               <span className="timeline-dot">{completed ? <CheckCircle2 size={14} /> : active ? '●' : '○'}</span>
               <span><strong>{getStageLabel(item, locale)}</strong><small>{getStageRangeLabel(item, locale)}</small></span>
               {active && <em>{copy.current}</em>}
@@ -62,7 +62,7 @@ export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
           <article><span className="guide-icon notice"><ShieldCheck size={15} /></span><div><strong>{locale === 'en-US' ? 'Keep a simple reference' : '先建立宝宝自己的参照'}</strong><p>{locale === 'en-US' ? 'Alertness, wet diapers, feeding, and sleep are more useful than comparisons.' : '先熟悉精神、湿尿布、吃奶和睡眠的平时状态，不急着和别人比较。'}</p></div></article>
           <article><span className="guide-icon alert"><CircleAlert size={15} /></span><div><strong>{locale === 'en-US' ? 'When to call for help' : '这些变化要及时求助'}</strong><p>{locale === 'en-US' ? 'Labored breathing, blue lips, inability to wake, or clearly reduced intake.' : '呼吸费力、嘴唇发青、叫不醒或明显吃不进去时，联系儿科或当地医疗服务。'}</p></div></article>
         </div>
-        <button className="rail-guide-link" onClick={() => navigate(ROUTES.stage)}>{locale === 'en-US' ? 'Open stage tasks and appointments' : '查看阶段代办与预约'}<ChevronRight size={15} /></button>
+        <button className="rail-guide-link" onClick={() => navigate(ROUTES.growth)}>{locale === 'en-US' ? 'Open growth stage guide' : '查看成长阶段指南'}<ChevronRight size={15} /></button>
       </section>
 
       <button className="topic-entry" onClick={() => navigate(ROUTES.pediatric)}>

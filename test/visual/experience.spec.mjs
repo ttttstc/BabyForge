@@ -81,7 +81,7 @@ test('experience search failure stays inside the experience surface', async ({ p
   await page.getByRole('button', { name: '经验', exact: true }).click()
   await expect(page.getByRole('heading', { name: '经验', exact: true })).toBeVisible()
   await expect(page.getByRole('alert')).toBeVisible()
-  await expect(page.getByRole('button', { name: '阶段', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '成长', exact: true })).toBeVisible()
 })
 
 test('selected primary navigation item stays visible at narrow widths', async ({ page }) => {

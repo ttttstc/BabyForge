@@ -19,7 +19,8 @@ import { onRequestPost as onPhotoPost } from '../functions/api/photos.js'
 import { onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
-import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, getGrowthChartModel, growthLevelLabel, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { ageContextSummary, ageBasisLabel, resolveAgeContext } from '../src/domain/agePolicy.js'
 import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
 import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
 
@@ -307,8 +308,8 @@ test('growth evaluator keeps birth and corrected-age standards isolated', () => 
   const context = getGrowthAgeContext(preterm, '2026-07-27', 'corrected')
   assert.equal(context.ageDays, 0)
   assert.equal(context.ageMonths, 0)
-  const correctedMeasurement = createEvaluatedGrowthMeasurement({ id: 'corrected-weight', type: 'weight', value: '3.2', measuredAt: '2026-07-27', source: 'caregiver_observation' }, { ...preterm, growthAgeBasis: 'corrected' }, [], { now: '2026-07-28T10:00:00.000Z' })
-  assert.equal(correctedMeasurement.ageBasis, 'corrected')
+  const correctedMeasurement = createEvaluatedGrowthMeasurement({ id: 'corrected-weight', type: 'weight', value: '3.2', measuredAt: '2026-07-27', source: 'caregiver_observation' }, { ...preterm, growthAgeBasis: 'chronological' }, [], { now: '2026-07-28T10:00:00.000Z' })
+  assert.equal(correctedMeasurement.ageBasis, null)
   assert.equal(correctedMeasurement.evaluation.ageBasis, 'corrected')
   const missingGestation = evaluateGrowthMeasurement({ id: 'birth-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-01', source: 'birth_record' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z' })
   assert.equal(missingGestation.standardPackageId, 'ws-t-800-2022')
@@ -334,13 +335,33 @@ test('postmenstrual age is reported separately from the WS/T 423 reference month
   assert.equal(evaluated.referenceAgeMonths, 0)
 })
 
-test('preterm chronological follow-ups withhold term references until corrected age is selected', () => {
+test('preterm follow-ups select corrected references automatically', () => {
   const baby = { id: 'baby-preterm-default', birthDate: '2026-08-01', sex: 'female', gestationalWeeks: 28, gestationalDays: 0 }
   const chronological = evaluateGrowthMeasurement({ id: 'preterm-chronological', type: 'weight', value: '2.8', measuredAt: '2026-11-01', source: 'clinical' }, baby, [], { now: '2026-11-02T10:00:00.000Z' })
-  assert.equal(chronological.dataQuality, 'insufficient')
-  assert.match(chronological.limitations.join(' '), /早产儿.*矫正年龄/)
+  assert.equal(chronological.dataQuality, 'sufficient')
+  assert.equal(chronological.ageBasis, 'corrected')
   const corrected = evaluateGrowthMeasurement({ id: 'preterm-corrected', type: 'weight', value: '2.8', measuredAt: '2026-11-01', source: 'clinical', ageBasis: 'corrected' }, baby, [], { now: '2026-11-02T10:00:00.000Z' })
   assert.equal(corrected.dataQuality, 'sufficient')
+})
+
+test('age policy selects the purpose-specific basis and never trusts the legacy preference', () => {
+  const baby = { birthDate: '2026-01-01', gestationalWeeks: 32, gestationalDays: 0, growthAgeBasis: 'chronological' }
+  const stage = resolveAgeContext({ baby, at: '2026-03-01', purpose: 'stage' })
+  const carePlan = resolveAgeContext({ baby, at: '2026-03-01', purpose: 'care_plan' })
+  assert.equal(stage.basis, 'corrected')
+  assert.equal(carePlan.basis, 'chronological')
+  assert.equal(ageBasisLabel(stage.basis), '矫正年龄')
+  assert.match(ageContextSummary(stage), /矫正年龄/)
+})
+
+test('growth chart model keeps all seven official percentile lines and the baby trajectory separate', () => {
+  const baby = { id: 'chart-baby', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40, gestationalDays: 0 }
+  const measurement = createEvaluatedGrowthMeasurement({ id: 'chart-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  const model = getGrowthChartModel({ baby, measurements: [measurement], type: 'weight', startMonth: 0, endMonth: 3, now: '2026-08-06T10:00:00.000Z' })
+  assert.deepEqual(model.reference.map((line) => line.percentile), [3, 10, 25, 50, 75, 90, 97])
+  assert.equal(model.reference.every((line) => line.points.length === 4), true)
+  assert.equal(model.points[0].value, 3.5)
+  assert.equal(growthLevelLabel(measurement.evaluation), '中')
 })
 
 test('growth evaluator reports insufficient history and never fabricates reference values', () => {
@@ -462,6 +483,15 @@ test('legacy event application merges fields and removes voided records', () => 
   assert.deepEqual(merged.taskLogs, [{ id: 'task-1', actor: 'nanny', status: 'pending' }])
   const voided = applyCareEventsToLegacy(merged, [{ ...active, status: 'voided' }])
   assert.deepEqual(voided.taskLogs, [])
+})
+
+test('growth care-plan actions project separately from legacy milestone records', () => {
+  const state = { careEvents: [], milestoneRecords: [], carePlanItems: [] }
+  const event = createCareEvent({ id: 'growth-plan-1', category: 'care_plan_item', payload: { taskId: 'first-visit-plan', status: 'done' } })
+  const projected = applyCareEventsToLegacy(state, [event])
+  assert.equal(projected.carePlanItems[0].taskId, 'first-visit-plan')
+  assert.equal(projected.carePlanItems[0].status, 'done')
+  assert.equal(projected.milestoneRecords.length, 0)
 })
 
 test('outbox coalescing keeps create and sends a voided tombstone', () => {

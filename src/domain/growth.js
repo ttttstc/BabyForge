@@ -1,5 +1,6 @@
 import { createGrowthMeasurement, GROWTH_TYPES } from './carePlan.js'
 import { WS_T_423_2022, WS_T_800_2022 } from './growthStandards.js'
+import { getGestationalDays, isPretermBaby, resolveAgeContext } from './agePolicy.js'
 
 export const GROWTH_SOURCES = Object.freeze([
   'birth_record',
@@ -16,7 +17,7 @@ const METRIC_LABELS = {
   headCircumference: '头围',
 }
 
-const PERCENTILES = [3, 10, 25, 50, 75, 90, 97]
+export const GROWTH_PERCENTILES = Object.freeze([3, 10, 25, 50, 75, 90, 97])
 const SD_LEVELS = [-3, -2, -1, 0, 1, 2, 3]
 
 function dateKey(value) {
@@ -51,16 +52,11 @@ function approximateMonthsFromDays(days) {
 }
 
 function gestationalDays(baby) {
-  if (baby?.gestationalWeeks === null || baby?.gestationalWeeks === undefined || String(baby.gestationalWeeks).trim() === '') return null
-  const weeks = Number(baby?.gestationalWeeks)
-  const days = Number(baby?.gestationalDays || 0)
-  if (!Number.isFinite(weeks) || !Number.isFinite(days) || weeks < 0 || days < 0 || days > 6) return null
-  return Math.round(weeks * 7 + days)
+  return getGestationalDays(baby)
 }
 
 function isPreterm(baby) {
-  const days = gestationalDays(baby)
-  return days !== null && days < 37 * 7
+  return isPretermBaby(baby)
 }
 
 export function getGrowthAgeContext(baby, measuredAt, requestedBasis = 'chronological') {
@@ -216,10 +212,14 @@ function baseResult(measurement, age, limitations, now) {
 
 export function evaluateGrowthMeasurement(measurement, baby, history = [], options = {}) {
   const now = options.now || new Date()
-  const requestedBasis = measurement?.ageBasis || baby?.growthAgeBasis || 'chronological'
+  const policyAge = resolveAgeContext({ baby, at: measurement?.measuredAt, purpose: 'growth_standard' })
+  // `options.ageBasis` is reserved for deterministic internal calculations;
+  // the legacy baby.growthAgeBasis field is never a formal evaluation input.
+  const requestedBasis = GROWTH_AGE_BASES.includes(options.ageBasis) ? options.ageBasis : GROWTH_AGE_BASES.includes(measurement?.ageBasis) ? measurement.ageBasis : policyAge.basis
   let age
   try {
     age = getGrowthAgeContext(baby, measurement?.measuredAt, requestedBasis)
+    age.limitations = [...new Set([...(policyAge.limitations || []), ...(age.limitations || [])])]
   } catch {
     age = { basis: requestedBasis, ageMonths: null, ageDays: null, limitations: ['缺少有效出生日期或测量日期'] }
   }
@@ -260,12 +260,12 @@ export function evaluateGrowthMeasurement(measurement, baby, history = [], optio
     if (measurement.type === 'weight') {
       const value = measurementValue(measurement) * 1000
       result.referencePosition = percentileBand(value, rows.percentile)
-      result.percentile = officialLevel(value, rows.percentile, PERCENTILES)
+      result.percentile = officialLevel(value, rows.percentile, GROWTH_PERCENTILES)
       result.birthSizeCategory = value < rows.percentile[1] ? 'small-for-gestational-age' : value > rows.percentile[5] ? 'large-for-gestational-age' : 'appropriate-for-gestational-age'
     } else {
       const value = measurementValue(measurement)
       result.referencePosition = percentileBand(value, rows.percentile)
-      result.percentile = officialLevel(value, rows.percentile, PERCENTILES)
+      result.percentile = officialLevel(value, rows.percentile, GROWTH_PERCENTILES)
       result.limitations.push('出生身长和出生头围为辅助指标，WS/T 800 不据此单独判定胎龄大小')
     }
   } else {
@@ -289,7 +289,7 @@ export function evaluateGrowthMeasurement(measurement, baby, history = [], optio
     }
     const value = measurementValue(measurement)
     result.referencePosition = percentileBand(value, rows.percentile)
-    result.percentile = officialLevel(value, rows.percentile, PERCENTILES)
+    result.percentile = officialLevel(value, rows.percentile, GROWTH_PERCENTILES)
     result.zScore = officialLevel(value, rows.standardDeviation, SD_LEVELS)
     if (age.basis === 'postmenstrual') result.limitations.push('WS/T 423 的年龄口径为出生后整月；经后年龄仅保留为输入口径，不替代标准年龄')
   }
@@ -300,7 +300,7 @@ export function evaluateGrowthMeasurement(measurement, baby, history = [], optio
 }
 
 export function createEvaluatedGrowthMeasurement(input, baby, history = [], options = {}) {
-  const measurement = createGrowthMeasurement({ ...input, ageBasis: input?.ageBasis || baby?.growthAgeBasis || 'chronological' }, options)
+  const measurement = createGrowthMeasurement({ ...input, ageBasis: input?.ageBasis || null }, options)
   return { ...measurement, evaluation: evaluateGrowthMeasurement(measurement, baby, history, options) }
 }
 
@@ -309,6 +309,61 @@ export function growthReferenceLabel(evaluation, locale = 'zh-CN') {
     ? { 'below-p3': 'below P3', 'p3-p10': 'P3–P10', 'p10-p25': 'P10–P25', 'p25-p50': 'P25–P50', 'p50-p75': 'P50–P75', 'p75-p90': 'P75–P90', 'p90-p97': 'P90–P97', 'p97-plus': 'P97 or above' }
     : { 'below-p3': '低于 P3', 'p3-p10': 'P3–P10', 'p10-p25': 'P10–P25', 'p25-p50': 'P25–P50', 'p50-p75': 'P50–P75', 'p75-p90': 'P75–P90', 'p90-p97': 'P90–P97', 'p97-plus': 'P97 及以上' }
   return labels[evaluation?.referencePosition] || (locale === 'en-US' ? 'Reference unavailable' : '暂无参考位置')
+}
+
+export function growthLevelKey(evaluation) {
+  const position = evaluation?.referencePosition
+  if (!position) return null
+  if (position === 'below-p3') return 'low'
+  if (position === 'p97-plus') return 'high'
+  if (position === 'p3-p10' || position === 'p10-p25') return 'mid-low'
+  if (position === 'p75-p90' || position === 'p90-p97') return 'mid-high'
+  return 'mid'
+}
+
+export function growthLevelLabel(evaluation, locale = 'zh-CN') {
+  const labels = locale === 'en-US'
+    ? { low: 'Low', 'mid-low': 'Below middle', mid: 'Middle', 'mid-high': 'Above middle', high: 'High' }
+    : { low: '下', 'mid-low': '中下', mid: '中', 'mid-high': '中上', high: '上' }
+  return labels[growthLevelKey(evaluation)] || (locale === 'en-US' ? 'Reference unavailable' : '暂无标准结论')
+}
+
+export function getGrowthReferenceSeries({ baby, type = 'weight', startMonth = 0, endMonth = 3 } = {}) {
+  const definition = metricDefinition(type)
+  const sex = baby?.sex
+  if (!definition || !['male', 'female'].includes(sex)) return []
+  const rows = WS_T_423_2022.percentiles?.[type]?.[sex] || []
+  const min = Number.isFinite(Number(startMonth)) ? Math.max(0, Number(startMonth)) : 0
+  const max = Number.isFinite(Number(endMonth)) ? Math.max(min, Number(endMonth)) : min + 3
+  return GROWTH_PERCENTILES.map((percentile, percentileIndex) => ({
+    id: `p${percentile}`,
+    percentile,
+    points: rows.filter(([month]) => month >= min && month <= max).map(([month, values]) => ({ month, value: values[percentileIndex] })),
+  }))
+}
+
+export function getGrowthChartModel({ baby, measurements = [], type = 'weight', startMonth = 0, endMonth = 3, now = new Date() } = {}) {
+  const evaluations = (Array.isArray(measurements) ? measurements : [])
+    .filter((item) => item?.type === type && item?.status !== 'voided')
+    .map((item) => ({ ...item, evaluation: evaluateGrowthMeasurement(item, baby, measurements, { now }) }))
+  const points = evaluations
+    .filter((item) => item.evaluation?.standardPackageId === WS_T_423_2022.metadata.id && item.evaluation?.dataQuality === 'sufficient' && Number.isFinite(Number(item.evaluation.ageMonths)))
+    .map((item) => ({ id: item.id, month: Number(item.evaluation.ageMonths), value: Number(item.value), measuredAt: String(item.measuredAt).slice(0, 10), evaluation: item.evaluation }))
+    .filter((point) => point.month >= startMonth && point.month <= endMonth && Number.isFinite(point.value))
+    .sort((a, b) => a.month - b.month || a.measuredAt.localeCompare(b.measuredAt))
+  const birthPoint = evaluations
+    .filter((item) => item.evaluation?.standardPackageId === WS_T_800_2022.metadata.id && item.evaluation?.dataQuality === 'sufficient' && String(item.measuredAt).slice(0, 10) === String(baby?.birthDate).slice(0, 10))
+    .sort((a, b) => String(a.measuredAt).localeCompare(String(b.measuredAt)))
+    .at(-1)
+  return {
+    metric: type,
+    unit: metricDefinition(type)?.unit || null,
+    range: { startMonth, endMonth },
+    reference: getGrowthReferenceSeries({ baby, type, startMonth, endMonth }),
+    points,
+    birthPoint: birthPoint ? { id: birthPoint.id, value: Number(birthPoint.value), measuredAt: String(birthPoint.measuredAt).slice(0, 10), evaluation: birthPoint.evaluation } : null,
+    standard: { id: WS_T_423_2022.metadata.id, version: WS_T_423_2022.metadata.version, sourceUrl: WS_T_423_2022.metadata.sourceUrl },
+  }
 }
 
 export function growthSourceLabel(source, locale = 'zh-CN') {

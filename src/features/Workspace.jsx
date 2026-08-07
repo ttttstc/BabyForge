@@ -9,7 +9,7 @@ import { LeftRail } from './LeftRail.jsx'
 import { StageSurface } from './StageSurface.jsx'
 import { BabyAlbum } from './BabyAlbum.jsx'
 import { ContextInspector } from './ContextInspector.jsx'
-import { StageDashboard } from './StageDashboard.jsx'
+import { GrowthDashboard } from './GrowthDashboard.jsx'
 
 export function Workspace({ route, state, setState, onClear, onLogout, readOnly = false, role = 'admin', cloudMode = false }) {
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
@@ -76,8 +76,8 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     })
   }
 
-  if (route === ROUTES.stage) {
-    return <StageDashboard state={state} setState={setState} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} />
+  if ([ROUTES.growth, ROUTES.growthChart, ROUTES.growthStage, ROUTES.growthHistory].includes(route)) {
+    return <GrowthDashboard route={route} state={state} setState={setState} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} />
   }
 
   return (
