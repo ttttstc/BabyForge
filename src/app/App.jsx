@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Onboarding } from '../features/Onboarding.jsx'
 import { Workspace } from '../features/Workspace.jsx'
 import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
+import { ExperienceView } from '../features/ExperienceView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
@@ -12,6 +13,7 @@ import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
+import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
@@ -250,6 +252,7 @@ export function App() {
 
   async function handleLogout() {
     await logout()
+    clearExperienceCache({ storage: globalThis.localStorage })
     setSession(null)
     const initial = createInitialState()
     stateRef.current = initial
@@ -272,6 +275,7 @@ export function App() {
         return false
       }
     }
+    clearExperienceCache({ storage: globalThis.localStorage })
     clearState(globalThis.localStorage, session?.username)
     const initial = createInitialState()
     stateRef.current = initial
@@ -298,6 +302,10 @@ export function App() {
 
   if (route === ROUTES.pediatric) {
     return <PediatricDiseasesView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  }
+
+  if (route === ROUTES.experience) {
+    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.naibaAi) {
