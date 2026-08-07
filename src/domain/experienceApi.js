@@ -1,4 +1,4 @@
-import { getCacheState, getExperienceCacheKey } from './experience.js'
+import { EXPERIENCE_CACHE_VERSION, getCacheState, getExperienceCacheKey } from './experience.js'
 
 export const EXPERIENCE_REQUEST_TIMEOUT_MS = 8000
 
@@ -27,6 +27,24 @@ export function writeExperienceCache({ storage = globalThis.localStorage, babyId
   const key = getExperienceCacheKey({ babyId, bandId, categoryId, locale })
   try { storage?.setItem(key, JSON.stringify(value)) } catch { /* Cache storage is optional. */ }
   return value
+}
+
+export function clearExperienceCache({ storage = globalThis.localStorage } = {}) {
+  const prefix = `babyforge:experience:${EXPERIENCE_CACHE_VERSION}:`
+  if (!storage || typeof storage.length !== 'number' || typeof storage.key !== 'function') return 0
+  const keys = []
+  for (let index = 0; index < storage.length; index += 1) {
+    try {
+      const key = storage.key(index)
+      if (key?.startsWith(prefix)) keys.push(key)
+    } catch {
+      // Cache cleanup is best effort and must never block logout.
+    }
+  }
+  for (const key of keys) {
+    try { storage.removeItem(key) } catch { /* Cache cleanup is optional. */ }
+  }
+  return keys.length
 }
 
 function requestError(message, code) {

@@ -13,7 +13,8 @@ const HIGH_RISK_PATTERNS = [
 ]
 const NEGATION_PATTERN = /不要|不建议|切勿|避免|禁止|不得|不可|严禁|不宜/u
 const AD_PATTERNS = [
-  /立即(?:购买|下单|咨询|领取)/u,
+  /(?:立即|马上)(?:购买|下单|抢购|代理|加盟|报名)/u,
+  /(?:立即|马上).{0,8}(?:优惠券|满减|折扣)/u,
   /限时|优惠券|满减|折扣|直播间|加微信|扫码|代理|加盟|课程报名/u,
   /(?:购买|优惠|推荐|代理|加盟|下单).{0,12}(?:奶粉|保健品|营养品)/u,
   /减肥|祛湿|排毒/u,
@@ -181,18 +182,28 @@ export function normalizeArticleUrl(value) {
   return parsed.toString()
 }
 
-function hostnameFor(value) {
-  try { return new URL(value).hostname.toLowerCase().replace(/^www\./, '') } catch { return '' }
+function normalizeHostname(value) {
+  return String(value || '').toLowerCase().replace(/\.$/u, '').replace(/^www\./u, '')
 }
 
-function matchesDomain(hostname, domain) {
-  const clean = String(domain || '').toLowerCase().replace(/^www\./, '')
-  return hostname === clean || hostname.endsWith(`.${clean}`)
+function hostnameFor(value) {
+  try { return normalizeHostname(new URL(value).hostname) } catch { return '' }
+}
+
+export function isAllowedTrustedDomain(hostname, source) {
+  const cleanHostname = normalizeHostname(hostname)
+  const pattern = normalizeHostname(source?.domain)
+  if (!cleanHostname || !pattern) return false
+  if (pattern.startsWith('*.')) {
+    const root = pattern.slice(2)
+    return cleanHostname === root || cleanHostname.endsWith(`.${root}`)
+  }
+  return cleanHostname === pattern
 }
 
 export function trustedSourceForUrl(url, sources = []) {
   const hostname = hostnameFor(url)
-  return sources.find((source) => matchesDomain(hostname, source.domain) && source.enabled !== false) || null
+  return sources.find((source) => isAllowedTrustedDomain(hostname, source) && source.enabled !== false) || null
 }
 
 function textContent(value) {
@@ -203,7 +214,17 @@ function dangerousAdvice(text) {
   return HIGH_RISK_PATTERNS.some((pattern) => {
     const match = pattern.exec(text)
     if (!match) return false
-    return !NEGATION_PATTERN.test(text.slice(Math.max(0, match.index - 10), match.index))
+    const clauseStart = Math.max(
+      text.lastIndexOf('。', match.index - 1),
+      text.lastIndexOf('！', match.index - 1),
+      text.lastIndexOf('？', match.index - 1),
+      text.lastIndexOf('!', match.index - 1),
+      text.lastIndexOf('?', match.index - 1),
+      text.lastIndexOf('；', match.index - 1),
+      text.lastIndexOf(';', match.index - 1),
+      text.lastIndexOf('\n', match.index - 1),
+    ) + 1
+    return !NEGATION_PATTERN.test(text.slice(clauseStart, match.index))
   })
 }
 
@@ -274,8 +295,8 @@ export function sortExperienceResults(articles = [], maxPerDomain = 3) {
     return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''))
   })
   const pools = new Map()
-  for (const article of remaining) {
-    const domain = article.sourceDomain || ''
+  for (const [index, article] of remaining.entries()) {
+    const domain = article.sourceDomain || `__unknown_${index}__`
     const pool = pools.get(domain) || []
     if (pool.length < maxPerDomain) pool.push(article)
     pools.set(domain, pool)

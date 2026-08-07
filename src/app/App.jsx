@@ -13,6 +13,7 @@ import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
+import { clearExperienceCache } from '../domain/experienceApi.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
 export function App() {
@@ -250,6 +251,7 @@ export function App() {
 
   async function handleLogout() {
     await logout()
+    clearExperienceCache({ storage: globalThis.localStorage })
     setSession(null)
     const initial = createInitialState()
     stateRef.current = initial
@@ -259,6 +261,7 @@ export function App() {
   }
 
   function clearWorkspace() {
+    clearExperienceCache({ storage: globalThis.localStorage })
     clearState(globalThis.localStorage, session?.username)
     const initial = createInitialState()
     stateRef.current = initial

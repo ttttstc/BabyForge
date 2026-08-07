@@ -141,6 +141,12 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
           </div>
         ) : (
           <>
+            {feed?.available === false ? (
+              <div className="experience-state experience-empty-state" role="status">
+                <h2>{isEnglish ? 'This age is not covered yet' : '当前年龄暂未覆盖经验推荐'}</h2>
+                <p>{isEnglish ? 'Experience recommendations currently cover birth through 36 months.' : '经验推荐目前覆盖出生至 36 个月，当前年龄暂未覆盖。'}</p>
+              </div>
+            ) : <>
             <div className="experience-toolbar">
               <div>
                 <strong>{feed?.articles?.length ? (isEnglish ? `${feed.articles.length} articles found` : `已找到 ${feed.articles.length} 篇`) : (isEnglish ? 'Stage reading' : '当前阶段阅读')}</strong>
@@ -178,6 +184,7 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
                 </article>
               ))}
             </div>}
+            </>}
           </>
         )}
       </section>

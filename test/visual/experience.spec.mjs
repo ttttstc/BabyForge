@@ -66,6 +66,7 @@ test('experience searches categories lazily and keeps the mobile route reachable
   await expect(page.getByRole('heading', { name: '经验', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'recommended 阶段经验', exact: true })).toBeVisible()
   await expect(page.getByText('专业来源', { exact: true })).toBeVisible()
+  await expect(page.locator('a[target="_blank"]').first()).toHaveAttribute('rel', 'noopener noreferrer')
   expect(await page.locator('.app-header nav').evaluate((element) => element.scrollWidth)).toBeGreaterThan(0)
   expect(requestedCategories).toEqual(['recommended'])
 
@@ -81,4 +82,41 @@ test('experience search failure stays inside the experience surface', async ({ p
   await expect(page.getByRole('heading', { name: '经验', exact: true })).toBeVisible()
   await expect(page.getByRole('alert')).toBeVisible()
   await expect(page.getByRole('button', { name: '阶段', exact: true })).toBeVisible()
+})
+
+test('selected primary navigation item stays visible at narrow widths', async ({ page }) => {
+  await page.route('**/api/experience*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ available: true, generatedAt: '2026-08-07T02:00:00.000Z', expiresAt: '2026-08-08T02:00:00.000Z', staleUntil: '2026-08-14T02:00:00.000Z', cacheState: 'fresh', articles: [] }),
+  }))
+  await page.setViewportSize({ width: 430, height: 844 })
+  await createBaby(page)
+
+  for (const width of [320, 375, 430]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/#/today')
+    await page.getByRole('button', { name: '经验', exact: true }).click()
+    await expect(page).toHaveURL(/#\/experience$/)
+    const bounds = await page.locator('.app-header nav').evaluate((nav) => {
+      const active = nav.querySelector('button[aria-current="page"]')
+      const navBounds = nav.getBoundingClientRect()
+      const activeBounds = active.getBoundingClientRect()
+      return { navLeft: navBounds.left, navRight: navBounds.right, activeLeft: activeBounds.left, activeRight: activeBounds.right }
+    })
+    expect(bounds.activeLeft).toBeGreaterThanOrEqual(bounds.navLeft - 1)
+    expect(bounds.activeRight).toBeLessThanOrEqual(bounds.navRight + 1)
+  }
+})
+
+test('experience shows an explicit unavailable state from the API', async ({ page }) => {
+  await page.route('**/api/experience*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ available: false, articles: [], notice: '当前年龄暂未覆盖经验推荐。' }),
+  }))
+  await createBaby(page)
+  await page.getByRole('button', { name: '经验', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '当前年龄暂未覆盖经验推荐', exact: true })).toBeVisible()
+  await expect(page.getByText('正在搜索适合当前阶段的文章……', { exact: true })).toHaveCount(0)
 })

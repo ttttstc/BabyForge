@@ -1,18 +1,28 @@
 import { Baby, BookOpen, CalendarRange, ClipboardPlus, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
 
+const PRIMARY_NAV_ITEMS = [
+  { route: ROUTES.today, copyKey: 'today', icon: House },
+  { route: ROUTES.records, copyKey: 'records', icon: ClipboardPlus },
+  { route: ROUTES.stage, copyKey: 'stage', icon: CalendarRange },
+  { route: ROUTES.pediatric, copyKey: 'pediatric', icon: Stethoscope },
+  { route: ROUTES.experience, copyKey: 'experience', icon: BookOpen },
+  { route: ROUTES.summary, copyKey: 'summary', icon: FileHeart },
+]
+
 export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
   const copy = getCopy(locale)
-  const items = [
-    { route: ROUTES.today, label: copy.nav.today, icon: House },
-    { route: ROUTES.records, label: copy.nav.records, icon: ClipboardPlus },
-    { route: ROUTES.stage, label: copy.nav.stage, icon: CalendarRange },
-    { route: ROUTES.pediatric, label: copy.nav.pediatric, icon: Stethoscope },
-    { route: ROUTES.experience, label: copy.nav.experience, icon: BookOpen },
-    { route: ROUTES.summary, label: copy.nav.summary, icon: FileHeart },
-  ]
+  const primaryNavRef = useRef(null)
+
+  useEffect(() => {
+    const isMobile = typeof window.matchMedia !== 'function' || window.matchMedia('(max-width: 820px)').matches
+    if (!isMobile) return
+    const active = primaryNavRef.current?.querySelector('[aria-current="page"]')
+    active?.scrollIntoView?.({ block: 'nearest', inline: 'center' })
+  }, [route])
 
   return (
     <header className="app-header">
@@ -24,10 +34,10 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
         <span className="baby-avatar">{baby.nickname.slice(0, 1)}</span>
         <span><strong>{baby.nickname}</strong><small>{copy.profile(getSexLabel(baby.sex, locale), ageDays)}</small></span>
       </div>
-      <nav aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
-        {items.map(({ route: target, label, icon: Icon }) => (
+      <nav ref={primaryNavRef} aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
+        {PRIMARY_NAV_ITEMS.map(({ route: target, copyKey, icon: Icon }) => (
           <button key={target} type="button" className={route === target ? 'active' : ''} aria-current={route === target ? 'page' : undefined} onClick={() => navigate(target)}>
-            <Icon size={17} />{label}
+            <Icon size={17} />{copy.nav[copyKey]}
           </button>
         ))}
       </nav>

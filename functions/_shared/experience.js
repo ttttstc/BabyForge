@@ -9,10 +9,10 @@ import {
 } from '../../src/domain/experience.js'
 
 export const TRUSTED_PROFESSIONAL_SOURCES = [
-  { domain: 'gov.cn', name: '中国政府网', enabled: true },
-  { domain: 'nhc.gov.cn', name: '国家卫生健康委员会', enabled: true },
-  { domain: 'chinacdc.cn', name: '中国疾病预防控制中心', enabled: true },
-  { domain: 'cma.org.cn', name: '中华医学会', enabled: true },
+  { domain: '*.nhc.gov.cn', name: '国家卫生健康委员会', enabled: true },
+  { domain: '*.chinacdc.cn', name: '中国疾病预防控制中心', enabled: true },
+  { domain: '*.cma.org.cn', name: '中华医学会', enabled: true },
+  { domain: '*.gov.cn', name: '中国政府网', enabled: true },
 ]
 
 const TAVILY_URL = 'https://api.tavily.com/search'
@@ -50,12 +50,20 @@ export async function writeExperienceCache(requestUrl, key, value, waitUntil) {
   const response = new Response(JSON.stringify(value), {
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      'cache-control': `public, max-age=${CACHE_TTL_SECONDS}`,
+      'cache-control': `public, max-age=0, s-maxage=${CACHE_TTL_SECONDS}`,
+      vary: 'Accept-Language',
     },
   })
-  const write = cache.put(request, response)
-  if (typeof waitUntil === 'function') waitUntil(write)
-  else await write
+  let write
+  try {
+    write = cache.put(request, response)
+  } catch {
+    return
+  }
+  const safeWrite = Promise.resolve(write).catch(() => {})
+  if (typeof waitUntil === 'function') {
+    try { waitUntil(safeWrite) } catch { /* Response delivery must not depend on cache lifecycle hooks. */ }
+  } else void safeWrite
 }
 
 function tavilyError(response, body) {
@@ -104,7 +112,7 @@ export async function searchExperience({ env, band, categoryId, timeoutMs = TAVI
     max_results: 12,
     country: 'china',
   }
-  if (categoryId === 'health') body.include_domains = TRUSTED_PROFESSIONAL_SOURCES.map((source) => source.domain)
+  if (categoryId === 'health') body.include_domains = TRUSTED_PROFESSIONAL_SOURCES.map((source) => source.domain.replace(/^\*\./u, ''))
   let result
   try {
     result = await fetchTavily(TAVILY_URL, {
@@ -120,8 +128,15 @@ export async function searchExperience({ env, band, categoryId, timeoutMs = TAVI
   }
   const { response, payload } = result
   if (!response.ok) throw tavilyError(response, payload)
-  const articles = (Array.isArray(payload?.results) ? payload.results : [])
-    .map((result) => normalizeExperienceResult(result, { band, categoryId, sources: TRUSTED_PROFESSIONAL_SOURCES }))
+  const tavilyResults = Array.isArray(payload?.results) ? payload.results : []
+  const articles = tavilyResults
+    .map((result) => {
+      const normalized = normalizeExperienceResult(result, { band, categoryId, sources: TRUSTED_PROFESSIONAL_SOURCES })
+      if (result && typeof result === 'object') {
+        try { result.raw_content = null } catch { /* A frozen provider object is not retained. */ }
+      }
+      return normalized
+    })
     .filter(Boolean)
   const unique = [...new Map(articles.map((article) => [article.url, article])).values()]
   return sortExperienceResults(unique).slice(0, 12).map(stripInternalArticleFields)
