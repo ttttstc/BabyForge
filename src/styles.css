@@ -2280,3 +2280,99 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .album-upload-dialog > footer { padding: 12px 15px 16px; }
   .album-upload-dialog > footer button { flex: 1; }
 }
+
+/* Mobile shell: every tab keeps the same header rhythm and flows in one
+   document. Secondary panels are content, not collapsible sheets. */
+.record-center-page.app-shell,
+.naiba-ai-page.app-shell { height: auto; overflow: auto; }
+.pediatric-library-scroll-hint { display: none; }
+
+@media (max-width: 820px) {
+  .app-header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: 7px;
+    min-height: 0;
+    padding: 9px 3px 8px;
+  }
+
+  .brand-button { grid-column: 1; grid-row: 1; }
+  .app-header nav {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+    overflow: visible;
+    flex-wrap: wrap;
+    align-content: center;
+    justify-content: flex-start;
+    row-gap: 3px;
+    border-radius: 14px;
+  }
+  .app-header nav button { flex: 0 1 auto; min-height: 40px; }
+  .header-actions {
+    grid-column: 1;
+    grid-row: 3;
+    width: 100%;
+    min-width: 0;
+    justify-self: stretch;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding-top: 5px;
+    border-top: 1px solid var(--line);
+  }
+  .header-actions .recorder-picker {
+    flex: 1 1 150px;
+    min-width: 150px;
+    justify-content: space-between;
+  }
+  .header-actions .recorder-picker select { min-width: 82px; }
+  .header-actions .logout-button { display: inline-flex; min-height: 38px; padding: 0 10px; }
+
+  .left-rail,
+  .context-inspector { overflow: visible; }
+  .left-rail { display: flex; }
+  .context-inspector { position: static; height: auto; max-height: none; margin-top: 10px; }
+
+  .pediatric-library {
+    max-height: none;
+    overflow: visible;
+  }
+  .pediatric-library-body {
+    max-height: none;
+    overflow: visible;
+  }
+  .pediatric-library-scroll-hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin: -2px 0 0;
+    color: #9a8176;
+    font-size: .61rem;
+    line-height: 1.4;
+  }
+  .pediatric-info-panel {
+    position: static;
+    z-index: auto;
+    max-height: none;
+    height: auto;
+    overflow: visible;
+    margin-top: 10px;
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    transition: none;
+  }
+  .pediatric-mobile-sheet { display: none; }
+
+  .record-center-shell,
+  .naiba-ai-shell { width: 100%; }
+}
+
+@media (max-width: 520px) {
+  .header-actions .recorder-picker {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  .header-actions .sync-status { margin-left: auto; }
+}

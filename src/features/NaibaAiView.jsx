@@ -244,7 +244,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
     }
   }
 
-  return <main className="naiba-ai-page">
+  return <main className="naiba-ai-page app-shell">
     <Header route={ROUTES.naibaAi} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
     <div className="naiba-ai-shell">
       <header className="naiba-ai-hero"><button type="button" className="naiba-ai-back" onClick={onBack}><ArrowLeft size={15} />{isEnglish ? 'Back to today' : '返回今日'}</button><div><p className="eyebrow">{isEnglish ? 'A calm second pair of hands' : '新手爸妈的陪伴助手'}</p><h1>{isEnglish ? 'Naiba AI' : '奶爸AI'}</h1><p>{isEnglish ? 'Ask in your own words. I’ll help you make sense of what is happening.' : '不用组织得很专业，想到什么就说什么，我陪你把情况说清楚。'}</p></div><span className="naiba-beta-badge"><ShieldCheck size={14} />{isEnglish ? 'Restricted beta' : '内部受限 Beta'}</span></header>

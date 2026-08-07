@@ -317,7 +317,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   }
 
   return (
-    <main className="record-center-page">
+    <main className="record-center-page app-shell">
       <Header route={ROUTES.records} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => commitState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="record-center-shell">
         <header className="record-center-hero">
