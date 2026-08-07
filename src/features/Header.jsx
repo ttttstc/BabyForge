@@ -32,8 +32,8 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
       </nav>
       <div className="header-actions">
         <label className="recorder-picker">
-          <span>{locale === 'en-US' ? 'Entered by' : '记录人'}</span>
-          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current recorder' : '当前记录人'}>
+          <span>{locale === 'en-US' ? 'Current role' : '当前角色'}</span>
+          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current role' : '当前角色'}>
             {careActors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
           </select>
         </label>
