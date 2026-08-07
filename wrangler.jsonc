@@ -10,5 +10,12 @@
       "database_id": "cff73234-9527-49c5-8bed-ca15bf295263",
       "migrations_dir": "./migrations"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BABY_PHOTOS",
+      "bucket_name": "babyforge-photos",
+      "preview_bucket_name": "babyforge-photos-preview"
+    }
   ]
 }

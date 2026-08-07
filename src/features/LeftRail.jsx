@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Baby, BookOpen, CheckCircle2, ChevronRight, CircleAlert, Clock3, HeartPulse, ShieldCheck } from 'lucide-react'
-import { getSexLabel } from '../domain/baby.js'
+import { getSexLabel, getStageLabel, getStageRangeLabel, getStages } from '../domain/baby.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { getCopy } from '../domain/i18n.js'
 
@@ -12,6 +13,15 @@ const FEEDING_LABELS = {
 
 export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
   const copy = getCopy(locale)
+  const stages = getStages()
+  const [showCompleted, setShowCompleted] = useState(false)
+  const activeIndex = stages.findIndex((item) => item.id === stage.id)
+  const completedStages = stages.filter((item) => ageDays > item.max)
+  const hiddenCompletedCount = completedStages.length > 3 ? completedStages.length - 1 : 0
+  const contextCompletedIndex = activeIndex > 0 ? activeIndex - 1 : stage.id === 'out-of-scope' ? stages.length - 1 : -1
+  const visibleStages = showCompleted || hiddenCompletedCount === 0
+    ? stages
+    : stages.filter((item, index) => ageDays <= item.max || index === contextCompletedIndex)
   return (
     <aside className="left-rail">
       <section className="rail-card active-baby-card">
@@ -23,19 +33,26 @@ export function LeftRail({ baby, ageDays, stage, locale = 'zh-CN' }) {
         <div className="baby-facts"><span>{getSexLabel(baby.sex)}</span><span>{baby.gestationalWeeks} 周出生</span><span>{FEEDING_LABELS[baby.feedingMode]}</span></div>
       </section>
 
-      <section className="rail-card">
+      <section className="rail-card stage-timeline-card">
         <div className="section-heading"><span>{copy.growthStage}</span><Clock3 size={16} /></div>
-        <button className={`timeline-item ${stage.id === 'newborn-early' ? 'active' : ''}`} onClick={() => navigate(ROUTES.stage)}>
-          <span className="timeline-dot">{ageDays > 7 ? <CheckCircle2 size={14} /> : '●'}</span>
-          <span><strong>{copy.newbornEarly}</strong><small>{copy.newbornEarlyRange}</small></span>
-          {stage.id === 'newborn-early' && <em>{copy.current}</em>}
-        </button>
-        <button className={`timeline-item ${stage.id === 'newborn-adaptation' ? 'active' : ''}`} onClick={() => navigate(ROUTES.stage)}>
-          <span className="timeline-dot">●</span>
-          <span><strong>{copy.newbornAdaptation}</strong><small>{copy.newbornAdaptationRange}</small></span>
-          {stage.id === 'newborn-adaptation' && <em>{copy.current}</em>}
-        </button>
-        {stage.id === 'out-of-scope' && <p className="scope-warning">{copy.outOfScope}</p>}
+        <div className="stage-timeline-list">
+          {visibleStages.map((item) => {
+            const active = stage.id === item.id
+            const completed = ageDays > item.max
+            return <button className={`timeline-item ${active ? 'active' : ''}`} key={item.id} onClick={() => navigate(ROUTES.stage)} aria-current={active ? 'step' : undefined}>
+              <span className="timeline-dot">{completed ? <CheckCircle2 size={14} /> : active ? '●' : '○'}</span>
+              <span><strong>{getStageLabel(item, locale)}</strong><small>{getStageRangeLabel(item, locale)}</small></span>
+              {active && <em>{copy.current}</em>}
+            </button>
+          })}
+        </div>
+        {hiddenCompletedCount > 0 && <button className="stage-timeline-toggle" type="button" aria-expanded={showCompleted} onClick={() => setShowCompleted((current) => !current)}>
+          {showCompleted
+            ? (locale === 'en-US' ? 'Hide completed stages' : '收起已完成阶段')
+            : (locale === 'en-US' ? `Show ${hiddenCompletedCount} completed stages` : `显示 ${hiddenCompletedCount} 个已完成阶段`)}
+          <ChevronRight size={14} className={showCompleted ? 'rotated' : ''} />
+        </button>}
+        {stage.id === 'out-of-scope' && <p className="scope-warning">{getStageRangeLabel(stage, locale)}</p>}
       </section>
 
       <section className="rail-card new-parent-guide">

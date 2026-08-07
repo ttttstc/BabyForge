@@ -65,7 +65,7 @@ export function Onboarding({ onCreate, locale = 'zh-CN', onLocaleChange }) {
       <section className="onboarding-story" aria-label="BabyForge 介绍">
         <div className="onboarding-topline"><div className="brand-mark"><Baby size={25} /><span>{copy.appName}</span></div><label className="onboarding-locale"><span className="sr-only">{copy.language}</span><select value={locale} onChange={(event) => onLocaleChange?.(event.target.value)} aria-label={copy.language}>{LOCALE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.nativeLabel}</option>)}</select></label></div>
         <div className="story-copy">
-          <p className="eyebrow">{locale === 'en-US' ? 'Baby growth workspace · days 0–28' : '宝宝成长工作台 · 出生后 0–28 天'}</p>
+          <p className="eyebrow">{locale === 'en-US' ? 'Baby growth workspace · birth–6 years' : '宝宝成长工作台 · 出生后 0–6 岁'}</p>
           <h1>{locale === 'en-US' ? 'Start with a clearer care plan.' : '从今天开始，照护更有把握。'}</h1>
           <p>{locale === 'en-US' ? 'See today’s care, stage reminders, growth notes, and common pediatric learning in one place.' : '查看每日重点、阶段提醒、成长记录和常见儿科科普，让照护从今天就有清晰的方向。'}</p>
         </div>
