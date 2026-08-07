@@ -9,6 +9,7 @@ export const ROUTES = {
   growthChart: '#/growth/chart',
   growthStage: '#/growth/stage',
   growthHistory: '#/growth/history',
+  vaccines: '#/vaccines',
   // Kept as an internal alias while existing surfaces migrate to Growth.
   stage: '#/growth',
   jaundice: '#/topic/jaundice',

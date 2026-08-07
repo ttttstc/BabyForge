@@ -6,11 +6,11 @@ function text(value, locale) {
   return value?.[locale === 'en-US' ? 'en' : 'zh'] || value?.zh || value || ''
 }
 
-export function AdminTaskList({ tasks, locale = 'zh-CN', onUpdate, compact = false, readOnly = false }) {
+export function AdminTaskList({ tasks, locale = 'zh-CN', onUpdate, compact = false, readOnly = false, testId = 'admin-task-list' }) {
   const isEnglish = locale === 'en-US'
   const pending = tasks.filter((task) => task.status !== 'done').length
   return (
-    <section className={`admin-task-panel ${compact ? 'compact' : ''}`} data-testid="admin-task-list">
+    <section className={`admin-task-panel ${compact ? 'compact' : ''}`} data-testid={testId}>
       <header className="admin-task-heading">
         <div><p className="eyebrow">{isEnglish ? 'Stage standard tasks' : '本阶段标准待办'}</p><h2>{isEnglish ? 'Key things to arrange' : '关键事项清单'}</h2></div>
         <strong className={pending > 0 ? 'has-pending' : ''}>{pending}</strong>

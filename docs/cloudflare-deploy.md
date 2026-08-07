@@ -46,6 +46,8 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 
 本地 Vite 开发环境使用演示账号，相册照片保存在浏览器 IndexedDB，不需要 D1 或 R2；生产构建不会把演示密码编译进前端。要在本地联调 Pages Functions，可使用 Wrangler 的 Pages 本地开发，它会为配置中的 D1 与 R2 binding 使用本地持久化数据。
 
+奶爸 AI 在 Vite 开发环境读取未提交的 `.env.local` 中的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` 和 `OPENAI_USE_RESPONSES`。可访问 `/api/ai/local-status` 检查当前实际使用的 provider 和 model；该接口不会返回密钥。没有显式配置时不会自动连接本机或其他模型服务。
+
 ## 上线前检查
 
 1. 检查 `wrangler.jsonc` 中的 `database_id` 与 Cloudflare 控制台一致。

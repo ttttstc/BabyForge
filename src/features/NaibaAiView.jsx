@@ -64,12 +64,20 @@ function localAnswer(message, recommendation, locale, decision) {
 }
 
 async function remoteAnswer(message, state, recommendation, skillId, decision, conversationId) {
-  const response = await fetch('/api/ai/chat', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ message, skillId, conversationId, baby: state.baby, careEvents: state.careEvents, recommendation, decisionFacts: decision ? decision.facts || null : null }),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 45_000)
+  let response
+  try {
+    response = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      signal: controller.signal,
+      body: JSON.stringify({ message, skillId, conversationId, baby: state.baby, careEvents: state.careEvents, recommendation, decisionFacts: decision ? decision.facts || null : null }),
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
   if (!response.ok) throw new Error('AI endpoint unavailable')
   const raw = await response.text()
   const chunks = raw.split(/\n\n+/).map((chunk) => chunk.match(/^data:\s*(.+)$/m)?.[1]).filter(Boolean)

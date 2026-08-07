@@ -319,24 +319,24 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
         <header className="record-center-hero">
           <div>
             <button className="record-back-link" onClick={() => navigate(returnTo)}><ArrowLeft size={15} />{isEnglish ? 'Back' : '返回'}</button>
-            <p className="eyebrow">{isEnglish ? 'One place for every fact' : '所有事实，一个入口'}</p>
+            <p className="eyebrow">{isEnglish ? 'For new parents' : '新手爸妈记录'}</p>
             <h1>{isEnglish ? 'Record center' : '记录中心'}</h1>
-            <p>{isEnglish ? 'Save what happened first. BabyForge calculates the baseline and current state from these records.' : '先记录发生了什么。基线和当前状态由这些原始记录自动整理。'}</p>
+            <p>{isEnglish ? 'Keep the moments you notice today, so your family can look back and share them clearly when needed.' : '把今天看到的宝宝情况记下来，之后自己回看或和家人、医生沟通都更清楚。'}</p>
           </div>
           <div className="record-center-stage"><span>{isEnglish ? 'Current stage' : '当前阶段'}</span><strong>{getStageLabel(stage, locale)}</strong><small>{getStageRangeLabel(stage, locale)} · {isEnglish ? `${ageDays} days old` : `出生后 ${ageDays} 天`}</small></div>
         </header>
 
-        <section className="record-center-notice"><ShieldCheck size={18} /><div><strong>{isEnglish ? 'Record facts, not conclusions' : '这里记录事实，不手工填写结论'}</strong><p>{isEnglish ? 'Every entry keeps its time, current role, source, and lifecycle. Current state, baseline, changes, and unknowns are calculated below.' : '每条记录都会保留时间、当前角色、来源和生命周期。当前状态、个人基线、变化与未知信息由系统自动计算。'}</p></div></section>
+        <section className="record-center-notice"><ShieldCheck size={18} /><div><strong>{isEnglish ? 'Start with what you noticed' : '从宝宝今天的日常开始'}</strong><p>{isEnglish ? 'Feeding, sleep, diapers, temperature, growth measurements, and changes worth watching can all be kept here.' : '喂奶、睡眠、尿便、体温、成长测量和需要继续留意的变化，都可以在这里留下。'}</p></div></section>
 
         <section className="record-card-section" aria-labelledby="record-card-heading">
-          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'Quick entry' : '快速记录'}</p><h2 id="record-card-heading">{isEnglish ? 'What do you want to record?' : '现在要记录什么？'}</h2></div><span>{isEnglish ? 'Tap a card to open a light form' : '点击卡片，打开低负荷记录'}</span></div>
+          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'Choose one moment' : '记录一件事'}</p><h2 id="record-card-heading">{isEnglish ? 'What did you notice today?' : '今天想记下什么？'}</h2></div><span>{isEnglish ? 'Choose the closest description' : '选择最符合宝宝情况的一项'}</span></div>
           <div className="record-card-grid">{RECORD_CARDS.map((card) => <RecordCard key={card.id} card={card} active={activePanel === card.id} onClick={() => openPanel(card.id)} meta={cardMeta(card.id, state, snapshot, locale, dailySummary)} />)}</div>
         </section>
 
         {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} onSave={saveP0Record} onCancel={closePanel} />}
 
         {activePanel && !P0_PANEL_TYPES.has(activePanel) && <section className="record-entry-sheet" data-testid={`record-entry-${activePanel}`}>
-          <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Light entry' : '低负荷记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={() => setActivePanel(null)} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>
+          <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Add a note' : '补充记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={() => setActivePanel(null)} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>
           {activePanel === 'basic' && <BasicInfoPanel baby={state.baby} birthMeasurements={state.growthMeasurements} locale={locale} readOnly={readOnly} onSave={updateProfile} />}
           {activePanel === 'illness' && <IllnessPanel locale={locale} readOnly={readOnly} onRecord={recordEvent} />}
         </section>}
@@ -361,7 +361,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
         <DailyCareTimeline events={state.careEvents} locale={locale} selectedDay={selectedDay} filter={timelineFilter} onDayChange={setSelectedDay} onFilterChange={setTimelineFilter} onEdit={editRecord} onVoid={voidRecord} readOnly={readOnly} />
 
         <section className="record-card-section record-more-section" aria-labelledby="record-more-heading">
-          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More records' : '更多记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Keep related facts together' : '把相关事实也放在这里'}</h2></div><span>{isEnglish ? 'No editing on other pages' : '其他页面只展示，不分散编辑入口'}</span></div>
+          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More to add' : '还可以记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Other moments worth keeping' : '其他想留下的宝宝情况'}</h2></div><span>{isEnglish ? 'Keep related moments together' : '把相关情况放在一起，更方便回看'}</span></div>
           <div className="record-more-grid">{MORE_CARDS.map((card) => { const Icon = card.icon; return <button key={card.id} className={`record-more-card ${activePanel === card.id ? 'active' : ''}`} type="button" onClick={() => openPanel(card.id)}><span className="record-more-icon"><Icon size={17} /></span><span><strong>{isEnglish ? moreTitle(card.id) : card.title}</strong><small>{isEnglish ? moreDetail(card.id) : card.detail}</small></span><ChevronRight size={16} /></button> })}</div>
         </section>
 
@@ -371,7 +371,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
           {activePanel === 'questions' && <RecordSubsection title={isEnglish ? 'Questions for a clinician' : '咨询问题'} onClose={() => setActivePanel(null)}><QuestionPanel questions={state.questions} locale={locale} readOnly={readOnly} onSave={saveQuestions} /></RecordSubsection>}
 
         {(toast || entryError) && <div className={`record-toast ${entryError ? 'error' : ''}`} role={entryError ? 'alert' : 'status'}>{entryError || toast}</div>}
-        <footer className="record-center-footer"><Clock3 size={15} /><span>{isEnglish ? 'The current role selector in the header applies to every new entry. Existing records keep their original recorder.' : '顶部当前角色选择会应用于新记录；已有记录保留原来的记录人。'}</span><button type="button" onClick={() => navigate(ROUTES.summary)}>{isEnglish ? 'Care summary' : '就医摘要'}<ChevronRight size={15} /></button></footer>
+        <footer className="record-center-footer"><Clock3 size={15} /><span>{isEnglish ? 'You can switch the recorder in the header; older entries keep their original name.' : '顶部可以切换记录人；之前的记录会保留原记录人。'}</span><button type="button" onClick={() => navigate(ROUTES.summary)}>{isEnglish ? 'Care summary' : '就医摘要'}<ChevronRight size={15} /></button></footer>
       </div>
     </main>
   )

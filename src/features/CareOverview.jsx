@@ -17,7 +17,7 @@ export function CareOverview({ baby = null, careEvents = [], concerns = [], loca
   const daily = getDailyCareSummary(careEvents, localDayKey())
   const openConcerns = stateSnapshot.activeProblems
   return <section className="care-overview inspector-block" data-testid="care-overview">
-    <header className="care-overview-heading"><div><p className="eyebrow">{isEnglish ? 'Baby now' : '宝宝当前状态'}</p><h2>{isEnglish ? 'What matters today' : '今天真正需要知道的'}</h2></div><Activity size={18} /></header>
+    <header className="care-overview-heading"><div><p className="eyebrow">{isEnglish ? 'Baby now' : '宝宝当前状态'}</p><h2>{isEnglish ? 'Today’s records' : '今日记录'}</h2></div><Activity size={18} /></header>
     <div className="care-metric-grid">
       <Metric type="feeding" icon={Baby} label={isEnglish ? 'Feeds · today' : '喂养 · 今天'} value={daily.feeding.totalCount || '—'} detail={daily.feeding.bottleMl ? `${daily.feeding.bottleMl} mL` : ''} />
       <Metric type="sleep" icon={Moon} label={isEnglish ? 'Sleep · today' : '睡眠 · 今天'} value={daily.sleep.segmentCount || '—'} detail={daily.sleep.minutes ? formatDurationMinutes(daily.sleep.minutes, locale) : ''} />
@@ -28,7 +28,7 @@ export function CareOverview({ baby = null, careEvents = [], concerns = [], loca
     <div className="care-overview-last"><span>{isEnglish ? 'Last diaper · today' : '今天最后尿便'}</span><strong>{eventTitle(daily.diaper.latest, locale)}</strong><small>{formatEventTime(daily.diaper.latest, locale)}</small></div>
     {openConcerns.length > 0 && <div className="care-overview-concerns"><strong><AlertCircle size={14} />{isEnglish ? 'Follow-up in progress' : '正在跟进'}</strong>{openConcerns.slice(0, 2).map((concern) => <p key={concern.id}>{text(concern.title, locale)}</p>)}</div>}
     <CareStateSummary snapshot={stateSnapshot} isEnglish={isEnglish} />
-    <div className="care-timeline"><div className="inspector-section-title"><Clock3 size={16} /><span>{isEnglish ? 'Recent facts · view only' : '最近事实 · 仅查看'}</span></div>{recent.length === 0 ? <p className="care-empty">{isEnglish ? 'Saved facts will appear here.' : '已保存的事实会出现在这里。'}</p> : recent.map((event) => <article key={event.id} className="care-timeline-item"><span className="care-timeline-dot" /><div><strong>{eventTitle(event, locale)}</strong><small>{formatEventTime(event, locale)} · {eventFacts(event, locale)}</small></div></article>)}</div>
+    <div className="care-timeline"><div className="inspector-section-title"><Clock3 size={16} /><span>{isEnglish ? 'Recent records' : '最近记录'}</span></div>{recent.length === 0 ? <p className="care-empty">{isEnglish ? 'Saved records will appear here.' : '已保存的记录会出现在这里。'}</p> : recent.map((event) => <article key={event.id} className="care-timeline-item"><span className="care-timeline-dot" /><div><strong>{eventTitle(event, locale)}</strong><small>{formatEventTime(event, locale)} · {eventFacts(event, locale)}</small></div></article>)}</div>
   </section>
 }
 

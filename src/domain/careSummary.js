@@ -30,6 +30,9 @@ const EVENT_CATEGORY_LABELS = {
   language: { zh: '语言观察', en: 'Language observation' },
   emotion: { zh: '情绪观察', en: 'Emotion observation' },
   oxygen_saturation: { zh: '血氧饱和度', en: 'Oxygen saturation' },
+  weight: { zh: '体重', en: 'Weight' },
+  length: { zh: '身长', en: 'Length' },
+  headCircumference: { zh: '头围', en: 'Head circumference' },
 }
 
 function asTime(value) {
@@ -43,6 +46,19 @@ function isActive(event) {
 
 function categoryOf(event) {
   return event?.category || event?.type
+}
+
+function eventPayload(event) {
+  const payload = event?.payload || {}
+  return payload.record && typeof payload.record === 'object' ? payload.record : payload
+}
+
+function normalizedGrowthType(value) {
+  const normalized = String(value || '').replaceAll('_', '').toLowerCase()
+  if (normalized === 'length') return 'length'
+  if (normalized === 'headcircumference') return 'headCircumference'
+  if (normalized === 'weight') return 'weight'
+  return ''
 }
 
 export function localDayKey(value = new Date()) {
@@ -204,9 +220,11 @@ export function eventTitle(event, locale = 'zh-CN') {
     const amount = event.payload?.amount ? ` ${event.payload.amount} ${event.payload.unit || ''}`.trim() : ''
     return name ? `${isEnglish ? 'Medication' : '用药'} ${name}${amount ? ` · ${amount}` : ''}` : label
   }
-  if (category === 'growth_measurement') {
-    const type = event.payload?.type === 'length' ? (isEnglish ? 'Length' : '身长') : (isEnglish ? 'Weight' : '体重')
-    return event.payload?.value !== undefined ? `${type} ${event.payload.value} ${event.payload.unit || ''}`.trim() : type
+  if (category === 'growth_measurement' || normalizedGrowthType(category)) {
+    const payload = eventPayload(event)
+    const typeKey = normalizedGrowthType(payload.type) || normalizedGrowthType(category) || 'weight'
+    const type = typeKey === 'length' ? (isEnglish ? 'Length' : '身长') : typeKey === 'headCircumference' ? (isEnglish ? 'Head circumference' : '头围') : (isEnglish ? 'Weight' : '体重')
+    return payload.value !== undefined ? `${type} ${payload.value} ${payload.unit || ''}`.trim() : type
   }
   if ((category === 'symptom_observation' || category === 'concern_open') && event.payload?.supportTitle) {
     const title = event.payload.supportTitle?.[isEnglish ? 'en' : 'zh'] || event.payload.supportTitle

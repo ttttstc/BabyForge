@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Baby, CalendarClock, Camera, Check, Clock3, ImagePlus, Sparkles, Upload, X } from 'lucide-react'
+import { Baby, CalendarClock, Camera, Check, Clock3, ImagePlus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import {
   MAX_PHOTO_BYTES,
   dateTimeInputToIso,
   dateTimeInputValue,
+  deleteBabyPhoto,
   detectPhotoTime,
   isSupportedPhoto,
   listBabyPhotos,
@@ -32,6 +33,9 @@ function strings(locale) {
     file: 'No camera time; file time will be used',
     upload: 'No camera time; upload time will be used',
     manual: 'Time set by you',
+    delete: 'Delete photo',
+    deleting: 'Deleting',
+    deleteConfirm: 'Delete this photo?',
     cancel: 'Cancel',
     save: 'Save photos',
     saving: 'Saving',
@@ -58,6 +62,9 @@ function strings(locale) {
     file: '未找到拍摄时间，将使用文件时间',
     upload: '未找到拍摄时间，将使用上传时间',
     manual: '已手动设置时间',
+    delete: '删除照片',
+    deleting: '正在删除',
+    deleteConfirm: '确定删除这张照片吗？删除后无法恢复。',
     cancel: '取消',
     save: '保存照片',
     saving: '正在保存',
@@ -104,6 +111,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
   const [loading, setLoading] = useState(true)
   const [preparing, setPreparing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [saveProgress, setSaveProgress] = useState(0)
   const [error, setError] = useState('')
 
@@ -219,6 +227,28 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     }
   }
 
+  async function deleteSelectedPhoto() {
+    if (!selected || readOnly || deleting) return
+    if (typeof globalThis.confirm === 'function' && !globalThis.confirm(copy.deleteConfirm)) return
+    setDeleting(true)
+    setError('')
+    try {
+      await deleteBabyPhoto({ babyId: baby.id, photoId: selected.id }, { remote })
+      const removedIndex = selectedIndex
+      const removedUrl = selected.url
+      if (removedUrl && objectUrls.current.has(removedUrl)) {
+        URL.revokeObjectURL(removedUrl)
+        objectUrls.current.delete(removedUrl)
+      }
+      setPhotos((current) => current.filter((photo) => photo.id !== selected.id))
+      setSelectedId(photos[removedIndex + 1]?.id || photos[removedIndex - 1]?.id || '')
+    } catch (nextError) {
+      setError(nextError?.message || copy.loadError)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const selectedDate = useMemo(() => selected ? displayTime(selected.takenAt, locale) : '', [selected, locale])
 
   return (
@@ -247,7 +277,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
               <img className="album-feature-image" src={selected.url} alt={`${baby.nickname} · ${selectedDate}`} />
               <span className="album-photo-corner" aria-hidden="true"><Sparkles size={14} /></span>
             </div>
-            <figcaption><span><Clock3 size={14} />{selectedDate}</span><small>{selected.fileName}</small></figcaption>
+            <figcaption><span><Clock3 size={14} />{selectedDate}</span><small>{selected.fileName}</small><button className="album-delete-button" type="button" disabled={readOnly || deleting} onClick={deleteSelectedPhoto} aria-label={copy.delete} title={copy.delete}>{deleting ? <Clock3 size={14} /> : <Trash2 size={14} />}{deleting ? copy.deleting : copy.delete}</button></figcaption>
           </figure>
         ) : (
           <div className="album-empty-stage" data-testid="album-empty">

@@ -82,6 +82,12 @@ test('parent uploads, switches, and reloads album photos', async ({ page }) => {
   await page.reload()
   await expect(page.getByTestId('album-shelf-photo')).toHaveCount(2)
   await expect(page.locator('.album-photo-feature figcaption small')).toHaveText('login-hero.png')
+
+  page.once('dialog', (nextDialog) => nextDialog.accept())
+  await page.getByRole('button', { name: '删除照片' }).click()
+  await expect(page.getByTestId('album-shelf-photo')).toHaveCount(1)
+  await page.reload()
+  await expect(page.getByTestId('album-shelf-photo')).toHaveCount(1)
 })
 
 test('parent records a growth fact with its source and reference context', async ({ page }) => {
@@ -115,8 +121,13 @@ test('growth dashboard exposes the national chart, stage guide, and history rout
   await createBaby(page)
   await page.getByRole('button', { name: '成长', exact: true }).click()
   await expect(page.getByRole('heading', { name: '最近成长测量' })).toBeVisible()
-  await page.getByRole('button', { name: '国家曲线', exact: true }).click()
+  const calendar = page.getByTestId('growth-calendar')
+  await expect(calendar).toBeVisible()
+  await expect(calendar.locator('.calendar-marker.measurement')).toHaveCount(0)
+  await expect(calendar).not.toContainText('kg')
+  await page.getByRole('button', { name: '生长标准曲线', exact: true }).click()
   await expect(page.locator('.growth-chart-svg')).toBeVisible()
+  await expect(page.locator('.growth-switcher').getByRole('button', { name: '头围', exact: true })).toHaveCount(0)
   await expect(page.getByText('P50', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '阶段指南', exact: true }).click()
   await expect(page.getByRole('heading', { name: '新生儿早期' })).toBeVisible()

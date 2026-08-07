@@ -26,7 +26,7 @@ test('record center keeps six P0 facts and secondary records together', async ({
   await page.getByRole('button', { name: '记录', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: '记录中心' })).toBeVisible()
-  await expect(page.getByText('点击卡片，打开低负荷记录')).toBeVisible()
+  await expect(page.getByText('选择最符合宝宝情况的一项')).toBeVisible()
 
   await page.locator('.record-more-card').filter({ hasText: '基础信息' }).click()
   await expect(page.getByTestId('record-entry-basic')).toBeVisible()

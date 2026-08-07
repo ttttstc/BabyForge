@@ -8,7 +8,8 @@ import { evaluateMedicalTopic } from '../src/domain/safety.js'
 import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
-import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
+import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyHealthReminders, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
+import { VACCINE_DOSES, VACCINE_STANDARD } from '../src/content/vaccines.js'
 import { applyCareEventsToLegacy, bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState, occurredAtErrorMessage, validateOccurredAt } from '../src/domain/careEvents.js'
 import { changedCareEvents, mergePulledState } from '../src/domain/eventSync.js'
 import { coalesceOutboxItem } from '../src/domain/localDb.js'
@@ -16,13 +17,14 @@ import { safeEventInput } from '../functions/_shared/care.js'
 import { onRequestPost as onEventPost } from '../functions/api/events.js'
 import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
 import { onRequestPost as onPhotoPost } from '../functions/api/photos.js'
-import { onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
+import { onRequestDelete as onPhotoDelete, onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, getGrowthChartModel, growthLevelLabel, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
 import { ageContextSummary, ageBasisLabel, resolveAgeContext } from '../src/domain/agePolicy.js'
 import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
 import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
+import { getGrowthStageContent } from '../src/content/growthStages.js'
 
 test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -344,6 +346,34 @@ test('preterm follow-ups select corrected references automatically', () => {
   assert.equal(corrected.dataQuality, 'sufficient')
 })
 
+test('daily health reminders are age-aware and preserve today completion', () => {
+  const date = new Date('2026-08-07T12:00:00+08:00')
+  const newborn = getDailyHealthReminders([], 6, date)
+  assert.equal(newborn.nutrition[0].id, 'nutrition-vitamin-d')
+  assert.equal(newborn.care[0].id, 'care-cord-skin')
+  const completed = getDailyHealthReminders([{ taskId: 'nutrition-vitamin-d', date: '2026-08-07', status: 'done' }], 6, date)
+  assert.equal(completed.nutrition[0].status, 'done')
+  assert.equal(getDailyHealthReminders([], 220, date).nutrition[0].id, 'nutrition-iron-food')
+})
+
+test('vaccine roadmap follows the 2026 national 0–6 year schedule', () => {
+  assert.equal(VACCINE_STANDARD.version, '2026-06')
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'dtap-1' && item.ageLabel === '2 月龄'))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'dtap-5' && item.ageLabel === '6 周岁'))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-start' && /JE-L \/ JE-I/.test(item.abbreviation)))
+})
+
+test('every growth stage has distinct educational features, key points, and completion signals', () => {
+  const stageContents = getStages().map((item) => getGrowthStageContent(item.id))
+  for (const content of stageContents) {
+    assert.equal(content.features.length, 3)
+    assert.equal(content.keyPoints.length, 3)
+    assert.equal(content.completionSignals.length, 3)
+    assert.ok(content.features.every((item) => item.title.zh && item.title.en && item.detail.zh && item.detail.en))
+  }
+  assert.equal(new Set(stageContents.map((content) => content.intro)).size, getStages().length)
+})
+
 test('age policy selects the purpose-specific basis and never trusts the legacy preference', () => {
   const baby = { birthDate: '2026-01-01', gestationalWeeks: 32, gestationalDays: 0, growthAgeBasis: 'chronological' }
   const stage = resolveAgeContext({ baby, at: '2026-03-01', purpose: 'stage' })
@@ -557,6 +587,31 @@ test('guest sessions cannot upload album photos', async () => {
   const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) }, BABY_PHOTOS: {} }
   const request = new Request('https://babyforge.test/api/photos', { method: 'POST', headers: { cookie: 'babyforge_session=token' } })
   assert.equal((await onPhotoPost({ request, env })).status, 403)
+})
+
+test('guest sessions cannot delete album photos and authorized parents can', async () => {
+  const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
+  const guestEnv = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) }, BABY_PHOTOS: { delete: async () => assert.fail('guest deletion must not reach R2') } }
+  const guestRequest = new Request('https://babyforge.test/api/photos/photo-1', { method: 'DELETE', headers: { cookie: 'babyforge_session=token' } })
+  assert.equal((await onPhotoDelete({ request: guestRequest, env: guestEnv, params: { id: 'photo-1' } })).status, 403)
+
+  let deletedKey = ''
+  const parent = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-1', username: 'parent', role: 'admin', display_name: '家长' }
+  const parentEnv = {
+    DB: {
+      prepare: (sql) => ({
+        bind: (...args) => ({
+          first: async () => sql.includes('auth_sessions') ? parent : { id: 'photo-1', baby_id: 'baby-1', object_key: 'babies/baby-1/photos/photo-1', baby_status: 'active' },
+          run: async () => { assert.match(sql, /DELETE FROM baby_photos/); assert.deepEqual(args, ['photo-1', 'baby-1']); return { success: true } },
+        }),
+      }),
+    },
+    BABY_PHOTOS: { delete: async (key) => { deletedKey = key } },
+  }
+  const parentResponse = await onPhotoDelete({ request: guestRequest, env: parentEnv, params: { id: 'photo-1' } })
+  assert.equal(parentResponse.status, 200)
+  assert.deepEqual(await parentResponse.json(), { deleted: true, id: 'photo-1' })
+  assert.equal(deletedKey, 'babies/baby-1/photos/photo-1')
 })
 
 test('detached baby profiles cannot read retained cloud album URLs', async () => {

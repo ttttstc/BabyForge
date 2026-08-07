@@ -99,6 +99,31 @@ async function saveLocalPhoto({ babyId, file, takenAt, timeSource }) {
   return record
 }
 
+async function deleteLocalPhoto({ babyId, photoId }) {
+  const db = await openAlbumDatabase()
+  if (!db || !babyId || !photoId) return
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(PHOTO_STORE, 'readwrite')
+    const store = transaction.objectStore(PHOTO_STORE)
+    let settled = false
+    const close = (error) => {
+      if (settled) return
+      settled = true
+      db.close()
+      if (error) reject(error)
+      else resolve()
+    }
+    const request = store.get(String(photoId))
+    request.onsuccess = () => {
+      if (request.result?.babyId === String(babyId)) store.delete(String(photoId))
+    }
+    request.onerror = () => close(request.error)
+    transaction.oncomplete = () => close()
+    transaction.onerror = () => close(transaction.error)
+    transaction.onabort = () => close(transaction.error || new Error('本地照片删除未完成'))
+  })
+}
+
 async function responsePayload(response) {
   let payload = null
   try { payload = await response.json() } catch { /* A proxy may return a non-JSON error page. */ }
@@ -121,6 +146,16 @@ export async function uploadBabyPhoto(input, { remote = false } = {}) {
   form.append('timeSource', input.timeSource)
   const response = await fetch('/api/photos', { method: 'POST', credentials: 'include', body: form })
   return (await responsePayload(response)).photo
+}
+
+export async function deleteBabyPhoto({ babyId, photoId }, { remote = false } = {}) {
+  if (!photoId) return
+  if (!remote) return deleteLocalPhoto({ babyId, photoId })
+  const response = await fetch(`/api/photos/${encodeURIComponent(photoId)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  return responsePayload(response)
 }
 
 export async function clearLocalBabyAlbum(babyId) {
