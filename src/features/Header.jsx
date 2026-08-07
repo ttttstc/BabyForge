@@ -1,4 +1,4 @@
-import { Baby, CalendarRange, ClipboardPlus, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
+import { Baby, BookOpen, CalendarRange, ClipboardPlus, FileHeart, House, Languages, LogOut, RotateCcw, Settings, Stethoscope } from 'lucide-react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
@@ -10,6 +10,7 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
     { route: ROUTES.records, label: copy.nav.records, icon: ClipboardPlus },
     { route: ROUTES.stage, label: copy.nav.stage, icon: CalendarRange },
     { route: ROUTES.pediatric, label: copy.nav.pediatric, icon: Stethoscope },
+    { route: ROUTES.experience, label: copy.nav.experience, icon: BookOpen },
     { route: ROUTES.summary, label: copy.nav.summary, icon: FileHeart },
   ]
 
@@ -23,9 +24,9 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
         <span className="baby-avatar">{baby.nickname.slice(0, 1)}</span>
         <span><strong>{baby.nickname}</strong><small>{copy.profile(getSexLabel(baby.sex, locale), ageDays)}</small></span>
       </div>
-      <nav aria-label="主导航">
+      <nav aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
         {items.map(({ route: target, label, icon: Icon }) => (
-          <button key={target} className={route === target ? 'active' : ''} onClick={() => navigate(target)}>
+          <button key={target} type="button" className={route === target ? 'active' : ''} aria-current={route === target ? 'page' : undefined} onClick={() => navigate(target)}>
             <Icon size={17} />{label}
           </button>
         ))}

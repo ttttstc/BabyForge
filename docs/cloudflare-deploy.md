@@ -23,6 +23,15 @@ npx wrangler pages project create babyforge --production-branch main
 npm run cloudflare:deploy
 ```
 
+经验检索使用 Tavily。开发环境把密钥放在仓库根目录的 `.dev.vars`（该文件已加入 `.gitignore`）；生产环境授权 Wrangler 后执行下面的命令，按提示粘贴密钥，密钥只会保存为 Cloudflare 加密 Secret：
+
+```powershell
+npx wrangler login
+npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
+```
+
+更新生产密钥后重新部署 Pages，使新的 Functions 版本读取到该 Secret。不要把密钥写入 `wrangler.jsonc`、前端代码或提交记录。
+
 部署后访问 `https://babyforge.pages.dev`。当前初始化账号：
 
 - 管理员：`niwa` / `niwaniwa`，可创建、填写和修改。

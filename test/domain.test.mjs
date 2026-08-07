@@ -18,6 +18,7 @@ import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
 import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
 
 test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -27,6 +28,53 @@ test('age and stage boundaries follow the 0–28 day MVP contract', () => {
   assert.equal(getStage(8).id, 'newborn-adaptation')
   assert.equal(getStage(28).id, 'newborn-adaptation')
   assert.equal(getStage(29).id, 'out-of-scope')
+})
+
+test('experience age bands cover 0–36 months without changing care stages', () => {
+  assert.equal(getContentAgeBandForBaby('2026-08-05', '2026-08-05').band.id, 'newborn')
+  assert.equal(getContentAgeBandForBaby('2026-07-07', '2026-08-05').band.id, 'young-infant')
+  assert.equal(getContentAgeBandForBaby('2026-06-05', '2026-08-05').band.id, 'young-infant')
+  assert.equal(getContentAgeBandForBaby('2026-05-05', '2026-08-05').band.id, 'early-infant')
+  assert.equal(getContentAgeBandForBaby('2023-08-05', '2026-08-05').band.id, 'young-toddler')
+  assert.equal(getContentAgeBandForBaby('2023-07-05', '2026-08-05').band, null)
+  assert.throws(() => getContentAgeBandForBaby('2026-08-06', '2026-08-05'), /future/)
+})
+
+test('experience queries and cache keys contain only band, category, and locale', () => {
+  const age = getContentAgeBandForBaby('2026-08-01', '2026-08-05')
+  assert.match(buildExperienceQuery(age.band, 'feeding'), /0到28天新生儿/)
+  assert.match(buildExperienceQuery(age.band, 'feeding'), /拍嗝/)
+  assert.equal(getExperienceCacheKey({ babyId: 'baby-1', bandId: age.band.id, categoryId: 'feeding' }), 'babyforge:experience:v1:baby-1:zh-CN:newborn:feeding')
+})
+
+test('experience result filtering keeps trusted professional links and drops unsafe or promotional results', () => {
+  const band = getContentAgeBandForBaby('2026-08-01', '2026-08-05').band
+  const sources = [{ domain: 'nhc.gov.cn', name: '国家卫生健康委员会', enabled: true }]
+  const professional = normalizeExperienceResult({ title: '新生儿安全睡眠科普', url: 'https://www.nhc.gov.cn/article?utm_source=test', content: '介绍安全睡眠环境和睡姿，提醒家长不要自行用药。', score: 0.9 }, { band, categoryId: 'health', sources })
+  assert.equal(professional.sourceType, 'professional')
+  assert.equal(professional.url, 'https://www.nhc.gov.cn/article')
+  assert.equal(normalizeExperienceResult({ title: '新生儿健康偏方', url: 'https://example.com/a', content: '祖传偏方可以治疗黄疸。', score: 0.9 }, { band, categoryId: 'health', sources }), null)
+  assert.equal(normalizeExperienceResult({ title: '新生儿奶粉优惠', url: 'https://example.com/a', content: '立即购买奶粉，限时优惠。', score: 0.9 }, { band, categoryId: 'feeding', sources }), null)
+  assert.ok(normalizeExperienceResult({ title: '新生儿配方奶喂养观察', url: 'https://example.com/feeding', content: '介绍配方奶喂养时的观察方法，不构成购买建议。', score: 0.8 }, { band, categoryId: 'feeding', sources }))
+  assert.equal(normalizeExperienceResult({ title: 'Newborn feeding guide', url: 'https://example.com/en', content: 'A general guide for feeding.', score: 0.8 }, { band, categoryId: 'feeding', sources }), null)
+  assert.equal(normalizeArticleUrl('javascript:alert(1)'), null)
+})
+
+test('experience result sorting diversifies adjacent sources and cache state is explicit', () => {
+  const articles = sortExperienceResults([
+    { id: 'a', sourceType: 'professional', sourceDomain: 'a.cn', score: 0.9 },
+    { id: 'b', sourceType: 'professional', sourceDomain: 'a.cn', score: 0.8 },
+    { id: 'c', sourceType: 'professional', sourceDomain: 'b.cn', score: 0.7 },
+  ])
+  assert.deepEqual(articles.map((item) => item.id), ['a', 'c', 'b'])
+  assert.equal(sortExperienceResults([
+    { id: 'a1', sourceDomain: 'a.cn', score: 1 },
+    { id: 'a2', sourceDomain: 'a.cn', score: 0.9 },
+    { id: 'a3', sourceDomain: 'a.cn', score: 0.8 },
+    { id: 'a4', sourceDomain: 'a.cn', score: 0.7 },
+  ]).length, 3)
+  assert.equal(getCacheState({ generatedAt: '2026-08-05T00:00:00.000Z', expiresAt: '2026-08-06T00:00:00.000Z', staleUntil: '2026-08-12T00:00:00.000Z' }, Date.parse('2026-08-05T12:00:00.000Z')), 'fresh')
+  assert.equal(getCacheState({ generatedAt: '2026-08-05T00:00:00.000Z', expiresAt: '2026-08-06T00:00:00.000Z', staleUntil: '2026-08-12T00:00:00.000Z' }, Date.parse('2026-08-07T00:00:00.000Z')), 'stale')
 })
 
 test('today always exposes the three agreed priorities', () => {

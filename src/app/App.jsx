@@ -3,6 +3,7 @@ import { Onboarding } from '../features/Onboarding.jsx'
 import { Workspace } from '../features/Workspace.jsx'
 import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
 import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
+import { ExperienceView } from '../features/ExperienceView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
@@ -283,6 +284,10 @@ export function App() {
 
   if (route === ROUTES.pediatric) {
     return <PediatricDiseasesView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  }
+
+  if (route === ROUTES.experience) {
+    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.summary) {
