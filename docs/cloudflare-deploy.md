@@ -26,6 +26,28 @@ npx wrangler pages project create babyforge --production-branch main
 npm run cloudflare:deploy
 ```
 
+## GitHub Actions 自动部署
+
+仓库已提供 `.github/workflows/deploy-cloudflare.yml`。合并到 `main` 后，GitHub Actions 会依次执行测试、lint、构建、R2 检查、D1 迁移和 Pages 部署；R2 未开通或照片桶缺失时会在部署前停止，不会发布一个相册不可用的版本。
+
+在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加两个 Repository secrets：
+
+- `CLOUDFLARE_ACCOUNT_ID`：`6d27f195bf6b21f018fc46151ff0bbda`
+- `CLOUDFLARE_API_TOKEN`：Cloudflare Account API Token。至少需要 Pages Edit、D1 Edit 和 Workers R2 Storage Read；如果希望自动创建桶，再增加 Workers R2 Storage Edit。
+
+这个 Token 只放在 GitHub Secrets，不提交到仓库，也不再依赖本机 `wrangler login`。Cloudflare 官方的 Pages CI 流程同样使用 Account ID + API Token。
+
+## R2 开通与照片桶
+
+Cloudflare 账号需要先有 R2 subscription：进入 [R2 Overview](https://dash.cloudflare.com/6d27f195bf6b21f018fc46151ff0bbda/r2/overview)，完成开通/结算后创建以下两个桶：
+
+```powershell
+npx wrangler r2 bucket create babyforge-photos
+npx wrangler r2 bucket create babyforge-photos-preview
+```
+
+如果你确认以前开通过 R2，但 Wrangler 仍返回 `Please enable R2 through the Cloudflare Dashboard`，通常是当前授权账号不是开通 R2 的账号，或当前 Token 没有 R2 scope；请先确认控制台右上角账号为 `ncz1993107@gmail.com`，再重新创建包含 R2 权限的 Account API Token。照片桶保持私有即可，应用通过 Pages Functions 的 R2 binding 读写，不需要开启公共 URL。
+
 经验检索使用 Tavily。开发环境把密钥放在仓库根目录的 `.dev.vars`（该文件已加入 `.gitignore`）；生产环境授权 Wrangler 后执行下面的命令，按提示粘贴密钥，密钥只会保存为 Cloudflare 加密 Secret：
 
 ```powershell
