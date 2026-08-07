@@ -12,7 +12,9 @@ const EVENT_LABELS = {
   concern_open: { zh: '关注事项', en: 'Follow-up concern' },
   care_action: { zh: '照护记录', en: 'Care action' },
   health_visit: { zh: '就诊', en: 'Health visit' },
+  vaccine: { zh: '疫苗', en: 'Vaccination' },
   vaccination: { zh: '疫苗', en: 'Vaccination' },
+  care_plan_item: { zh: '计划事项', en: 'Care plan item' },
   medication: { zh: '用药记录', en: 'Medication' },
 }
 
@@ -220,6 +222,7 @@ export function eventTitle(event, locale = 'zh-CN') {
     const amount = event.payload?.amount ? ` ${event.payload.amount} ${event.payload.unit || ''}`.trim() : ''
     return name ? `${isEnglish ? 'Medication' : '用药'} ${name}${amount ? ` · ${amount}` : ''}` : label
   }
+  if (category === 'care_plan_item' && String(event.payload?.planItemId || '').startsWith('vaccine:')) return isEnglish ? 'Vaccination' : '疫苗'
   if (category === 'growth_measurement' || normalizedGrowthType(category)) {
     const payload = eventPayload(event)
     const typeKey = normalizedGrowthType(payload.type) || normalizedGrowthType(category) || 'weight'

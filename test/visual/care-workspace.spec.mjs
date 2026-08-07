@@ -66,7 +66,7 @@ test('today tasks hand off to the growth read model and growth facts loop back t
   await page.getByRole('button', { name: '保存事实' }).click()
   await page.getByRole('button', { name: '成长', exact: true }).click()
   await expect(page.locator('.growth-metric-card').first()).toContainText('3.4 kg')
-  await page.getByRole('button', { name: '常见儿科病', exact: true }).click()
+  await page.getByRole('button', { name: '病例', exact: true }).click()
   await page.getByRole('button', { name: /呼吸道症状/ }).click()
   await page.getByRole('button', { name: /普通感冒（急性上呼吸道感染）/ }).click()
   const dialog = page.getByRole('dialog', { name: /普通感冒/ })

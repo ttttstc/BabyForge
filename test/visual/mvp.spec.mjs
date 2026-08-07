@@ -249,7 +249,7 @@ test('today album does not depend on WebGL', async ({ page }) => {
 
 test('common pediatric education advances through anatomy steps and records raw facts', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '常见儿科病', exact: true }).click()
+  await page.getByRole('button', { name: '病例', exact: true }).click()
 
   await expect(page.getByText('呼吸道症状', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('使用说明', { exact: true })).toBeVisible()
@@ -275,7 +275,7 @@ test('common pediatric education advances through anatomy steps and records raw 
 
 test('pediatric library exposes all anatomy models and opens a concrete case guide', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '常见儿科病', exact: true }).click()
+  await page.getByRole('button', { name: '病例', exact: true }).click()
 
   await page.getByRole('tab', { name: /器官模型/ }).click()
   await expect(page.locator('.pediatric-organ-list .pediatric-disease-item')).toHaveCount(9)
@@ -301,11 +301,11 @@ test('settings switches the persisted interface language', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '设置' })).toBeVisible()
   await page.locator('input[name="locale"][value="en-US"]').check()
   await page.getByRole('button', { name: 'Done' }).click()
-  await expect(page.getByRole('button', { name: 'Pediatric', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Pediatric', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Cases', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Cases', exact: true }).click()
   await expect(page.getByText('Respiratory symptoms', { exact: true }).first()).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Pediatric', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Cases', exact: true })).toBeVisible()
 })
 
 test('clearing local data returns to onboarding', async ({ page }) => {

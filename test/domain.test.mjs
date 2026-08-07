@@ -661,6 +661,8 @@ test('quick care records produce a personal 24-hour snapshot', () => {
   assert.equal(snapshot.metrics.bottleMl, 60)
   assert.equal(snapshot.metrics.wetDiaperCount, 1)
   assert.equal(eventTitle(events[0], 'zh-CN'), '瓶喂 60 mL')
+  assert.equal(eventTitle({ category: 'vaccine', status: 'active' }, 'zh-CN'), '疫苗')
+  assert.equal(eventTitle({ category: 'care_plan_item', status: 'active', payload: { planItemId: 'vaccine:hep-b-1' } }, 'zh-CN'), '疫苗')
 })
 
 test('guided support uses caregiver guidance without a triage label', () => {
