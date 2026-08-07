@@ -4,7 +4,11 @@ export const EVENT_STATUSES = new Set(['active', 'corrected', 'voided'])
 
 const SOURCE_ALIASES = { caregiver_entered: 'caregiver', doctor_entered: 'clinical_record', device_imported: 'device_import' }
 const LEGACY_SOURCE = { caregiver: 'caregiver_entered', clinical_record: 'doctor_entered', device_import: 'device_imported', unknown: 'device_imported' }
-const LEGACY_TYPES = new Set(['breastfeeding', 'bottle_feeding', 'diaper', 'sleep', 'medication', 'temperature', 'growth_measurement', 'symptom_observation', 'concern_open', 'care_action', 'health_visit', 'vaccination', 'doctor_instruction'])
+const LEGACY_TYPES = new Set(['breastfeeding', 'bottle_feeding', 'diaper', 'sleep', 'medication', 'temperature', 'temperature_observation', 'growth_measurement', 'symptom_observation', 'concern_open', 'care_action', 'health_visit', 'vaccination', 'doctor_instruction'])
+const P0_CATEGORIES = new Set(['breastfeeding', 'bottle_feeding', 'sleep', 'diaper', 'medication', 'temperature', 'temperature_observation', 'growth_measurement'])
+const DIAPER_KINDS = new Set(['urine', 'stool', 'both'])
+const MILK_TYPES = new Set(['breast_milk', 'formula'])
+const GROWTH_TYPES = new Set(['weight', 'length'])
 
 export class EventInputError extends Error {
   constructor(field, message) {
@@ -107,6 +111,45 @@ export function legacySourceForEvent(source) {
   return LEGACY_SOURCE[source] || 'device_imported'
 }
 
+function validateCareRecordPayload(category, payload, occurredAt) {
+  // Keep this server-side mirror aligned with validateCareRecordInput in
+  // src/domain/careEvents.js; the Functions bundle cannot import the client module.
+  if (!P0_CATEGORIES.has(category)) return
+  const fail = (field, message) => { throw new EventInputError(field, message) }
+  const time = new Date(occurredAt || '')
+  if (Number.isNaN(time.getTime())) fail('occurredAt', '必须提供有效的发生时间')
+  const numeric = (field, message) => {
+    if (!Number.isFinite(Number(payload[field]))) fail(`payload.${field}`, message)
+  }
+  if (category === 'bottle_feeding') {
+    if (!MILK_TYPES.has(payload.milkType)) fail('payload.milkType', '瓶喂必须选择母乳瓶喂或配方奶')
+    if (payload.amountMl === '' || payload.amountMl === null || payload.amountMl === undefined) fail('payload.amountMl', '瓶喂必须提供实际摄入量')
+    numeric('amountMl', '实际摄入量必须是数字')
+    if (Number(payload.amountMl) < 0) fail('payload.amountMl', '实际摄入量不能小于 0')
+  }
+  if (category === 'sleep') {
+    const end = new Date(payload.endedAt || '')
+    if (Number.isNaN(end.getTime())) fail('payload.endedAt', '睡眠必须提供有效的结束时间')
+    if (end.getTime() <= time.getTime()) fail('payload.endedAt', '睡眠结束时间必须晚于开始时间')
+  }
+  if (category === 'diaper' && !DIAPER_KINDS.has(payload.kind)) fail('payload.kind', '尿布类型不正确')
+  if (category === 'medication' && !String(payload.medicationName || payload.name || '').trim()) fail('payload.medicationName', '用药必须提供药品名称')
+  if (category === 'temperature') {
+    numeric('value', '体温数值必须是数字')
+    if (payload.value === '' || payload.value === null || payload.value === undefined) fail('payload.value', '没有数值时应保存为体温观察')
+    if (!String(payload.unit || '').trim()) fail('payload.unit', '体温必须提供单位')
+    if (!String(payload.method || '').trim()) fail('payload.method', '体温必须提供测量部位或方法')
+  }
+  if (category === 'temperature_observation' && payload.value !== undefined && payload.value !== null && payload.value !== '') fail('payload.value', '体温观察不能包含数值，请使用体温测量')
+  if (category === 'growth_measurement') {
+    if (!GROWTH_TYPES.has(payload.type)) fail('payload.type', '成长测量类型不正确')
+    if (payload.value === '' || payload.value === null || payload.value === undefined) fail('payload.value', '成长测量必须提供数值')
+    numeric('value', '成长测量数值必须是数字')
+    if (!String(payload.unit || '').trim()) fail('payload.unit', '成长测量必须提供单位')
+    if (Number.isNaN(new Date(payload.measuredAt || '').getTime())) fail('payload.measuredAt', '成长测量必须提供有效日期')
+  }
+}
+
 export function safeEventInput(input = {}, fallback = {}, options = {}) {
   const event = input?.event || input
   if (options.requireId && !event?.id) throw new EventInputError('id', '缺少事件 id')
@@ -135,6 +178,7 @@ export function safeEventInput(input = {}, fallback = {}, options = {}) {
   if (options.requireTimestamps && !event?.occurredAt && !fallback.occurredAt) throw new EventInputError('occurredAt', '必须提供发生时间')
   if (options.requireTimestamps && !event?.recordedAt && !fallback.recordedAt) throw new EventInputError('recordedAt', '必须提供记录时间')
   if (!event?.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) throw new EventInputError('payload', 'payload 必须是对象')
+  validateCareRecordPayload(category, event.payload, occurredAt)
   return {
     id,
     babyId: event?.babyId || fallback.babyId || null,

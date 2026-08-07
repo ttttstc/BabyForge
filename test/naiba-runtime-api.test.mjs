@@ -38,7 +38,7 @@ function request(path, body) {
 test('cloud draft endpoint stores an unconfirmed event without writing care_events', async () => {
   const env = fixture()
   const now = '2026-08-07T10:00:00.000Z'
-  const event = createCareEvent({ babyId: env.baby.id, category: 'bottle_feeding', occurredAt: now, recordedAt: now, actor: DEFAULT_RECORDERS[0], source: 'caregiver', payload: { amountMl: 50 } }, { now })
+  const event = createCareEvent({ babyId: env.baby.id, category: 'bottle_feeding', occurredAt: now, recordedAt: now, actor: DEFAULT_RECORDERS[0], source: 'caregiver', payload: { milkType: 'formula', amountMl: 50 } }, { now })
   const response = await createDraft({ request: request('/api/ai/drafts', { event }), env })
   assert.equal(response.status, 201)
   assert.ok((await response.json()).draftId)

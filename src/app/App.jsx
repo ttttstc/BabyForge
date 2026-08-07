@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Onboarding } from '../features/Onboarding.jsx'
 import { Workspace } from '../features/Workspace.jsx'
+import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
 import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
 import { ExperienceView } from '../features/ExperienceView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
@@ -11,7 +12,7 @@ import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
-import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, syncCareEventChanges } from '../domain/eventSync.js'
+import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
@@ -70,21 +71,20 @@ export function App() {
       : Promise.resolve(true)
     const workspaceSync = nonEventWorkspaceChanged ? pushWorkspace(stateRef.current) : Promise.resolve(null)
     return Promise.all([eventSync, workspaceSync]).then(() => true).catch((error) => {
-      // A failed create is optimistic local state only. Remove it so the form
-      // can safely retry without posting the same fact under a new UUID.
-      const createdIds = new Set(eventChanges.filter((change) => change.operation === 'create').map((change) => change.event.id))
-      if (createdIds.size) {
-        const rolledBack = applyCareEventsToLegacy({
-          ...stateRef.current,
-          careEvents: (stateRef.current.careEvents || []).filter((event) => !createdIds.has(event.id)),
-        }, (stateRef.current.careEvents || []).filter((event) => !createdIds.has(event.id)))
-        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !createdIds.has(item.event.id))
+      // Event writes are optimistic. Revert every event touched by this
+      // commit, including corrections and voids, so a failed save never looks
+      // successful in the local timeline. The entry form remains mounted and
+      // keeps its input for an explicit retry.
+      if (eventChanges.length) {
+        const currentEvents = stateRef.current.careEvents || []
+        const restored = rollbackCareEventChanges(previous.careEvents || [], currentEvents, eventChanges)
+        const rolledBack = applyCareEventsToLegacy({ ...stateRef.current, careEvents: restored }, restored)
+        const changedIds = new Set(eventChanges.flatMap((change) => [change.event.id, change.event.correctedFromId].filter(Boolean)))
+        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !changedIds.has(item.event.id))
         stateRef.current = rolledBack
         saveState(globalThis.localStorage, rolledBack, session?.username)
         setState(rolledBack)
       }
-      // Corrections and voids keep their stable event id/version in local
-      // state and pendingSyncRef so a manual retry can safely resume them.
       updateSyncMeta({ status: 'offline' })
       throw error
     })
@@ -302,6 +302,10 @@ export function App() {
 
   if (route === ROUTES.pediatric) {
     return <PediatricDiseasesView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  }
+
+  if (route === ROUTES.summary) {
+    return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
   }
 
   if (route === ROUTES.experience) {

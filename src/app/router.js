@@ -15,11 +15,11 @@ export const ROUTES = {
   pediatric: '#/topic/pediatric-diseases',
   experience: '#/experience',
   naibaAi: '#/naiba-ai',
+  summary: '#/doctor-summary',
   settings: '#/settings',
 }
 
 const LEGACY_ROUTE_ALIASES = {
-  '#/doctor-summary': ROUTES.records,
   '#/stage': ROUTES.growth,
   '#/stage/newborn': ROUTES.growth,
 }

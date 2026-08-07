@@ -13,6 +13,7 @@ export const CARE_EVENT_TYPES = Object.freeze([
   'sleep',
   'medication',
   'temperature',
+  'temperature_observation',
   'growth_measurement',
   'symptom_observation',
   'concern_open',
@@ -24,6 +25,21 @@ export const CARE_EVENT_TYPES = Object.freeze([
 
 export const CARE_EVENT_STATUSES = Object.freeze(['active', 'corrected', 'voided'])
 export const CARE_EVENT_SOURCES = Object.freeze(['caregiver', 'clinical_record', 'device_import', 'unknown'])
+
+export const CARE_RECORD_CATEGORIES = Object.freeze([
+  'breastfeeding',
+  'bottle_feeding',
+  'sleep',
+  'diaper',
+  'medication',
+  'temperature',
+  'temperature_observation',
+  'growth_measurement',
+])
+
+const DIAPER_KINDS = new Set(['urine', 'stool', 'both'])
+const BOTTLE_MILK_TYPES = new Set(['breast_milk', 'formula'])
+const GROWTH_MEASUREMENT_TYPES = new Set(['weight', 'length'])
 
 const OCCURRED_AT_ERROR_MESSAGES = Object.freeze({
   invalid: { zh: '发生时间无效，请重新选择。', en: 'Choose a valid event time.' },
@@ -181,6 +197,63 @@ export function validateCareEvent(event = {}) {
   if (!CARE_EVENT_STATUSES.includes(event.status)) errors.push({ field: 'status', message: `不支持的事件状态: ${event.status || '空值'}` })
   if (!Number.isInteger(Number(event.version)) || Number(event.version) < 1) errors.push({ field: 'version', message: 'version 必须是正整数' })
   return { valid: errors.length === 0, errors }
+}
+
+export function validateCareRecordInput(input = {}) {
+  const errors = []
+  const category = String(input.category || '').trim()
+  const payload = input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload) ? input.payload : null
+  const numberError = (field, message) => {
+    if (payload?.[field] === '' || payload?.[field] === null || payload?.[field] === undefined) return
+    if (!Number.isFinite(Number(payload[field]))) errors.push({ field: `payload.${field}`, message })
+  }
+
+  if (!CARE_RECORD_CATEGORIES.includes(category)) return { valid: true, errors }
+  if (!payload) {
+    errors.push({ field: 'payload', message: '记录内容必须是对象' })
+    return { valid: false, errors }
+  }
+  if (!input.occurredAt || Number.isNaN(new Date(input.occurredAt).getTime())) errors.push({ field: 'occurredAt', message: '必须提供有效的发生时间' })
+
+  if (category === 'bottle_feeding') {
+    if (!BOTTLE_MILK_TYPES.has(payload.milkType)) errors.push({ field: 'payload.milkType', message: '瓶喂必须选择母乳瓶喂或配方奶' })
+    if (payload.amountMl === '' || payload.amountMl === null || payload.amountMl === undefined) errors.push({ field: 'payload.amountMl', message: '瓶喂必须提供实际摄入量' })
+    numberError('amountMl', '实际摄入量必须是数字')
+    if (Number(payload.amountMl) < 0) errors.push({ field: 'payload.amountMl', message: '实际摄入量不能小于 0' })
+  }
+  if (category === 'sleep') {
+    const start = new Date(input.occurredAt)
+    const end = new Date(payload.endedAt)
+    if (!payload.endedAt || Number.isNaN(end.getTime())) errors.push({ field: 'payload.endedAt', message: '睡眠必须提供有效的结束时间' })
+    else if (!Number.isNaN(start.getTime()) && end.getTime() <= start.getTime()) errors.push({ field: 'payload.endedAt', message: '睡眠结束时间必须晚于开始时间' })
+  }
+  if (category === 'diaper' && !DIAPER_KINDS.has(payload.kind)) errors.push({ field: 'payload.kind', message: '尿布类型不正确' })
+  if (category === 'medication' && !String(payload.medicationName || payload.name || '').trim()) errors.push({ field: 'payload.medicationName', message: '用药必须提供药品名称' })
+  if (category === 'temperature') {
+    numberError('value', '体温数值必须是数字')
+    if (payload.value === '' || payload.value === null || payload.value === undefined) errors.push({ field: 'payload.value', message: '没有数值时应保存为体温观察' })
+    if (!String(payload.unit || '').trim()) errors.push({ field: 'payload.unit', message: '体温必须提供单位' })
+    if (!String(payload.method || '').trim()) errors.push({ field: 'payload.method', message: '体温必须提供测量部位或方法' })
+  }
+  if (category === 'temperature_observation' && payload.value !== undefined && payload.value !== null && payload.value !== '') errors.push({ field: 'payload.value', message: '体温观察不能包含数值，请使用体温测量' })
+  if (category === 'growth_measurement') {
+    if (!GROWTH_MEASUREMENT_TYPES.has(payload.type)) errors.push({ field: 'payload.type', message: '成长测量类型不正确' })
+    if (payload.value === '' || payload.value === null || payload.value === undefined) errors.push({ field: 'payload.value', message: '成长测量必须提供数值' })
+    numberError('value', '成长测量数值必须是数字')
+    if (!String(payload.unit || '').trim()) errors.push({ field: 'payload.unit', message: '成长测量必须提供单位' })
+    if (!String(payload.measuredAt || '').trim() || Number.isNaN(new Date(payload.measuredAt).getTime())) errors.push({ field: 'payload.measuredAt', message: '成长测量必须提供有效日期' })
+  }
+  return { valid: errors.length === 0, errors }
+}
+
+export function assertCareRecordInput(input = {}) {
+  const result = validateCareRecordInput(input)
+  if (!result.valid) {
+    const error = new TypeError(result.errors[0].message)
+    error.field = result.errors[0].field
+    throw error
+  }
+  return input
 }
 
 export function assertCareEvent(event) {

@@ -28,16 +28,12 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => localStorage.clear())
 })
 
-test('today shows versioned feeding reference and separates actual intake', async ({ page }) => {
+test('today stays factual and keeps intake entry in the record center', async ({ page }) => {
   await createBaby(page)
-  const card = page.getByTestId('today-feeding-recommendation')
-  await expect(card).toBeVisible()
-  await expect(page.getByTestId('today-ai-analysis')).toBeVisible()
-  await expect(page.getByTestId('today-growth-plan')).toBeVisible()
-  await expect(card.getByText(/30–60mL\/次/)).toBeVisible()
-  await expect(card.getByRole('button', { name: '去记录实际摄入' }).first()).toBeVisible()
-  await card.getByRole('button', { name: '查看依据' }).click()
-  await expect(card.getByText(/CDC/)).toBeVisible()
+  await expect(page.getByTestId('today-feeding-recommendation')).toHaveCount(0)
+  await expect(page.getByTestId('today-ai-analysis')).toHaveCount(0)
+  await expect(page.getByTestId('today-growth-plan')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /去记录中心录入/ }).first()).toBeVisible()
 })
 
 test('Naiba AI page asks about facts before making a health conclusion', async ({ page }) => {
@@ -56,11 +52,11 @@ test('Naiba AI page asks about facts before making a health conclusion', async (
   await expect(page.getByText(/危险信号.*立即联系/)).toBeVisible()
 })
 
-test('feeding card opens the actual intake record panel', async ({ page }) => {
+test('today directs actual intake to the record center', async ({ page }) => {
   await createBaby(page)
-  await page.getByTestId('today-feeding-recommendation').getByRole('button', { name: '去记录实际摄入' }).first().click()
-  await expect(page).toHaveURL(/#\/records\?panel=feeding$/)
-  await expect(page.getByTestId('record-entry-feeding')).toBeVisible()
+  await page.getByRole('button', { name: /去记录中心录入/ }).first().click()
+  await expect(page).toHaveURL(/#\/records$/)
+  await expect(page.getByRole('heading', { name: '记录中心' })).toBeVisible()
 })
 
 test('natural language actual intake stays draft until caregiver confirms', async ({ page }) => {
@@ -93,8 +89,11 @@ test('Naiba AI capability entries render analysis, plan, brief, and handoff', as
 test('plain-text medical report stays editable draft until confirmation', async ({ page }) => {
   await createBaby(page)
   await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
-  await page.locator('input[type="file"]').setInputFiles({ name: '血常规.txt', mimeType: 'text/plain', buffer: Buffer.from('血红蛋白 135 g/L 参考范围: 110-160') })
-  await expect(page.getByText('报告字段草稿')).toBeVisible()
+  await expect(page).toHaveURL(/#\/naiba-ai$/)
+  const reportInput = page.locator('input[type="file"]')
+  await expect(reportInput).toBeEnabled()
+  await reportInput.setInputFiles({ name: '血常规.txt', mimeType: 'text/plain', buffer: Buffer.from('血红蛋白 135 g/L 参考范围: 110-160') })
+  await expect(page.getByText('报告字段事实')).toBeVisible()
   const draft = page.getByTestId('care-event-draft-card')
   await expect(draft.getByLabel('项目')).toHaveValue('血红蛋白')
   await draft.getByLabel('数值').fill('136')
