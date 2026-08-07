@@ -152,7 +152,8 @@ Skill 是单 Agent 内的任务协议，不是独立机器人。每个 Skill 固
 - 保留 Cloudflare Pages Functions，不引入新的 Agent 运行平台。
 - `POST /api/ai/chat` 通过 SSE 返回流式事件。
 - `POST /api/ai/confirm-draft` 执行经确认的写入。
-- OpenAI API Key 只存在服务端环境变量。
+- `OPENAI_API_KEY` 只存在服务端 Secret；`OPENAI_BASE_URL` 和 `OPENAI_MODEL` 支持兼容 OpenAI 协议的自有服务，未配置 Base URL 时使用默认 OpenAI endpoint。
+- 兼容服务若只提供 `/chat/completions`，设置 `OPENAI_USE_RESPONSES=false`；未设置时遵循 Agents SDK 默认 Responses 行为。
 - Cloudflare Pages Functions 直接运行 `@openai/agents` 的单 Agent、Function Tools、输入/输出 Guardrail 和结构化报告输出。构建通过浏览器版 Agents Core shim 排除未使用的 Node MCP 传输模块，并在 `nodejs_compat` 下验证。
 - 每次运行绑定家庭账号和宝宝 ID，所有工具重复校验访问权限。
 - 模型、知识或工具失败时保留用户输入并提供重试，不误报成功，不建设离线补传队列。

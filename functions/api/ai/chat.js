@@ -189,6 +189,8 @@ export async function onRequestPost({ request, env }) {
       locale: context.baby.locale || 'zh-CN',
       model: env.OPENAI_MODEL || 'gpt-4o-mini',
       apiKey: env.OPENAI_API_KEY,
+      baseURL: env.OPENAI_BASE_URL,
+      useResponses: env.OPENAI_USE_RESPONSES,
     })
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)
     return respond([{ type: 'message', delta: output }, { type: 'done' }], output)

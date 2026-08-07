@@ -8,6 +8,19 @@ import { createNaibaTools } from './naibaTools.js'
 const INPUT_LIMIT = 4_000
 const APPROVED_EXTERNAL_HOSTS = new Set(['www.nhc.gov.cn', 'nhc.gov.cn', 'www.who.int', 'who.int', 'www.cdc.gov', 'cdc.gov'])
 
+function parseOptionalBoolean(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
+}
+
+export function createNaibaModelProvider({ apiKey, baseURL = '', useResponses } = {}) {
+  const options = { apiKey }
+  if (String(baseURL || '').trim()) options.baseURL = String(baseURL).trim()
+  const parsedUseResponses = parseOptionalBoolean(useResponses)
+  if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
+  return new OpenAIProvider(options)
+}
+
 function outputAllowed(text, context) {
   if (/(处方|药物|用药).{0,12}(剂量|加量|减量|停药)|prescri(be|ption).{0,20}(dose|medication)/i.test(text)) return false
   if (context.decisionResult?.status === 'safety_action_required' && !text.includes(context.decisionResult.minimumAction)) return false
@@ -42,7 +55,7 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey }) {
+export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
@@ -58,7 +71,7 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
     outputGuardrails: [{ name: 'naiba-output-safety', execute: async ({ agentOutput }) => ({ tripwireTriggered: !outputAllowed(String(agentOutput || ''), context), outputInfo: { rule: 'medical_and_authority_boundary' } }) }],
   })
   const runner = new Runner({
-    modelProvider: new OpenAIProvider({ apiKey }),
+    modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }),
     tracingDisabled: false,
     traceIncludeSensitiveData: false,
     workflowName: 'BabyForge Naiba AI',
@@ -83,7 +96,7 @@ const REPORT_OUTPUT = z.object({
   questionsForClinician: z.array(z.string()).max(3),
 })
 
-export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents = [], locale = 'zh-CN', model = 'gpt-4o-mini', apiKey }) {
+export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents = [], locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses }) {
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, now })
   const context = { skillId: 'medical_report_interpreter', baby, events: careEvents, locale, now, babyContext, decisionResult: null, localKnowledge: [] }
@@ -100,7 +113,7 @@ export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby,
   if (text) content.push({ type: 'input_text', text: text.slice(0, 20_000) })
   if (dataUrl && mimeType === 'application/pdf') content.push({ type: 'input_file', file: dataUrl, filename: name })
   else if (dataUrl) content.push({ type: 'input_image', image: dataUrl, detail: 'high' })
-  const runner = new Runner({ modelProvider: new OpenAIProvider({ apiKey }), tracingDisabled: false, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
+  const runner = new Runner({ modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: false, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
   const result = await runner.run(agent, [{ role: 'user', content }], { context, maxTurns: 3, groupId: baby?.id })
   const report = result.finalOutput
   if (!report?.fields) throw new Error('naiba-report-output-invalid')

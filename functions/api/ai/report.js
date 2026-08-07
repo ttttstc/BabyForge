@@ -27,7 +27,7 @@ export async function onRequestPost({ request, env }) {
   if (mimeType === 'text/plain') return json({ report: parseMedicalReportText(text, { name }) })
   if (!env.OPENAI_API_KEY) return json({ error: '当前环境未配置报告识别模型；可改用纯文本粘贴。' }, 503)
   try {
-    const report = await runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents, locale: baby.locale || 'zh-CN', model: env.OPENAI_MODEL || 'gpt-4o-mini', apiKey: env.OPENAI_API_KEY })
+    const report = await runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents, locale: baby.locale || 'zh-CN', model: env.OPENAI_MODEL || 'gpt-4o-mini', apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL, useResponses: env.OPENAI_USE_RESPONSES })
     return json({ report })
   } catch (error) {
     console.error('Naiba AI report parsing failed', error)
