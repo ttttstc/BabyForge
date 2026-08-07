@@ -5,7 +5,7 @@
 - 范围：Issue #3 及依赖 #8、#12、#14、#15
 - 延后：Issue #20 的完整医疗安全 Eval、专家复核和正式发布门禁
 
-当前实现包含自然语言事实记录、报告字段提取、分析、计划、就医摘要和交接材料。AI 只生成可编辑草稿，照护者明确确认后才写入 `CareEvent`；无法结构化的描述不写入，原始报告文件不留存。
+当前实现包含自然语言事实记录、报告字段提取、分析、计划、就医摘要和交接材料。AI 只生成可编辑草稿，照护者明确确认后才写入 `CareEvent`；无法结构化的描述不写入，BabyForge 不留存原始报告文件。图片/PDF 报告在发送到运营方配置的 AI 服务商前必须获得明确同意，服务商的保留策略不由 BabyForge 控制。
 
 ## 1. 唯一交付目标
 
@@ -154,6 +154,8 @@ Skill 是单 Agent 内的任务协议，不是独立机器人。每个 Skill 固
 - `POST /api/ai/confirm-draft` 执行经确认的写入。
 - `OPENAI_API_KEY` 只存在服务端 Secret；`OPENAI_BASE_URL` 和 `OPENAI_MODEL` 支持兼容 OpenAI 协议的自有服务，未配置 Base URL 时使用默认 OpenAI endpoint。
 - 兼容服务若只提供 `/chat/completions`，设置 `OPENAI_USE_RESPONSES=false`；未设置时遵循 Agents SDK 默认 Responses 行为。
+- 图片/PDF 报告识别会把文件内容发送给上述配置的 AI 服务商；UI 每次上传前都会提示并要求明确同意，纯文本报告可在本地解析。
+- 模型调用有默认的账号/宝宝每日 30 次、全局每日 500 次和 token 预算保护；超限时只返回本地安全答案。可用 `NAIBA_DAILY_MESSAGE_LIMIT`、`NAIBA_DAILY_BABY_MESSAGE_LIMIT`、`NAIBA_GLOBAL_DAILY_MESSAGE_LIMIT`、`NAIBA_DAILY_TOKEN_BUDGET`、`NAIBA_GLOBAL_DAILY_TOKEN_BUDGET` 调整。
 - Cloudflare Pages Functions 直接运行 `@openai/agents` 的单 Agent、Function Tools、输入/输出 Guardrail 和结构化报告输出。构建通过浏览器版 Agents Core shim 排除未使用的 Node MCP 传输模块，并在 `nodejs_compat` 下验证。
 - 每次运行绑定家庭账号和宝宝 ID，所有工具重复校验访问权限。
 - 模型、知识或工具失败时保留用户输入并提供重试，不误报成功，不建设离线补传队列。
@@ -190,5 +192,5 @@ Skill 是单 Agent 内的任务协议，不是独立机器人。每个 Skill 固
 
 1. 采用“一级奶爸AI导航替换一级就医摘要”，不增加悬浮气泡；就医摘要仍从今日页和记录中心进入。
 2. 临时外部证据只能补充一般教育建议，不能驱动或降低最低行动要求；家庭用户不承担来源审核。
-3. 对话默认保留 30 天；原始报告文件默认只用于本次解析，解析完成后删除，不进入家庭长期事实库。
+3. 对话默认保留 30 天；原始报告文件默认只用于本次解析，解析完成后删除，不进入家庭长期事实库。图片/PDF 发送到外部 AI 服务商前必须逐次同意，外部保留期限以运营方配置和服务商政策为准。
 4. 今日饮食卡采用“今日总目标 + 下一餐方向”；推荐量与实际摄入严格分开，实际摄入必须再次确认。

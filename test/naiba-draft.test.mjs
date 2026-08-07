@@ -38,3 +38,8 @@ test('confirm-draft keeps guest accounts read-only', async () => {
   const response = await onRequestPost({ request: request({ confirmed: true, draft: { event: {} } }), env: envFor('guest') })
   assert.equal(response.status, 403)
 })
+
+test('confirm-draft requires the server-side draft id even when the client supplies an event', async () => {
+  const response = await onRequestPost({ request: request({ confirmed: true, event: { id: 'event-1' } }), env: envFor() })
+  assert.equal(response.status, 422)
+})

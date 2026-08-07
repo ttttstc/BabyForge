@@ -1,4 +1,5 @@
-import { createCareEvent } from './careEvents.js'
+import { getAgeDays } from './baby.js'
+import { createCareEvent, validateOccurredAt } from './careEvents.js'
 
 export const CARE_EVENT_DRAFT_VERSION = 'care-event-draft-2026-08-07'
 
@@ -18,6 +19,20 @@ function amountFrom(text) {
   return numberMatch(text, /(?:喝了|喂了|摄入|奶量|奶粉|配方奶|瓶喂)?[^\d]{0,18}(\d+(?:\.\d+)?)\s*(?:mL|ml|毫升)/i)
 }
 
+export function maxPlausibleBottleMl(baby, now = new Date()) {
+  const ageDays = baby?.birthDate ? getAgeDays(baby.birthDate, now) : null
+  if (Number.isFinite(ageDays) && ageDays <= 28) {
+    return Number(baby?.gestationalWeeks) < 37 ? 180 : 250
+  }
+  if (Number.isFinite(ageDays) && ageDays <= 90) return 350
+  return 500
+}
+
+function validBottleAmount(value, baby, now) {
+  const amount = Number(value)
+  return Number.isFinite(amount) && amount >= 0 && amount <= maxPlausibleBottleMl(baby, now)
+}
+
 function temperatureFrom(text) {
   const value = numberMatch(text, /(?:体温|温度)[^\d]{0,10}(\d{2}(?:\.\d+)?)/i) ?? numberMatch(text, /^(\d{2}(?:\.\d+)?)\s*(?:°?C|℃|°?F|℉)?$/i)
   if (value === null || value < 30 || value > 45) return null
@@ -33,9 +48,76 @@ function growthFrom(text) {
   ]
   for (const definition of definitions) {
     const value = numberMatch(text, definition.pattern)
-    if (value !== null) return { ...definition, value }
+    if (value !== null) return { ...definition, value, invalid: definition.type === 'weight' ? value <= 0 || value > 30 : definition.type === 'length' ? value < 20 || value > 200 : value < 15 || value > 70 }
   }
   return null
+}
+
+const REPORT_FIELD_LIMITS = Object.freeze([
+  { pattern: /体温|温度|temperature|temp/i, min: 30, max: 45 },
+  { pattern: /体重|重量|weight/i, min: 0, max: 30 },
+  { pattern: /身长|身高|length|height/i, min: 20, max: 200 },
+  { pattern: /头围|head.?circumference/i, min: 15, max: 70 },
+])
+
+function reportFieldRange(field) {
+  const name = String(field?.name || '')
+  const value = Number(String(field?.value || '').replace(',', '.').match(/[+-]?\d+(?:\.\d+)?/)?.[0])
+  if (!Number.isFinite(value)) return null
+  const limit = REPORT_FIELD_LIMITS.find(({ pattern }) => pattern.test(name))
+  return limit && (value < limit.min || value > limit.max) ? limit : null
+}
+
+export function sanitizeMedicalReport(report = {}) {
+  const uncertainties = Array.isArray(report.uncertainties) ? report.uncertainties.map((item) => String(item).slice(0, 500)).slice(0, 20) : []
+  const fields = (Array.isArray(report.fields) ? report.fields : []).flatMap((field) => {
+    const normalized = {
+      name: String(field?.name || '').trim().slice(0, 120),
+      value: String(field?.value || '').trim().slice(0, 120),
+      unit: field?.unit == null ? null : String(field.unit).trim().slice(0, 40),
+      referenceRange: field?.referenceRange == null ? null : String(field.referenceRange).trim().slice(0, 120),
+      confidence: ['high', 'medium', 'low'].includes(field?.confidence) ? field.confidence : 'low',
+      sourceLine: String(field?.sourceLine || '').slice(0, 500),
+    }
+    if (!normalized.name || !normalized.value) return []
+    if (reportFieldRange(normalized)) {
+      uncertainties.push(`${normalized.name}：数值超出可核对范围，请重新核对原报告。`)
+      return []
+    }
+    return [normalized]
+  }).slice(0, 40)
+  return {
+    ...report,
+    reportName: String(report.reportName || 'report').slice(0, 200),
+    fields,
+    uncertainties: [...new Set(uncertainties)].slice(0, 20),
+    questionsForClinician: (Array.isArray(report.questionsForClinician) ? report.questionsForClinician : []).map((item) => String(item).slice(0, 500)).slice(0, 3),
+    status: fields.length ? 'draft_ready' : 'needs_information',
+  }
+}
+
+export function validateCareEventDraft(event = {}, { baby = null, now = new Date() } = {}) {
+  const errors = []
+  const occurredAtError = validateOccurredAt(event.occurredAt, { birthDate: baby?.birthDate, now, futureSkewMs: 86_400_000 })
+  if (occurredAtError) errors.push({ field: 'occurredAt', code: occurredAtError })
+  const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {}
+  if (event.category === 'bottle_feeding' && !validBottleAmount(payload.amountMl, baby, now)) errors.push({ field: 'payload.amountMl', code: 'out_of_range' })
+  if (event.category === 'temperature') {
+    const value = Number(payload.value)
+    if (!Number.isFinite(value) || value < 30 || value > 45) errors.push({ field: 'payload.value', code: 'out_of_range' })
+    if (!['°C', '°F', '℃', '℉'].includes(String(payload.unit || ''))) errors.push({ field: 'payload.unit', code: 'invalid_unit' })
+  }
+  if (event.category === 'growth_measurement') {
+    const value = Number(payload.value)
+    const valid = payload.type === 'weight' ? value > 0 && value <= 30 : payload.type === 'length' ? value >= 20 && value <= 200 : payload.type === 'headCircumference' && value >= 15 && value <= 70
+    if (!valid) errors.push({ field: 'payload.value', code: 'out_of_range' })
+  }
+  if (event.category === 'medical_report_observation') {
+    const fields = Array.isArray(payload.fields) ? payload.fields : []
+    const normalized = sanitizeMedicalReport({ fields }).fields
+    if (normalized.length !== fields.length || JSON.stringify(normalized) !== JSON.stringify(fields)) errors.push({ field: 'payload.fields', code: 'invalid_report_values' })
+  }
+  return { valid: errors.length === 0, errors }
 }
 
 function eventDraft({ baby, actor, category, payload, kind = 'caregiver_observation', title, summary, now }) {
@@ -110,6 +192,9 @@ export function parseCareEventDraft({ message = '', baby, actor, context = null,
   const feeding = FEEDING_HINT.test(text) || context?.category === 'bottle_feeding'
   if (feeding && (amount !== null || /亲喂|母乳/i.test(text) || context?.category === 'breastfeeding')) {
     if (amount !== null) {
+      if (!validBottleAmount(amount, baby, now)) {
+        return missingDraft({ category: 'bottle_feeding', title: isEnglish ? 'Feeding fact' : '喂养事实', question: isEnglish ? 'Please recheck the actual amount taken (0–500 mL, adjusted for the baby’s age).' : `请重新核对宝宝实际喝下的奶量（不能超过 ${maxPlausibleBottleMl(baby, now)} mL；推荐量不能代替实际摄入）。`, now })
+      }
       return eventDraft({ baby, actor, category: 'bottle_feeding', payload: { amountMl: amount, unit: 'mL', note: text }, title: isEnglish ? 'Bottle-feeding fact' : '瓶喂事实', summary: isEnglish ? `${amount} mL bottle feed` : `瓶喂 ${amount} mL`, now })
     }
     return eventDraft({ baby, actor, category: 'breastfeeding', payload: { mode: 'breastfeeding', note: text }, title: isEnglish ? 'Breastfeeding fact' : '亲喂事实', summary: isEnglish ? 'Breastfeeding occurred; no mL estimate' : '发生了亲喂，不估算毫升数', now })
@@ -131,6 +216,7 @@ export function parseCareEventDraft({ message = '', baby, actor, context = null,
 
   const growth = growthFrom(text)
   if (growth) {
+    if (growth.invalid) return missingDraft({ category: 'growth_measurement', title: isEnglish ? 'Growth measurement' : '成长测量', question: isEnglish ? 'Please recheck the measurement and unit before saving.' : '这个测量值超出可核对范围，请先核对数值和单位后再记录。', now })
     return eventDraft({ baby, actor, kind: 'measurement', category: 'growth_measurement', payload: { type: growth.type, value: growth.value, unit: growth.unit, measuredAt: now, source: 'caregiver_observation', note: text }, title: isEnglish ? 'Growth measurement' : '成长测量', summary: isEnglish ? `${growth.label}: ${growth.value} ${growth.unit}` : `${growth.label}：${growth.value} ${growth.unit}`, now })
   }
 

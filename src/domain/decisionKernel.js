@@ -65,6 +65,15 @@ const UNITS = Object.freeze({
   },
 })
 
+// Keep every server-side decision input in sync with the published unit
+// contract. Additional derived safety inputs are listed explicitly below.
+export const DECISION_REQUIRED_FACT_KEYS = Object.freeze([
+  ...new Set(Object.values(UNITS).flatMap((unit) => unit.required.map((field) => field.key))),
+])
+export const DECISION_INPUT_FACT_KEYS = Object.freeze([
+  ...new Set([...DECISION_REQUIRED_FACT_KEYS, 'chestIndrawing']),
+])
+
 const ANSWER_PATTERNS = Object.freeze({
   alertness: [
     { value: 'unresponsive', pattern: /叫不醒|无法唤醒|不醒|没有反应|unresponsive|cannot wake/i },
@@ -152,7 +161,9 @@ export function extractDecisionFacts(message = '') {
     const value = parseDecisionAnswer(key, message)
     return value ? [[key, value]] : []
   }))
-  const temperatureC = numberFact(message, [/(?:体温|温度)[^\d]{0,8}(\d{2}(?:\.\d+)?)\s*(?:℃|°?C)?/i, /^(\d{2}(?:\.\d+)?)\s*(?:℃|°?C)$/i])
+  // A bare number is only a temperature when it carries a temperature unit;
+  // this avoids treating height, weight, or breathing-rate values as °C.
+  const temperatureC = numberFact(message, [/(?:体温|温度)\s*(?:(?:为|是|测得|测量为)\s*)?[:：]?\s*(\d{2}(?:\.\d+)?)\s*(?:℃|°?C|°?F|℉)?/i, /^\s*(\d{2}(?:\.\d+)?)\s*(?:℃|°?C|°?F|℉)\s*$/i])
   if (temperatureC >= 30 && temperatureC <= 45) facts.temperatureC = temperatureC
   const breathingRate = numberFact(message, [/(?:呼吸|每分钟)[^\d]{0,8}(\d{1,3})\s*(?:次|下|次\/分|bpm)?/i])
   if (breathingRate >= 1 && breathingRate <= 200) facts.breathingRate = breathingRate

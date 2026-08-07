@@ -43,3 +43,15 @@ test('follow-up numeric answer completes a temperature draft context', () => {
   assert.equal(completed.status, 'draft_ready')
   assert.equal(completed.event.payload.value, 38.2)
 })
+
+test('bottle draft rejects implausible amounts instead of creating a factual event', () => {
+  const draft = parseCareEventDraft({ message: '刚才宝宝喝了 99999 mL 配方奶', baby, actor, now })
+  assert.equal(draft.status, 'needs_information')
+  assert.match(draft.question, /重新核对|推荐量不能代替实际摄入/)
+})
+
+test('growth draft rejects values outside the measurement boundary', () => {
+  const draft = parseCareEventDraft({ message: '记录体重 99 kg', baby, actor, now })
+  assert.equal(draft.status, 'needs_information')
+  assert.match(draft.question, /超出可核对范围/)
+})

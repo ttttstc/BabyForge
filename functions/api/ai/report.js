@@ -20,6 +20,7 @@ export async function onRequestPost({ request, env }) {
   if (!ALLOWED_TYPES.has(mimeType)) return json({ error: '仅支持 JPG、PNG、WebP、PDF 或纯文本报告' }, 415)
   if (dataUrl.length > 8_000_000) return json({ error: '报告文件过大，请压缩到约 6 MB 以内' }, 413)
   if (!text && !dataUrl) return json({ error: '报告内容为空' }, 422)
+  if (mimeType !== 'text/plain' && body?.thirdPartyProcessingConsent !== true) return json({ error: '上传图片或 PDF 前必须同意发送给已配置的 AI 服务商进行临时识别' }, 409)
   const baby = await accessibleBaby(env, session.accountId, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const rows = await env.DB.prepare('SELECT * FROM care_events WHERE baby_id = ? AND status != \'voided\' ORDER BY occurred_at DESC LIMIT 30').bind(baby.id).all()

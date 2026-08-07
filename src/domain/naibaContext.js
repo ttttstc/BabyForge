@@ -40,10 +40,13 @@ export function buildBabyContextSummary({ baby, events = [], concerns = [], care
     reliability: event.kind === 'professional_conclusion' ? 'professional' : event.kind === 'measurement' ? 'measured' : 'caregiver',
   }))
   const professionalPlans = activeEvents.filter((event) => event.kind === 'professional_conclusion' || event.category === 'doctor_instruction')
-    .map((event) => ({ id: event.id, text: String(event.payload?.conclusion || event.payload?.instruction || event.payload?.note || eventTitle(event)), sourceEventIds: [event.id] }))
+    .map((event) => ({ id: event.id, text: String(event.payload?.conclusion || event.payload?.instruction || event.payload?.note || eventTitle(event)), sourceEventIds: [event.id], _sourceTime: event.updatedAt || event.occurredAt || event.createdAt }))
   for (const item of carePlanItems.filter((entry) => entry?.status !== 'done' && entry?.status !== 'cancelled')) {
-    professionalPlans.push({ id: item.id, text: String(item.title || item.action || item.note || '照护安排'), sourceEventIds: item.sourceEventIds || [] })
+    professionalPlans.push({ id: item.id, text: String(item.title || item.action || item.note || '照护安排'), sourceEventIds: item.sourceEventIds || [], _sourceTime: item.updatedAt || item.dueAt || item.createdAt })
   }
+  professionalPlans.sort((a, b) => asTime(b._sourceTime) - asTime(a._sourceTime))
+  professionalPlans.splice(10)
+  professionalPlans.forEach((item) => delete item._sourceTime)
   const missingCriticalFacts = []
   if (!baby?.birthDate) missingCriticalFacts.push('birthDate')
   if (!baby?.feedingMode) missingCriticalFacts.push('feedingMode')

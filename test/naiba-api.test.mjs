@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { onRequestPost } from '../functions/api/ai/chat.js'
+import { onRequestPost, SAFE_DECISION_FACT_KEYS, safeDecisionFacts } from '../functions/api/ai/chat.js'
+import { DECISION_REQUIRED_FACT_KEYS } from '../src/domain/decisionKernel.js'
 
 function apiFixture() {
   const session = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-admin', username: 'niwa', role: 'admin', display_name: '管理员' }
@@ -58,4 +59,9 @@ test('AI chat recomputes the feeding reference from authorized D1 context', asyn
   assert.match(body, /conversationId/)
   assert.match(body, /30–60mL\/次/)
   assert.doesNotMatch(body, /999 mL\/次/)
+})
+
+test('decision fact allowlist stays a superset of every published unit requirement', () => {
+  for (const key of DECISION_REQUIRED_FACT_KEYS) assert.ok(SAFE_DECISION_FACT_KEYS.includes(key), key)
+  assert.deepEqual(safeDecisionFacts({ temperatureC: 38.2, unknown: 'discard', tooLong: 'x'.repeat(81) }), { temperatureC: 38.2 })
 })

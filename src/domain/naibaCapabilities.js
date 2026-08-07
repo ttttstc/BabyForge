@@ -2,7 +2,7 @@ import { getAgeDays } from './baby.js'
 import { projectBabyState } from './babyState.js'
 import { createCareEvent } from './careEvents.js'
 import { getCareSnapshot, eventTitle } from './careSummary.js'
-import { parseCareEventDraft } from './careEventDraft.js'
+import { parseCareEventDraft, sanitizeMedicalReport } from './careEventDraft.js'
 import { calculateFeedingRecommendation } from './feedingRecommendation.js'
 import { searchApprovedKnowledge } from './knowledgePack.js'
 import { buildBabyContextSummary } from './naibaContext.js'
@@ -129,18 +129,19 @@ export function parseMedicalReportText(text = '', { name = 'report', now = new D
     if (!match) continue
     fields.push({ name: match[1].trim(), value: match[2], unit: match[3] || null, referenceRange: match[4]?.trim() || null, confidence: match[4] ? 'high' : 'medium', sourceLine: line })
   }
-  return {
+  return sanitizeMedicalReport({
     status: fields.length ? 'draft_ready' : 'needs_information',
     reportName: name,
     extractedAt: new Date(now).toISOString(),
     fields,
     uncertainties: fields.length ? fields.filter((field) => !field.referenceRange).map((field) => `${field.name}：未识别参考范围`) : ['未识别出可核对的“项目、数值、单位”结构。'],
     questionsForClinician: fields.slice(0, 3).map((field) => `${field.name} 的结果需要结合宝宝年龄和本次就诊背景如何理解？`),
-  }
+  })
 }
 
 export function createReportFactDraft({ report, baby, actor, now = new Date().toISOString() } = {}) {
-  if (!report?.fields?.length) return { status: 'needs_information', question: '报告中还没有可核对字段，不能生成事实草稿。' }
+  const safeReport = sanitizeMedicalReport(report)
+  if (!safeReport?.fields?.length) return { status: 'needs_information', question: '报告中还没有可核对字段，不能生成事实草稿。' }
   const event = createCareEvent({
     babyId: baby?.id,
     kind: 'measurement',
@@ -149,9 +150,9 @@ export function createReportFactDraft({ report, baby, actor, now = new Date().to
     recordedAt: now,
     actor,
     source: 'clinical_record',
-    payload: { reportName: report.reportName, fields: report.fields, uncertainties: report.uncertainties, extractedAt: report.extractedAt },
+    payload: { reportName: safeReport.reportName, fields: safeReport.fields, uncertainties: safeReport.uncertainties, extractedAt: safeReport.extractedAt },
   }, { now })
-  return { type: 'care_event', status: 'draft_ready', title: '报告字段事实', summary: `识别 ${report.fields.length} 个字段，确认后写入`, event, needsConfirmation: true }
+  return { type: 'care_event', status: 'draft_ready', title: '报告字段事实', summary: `识别 ${safeReport.fields.length} 个字段，确认后写入`, event, needsConfirmation: true }
 }
 
 export function buildVisitBrief({ baby, events = [], concerns = [], questions = [], now = new Date(), locale = 'zh-CN' } = {}) {

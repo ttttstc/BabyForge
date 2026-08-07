@@ -48,3 +48,10 @@ test('decision intent and structured fact extraction cover specialist flows', ()
   assert.deepEqual(extractDecisionFacts('腋下体温 38.2℃'), { measurementMethod: 'axillary', temperatureC: 38.2 })
   assert.equal(extractDecisionFacts('安静时呼吸每分钟 65 次').breathingRate, 65)
 })
+
+test('numeric extraction does not treat height or breathing rate as temperature', () => {
+  assert.equal(extractDecisionFacts('身高 39.5 cm').temperatureC, undefined)
+  assert.equal(extractDecisionFacts('体温正常，身高 39.5 cm').temperatureC, undefined)
+  assert.equal(extractDecisionFacts('呼吸每分钟 65 次').temperatureC, undefined)
+  assert.equal(extractDecisionFacts('体温 39.5℃').temperatureC, 39.5)
+})

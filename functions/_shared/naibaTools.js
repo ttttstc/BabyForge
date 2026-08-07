@@ -6,9 +6,21 @@ import { parseCareEventDraft } from '../../src/domain/careEventDraft.js'
 import { calculateFeedingRecommendation } from '../../src/domain/feedingRecommendation.js'
 import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { runDecisionUnit, runUniversalSafetyGate } from '../../src/domain/decisionKernel.js'
+import { toolOutputAllowed } from '../../src/domain/naibaGuardrails.js'
 
 function runtime(runContext) {
   return runContext?.context || {}
+}
+
+function guardToolResult(definition) {
+  const invoke = definition.invoke.bind(definition)
+  return {
+    ...definition,
+    invoke: async (runContext, input, details) => {
+      const result = await invoke(runContext, input, details)
+      return toolOutputAllowed(result) ? result : { status: 'blocked', reason: 'tool_output_boundary' }
+    },
+  }
 }
 
 const getBabyContext = tool({
@@ -176,5 +188,5 @@ export function createNaibaTools(skillId, { allowExternalSearch = false } = {}) 
   if (allowExternalSearch && ['authority_knowledge_retriever', 'stage_parenting_qa', 'disease_explainer'].includes(skillId)) {
     selected.push(webSearchTool({ searchContextSize: 'low', externalWebAccess: true, filters: { allowedDomains: ['nhc.gov.cn', 'who.int', 'cdc.gov'] } }))
   }
-  return selected
+  return selected.map(guardToolResult)
 }

@@ -1,12 +1,13 @@
 import { Agent, OpenAIProvider, Runner } from '@openai/agents'
 import { z } from 'zod'
 import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
+import { sanitizeMedicalReport } from '../../src/domain/careEventDraft.js'
 import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
+import { outputAllowed } from '../../src/domain/naibaGuardrails.js'
 import { getSkillContract } from './skillRegistry.js'
 import { createNaibaTools } from './naibaTools.js'
 
 const INPUT_LIMIT = 4_000
-const APPROVED_EXTERNAL_HOSTS = new Set(['www.nhc.gov.cn', 'nhc.gov.cn', 'www.who.int', 'who.int', 'www.cdc.gov', 'cdc.gov'])
 
 function parseOptionalBoolean(value) {
   if (value === undefined || value === null || value === '') return undefined
@@ -19,16 +20,6 @@ export function createNaibaModelProvider({ apiKey, baseURL = '', useResponses } 
   const parsedUseResponses = parseOptionalBoolean(useResponses)
   if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
   return new OpenAIProvider(options)
-}
-
-function outputAllowed(text, context) {
-  if (/(处方|药物|用药).{0,12}(剂量|加量|减量|停药)|prescri(be|ption).{0,20}(dose|medication)/i.test(text)) return false
-  if (context.decisionResult?.status === 'safety_action_required' && !text.includes(context.decisionResult.minimumAction)) return false
-  if (context.decisionResult?.status === 'needs_information' && /诊断为|就是.{0,8}(病|感染)|肯定是|确诊|概率\s*\d+%/i.test(text)) return false
-  const urls = String(text).match(/https?:\/\/[^\s)\]]+/g) || []
-  return urls.every((url) => {
-    try { return APPROVED_EXTERNAL_HOSTS.has(new URL(url).hostname) } catch { return false }
-  })
 }
 
 function instructionsFor(context) {
@@ -72,7 +63,7 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
   })
   const runner = new Runner({
     modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }),
-    tracingDisabled: false,
+    tracingDisabled: true,
     traceIncludeSensitiveData: false,
     workflowName: 'BabyForge Naiba AI',
   })
@@ -113,9 +104,9 @@ export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby,
   if (text) content.push({ type: 'input_text', text: text.slice(0, 20_000) })
   if (dataUrl && mimeType === 'application/pdf') content.push({ type: 'input_file', file: dataUrl, filename: name })
   else if (dataUrl) content.push({ type: 'input_image', image: dataUrl, detail: 'high' })
-  const runner = new Runner({ modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: false, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
+  const runner = new Runner({ modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: true, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
   const result = await runner.run(agent, [{ role: 'user', content }], { context, maxTurns: 3, groupId: baby?.id })
-  const report = result.finalOutput
+  const report = sanitizeMedicalReport(result.finalOutput || {})
   if (!report?.fields) throw new Error('naiba-report-output-invalid')
   return { status: report.fields.length ? 'draft_ready' : 'needs_information', extractedAt: now.toISOString(), ...report }
 }

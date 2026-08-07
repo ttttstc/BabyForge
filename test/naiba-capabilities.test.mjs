@@ -44,6 +44,19 @@ test('report parser preserves uncertainty and only extracts checkable fields', (
   assert.equal(report.fields[0].unit, 'g/L')
 })
 
+test('report parser drops an implausible temperature instead of saving it as a fact', () => {
+  const report = parseMedicalReportText('体温 99.9 ℃', { name: '体温.txt', now })
+  assert.equal(report.status, 'needs_information')
+  assert.equal(report.fields.length, 0)
+  assert.match(report.uncertainties.join(' '), /超出可核对范围/)
+})
+
+test('baby context caps active professional plans before model context is built', () => {
+  const carePlanItems = Array.from({ length: 20 }, (_, index) => ({ id: `plan-${index}`, title: `计划 ${index}`, status: 'pending', updatedAt: `2026-08-${String(index + 1).padStart(2, '0')}T00:00:00.000Z` }))
+  const context = buildBabyContextSummary({ baby, events, carePlanItems, now })
+  assert.equal(context.professionalPlans.length, 10)
+})
+
 test('visit brief and handoff keep facts, arrangements, and system notes separated', () => {
   const brief = buildVisitBrief({ baby, events, questions: ['需要复查吗？'], now })
   assert.equal(brief.questions[0], '需要复查吗？')

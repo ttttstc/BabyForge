@@ -28,7 +28,7 @@ export const NAIBA_SKILLS = Object.freeze(CONTRACTS.map(([id, label, entry, requ
 })))
 
 const INTENT_PATTERNS = [
-  { skillId: 'care_event_quick_logger', pattern: /记录|保存|录入|log|record/i },
+  { skillId: 'care_event_quick_logger', pattern: /记录(?:一下|一条|下)?|保存(?:一下|这条)?|录入|帮我(?:记|记录)|刚(?:刚)?(?:喂|喝|换|测|量)|log(?: this)?\b|record(?: this| an? (?:event|feed|fact))?\b/i },
   { skillId: 'daily_feeding_recommender', pattern: /吃|奶|喂|饮食|辅食|用量|feed|milk|food|feeding|amount/i },
   { skillId: 'medical_report_interpreter', pattern: /报告|化验|检查单|report|lab/i },
   { skillId: 'visit_brief_generator', pattern: /就医摘要|问医生|就诊材料|visit brief/i },
@@ -44,8 +44,10 @@ export function getNaibaSkill(skillId) {
 }
 
 export function selectNaibaSkill(message = '', explicitSkillId = '') {
-  if (/呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed/i.test(String(message))) return getNaibaSkill('triage_and_preassessment')
+  const text = String(message)
+  if (/呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed/i.test(text)) return getNaibaSkill('triage_and_preassessment')
   if (explicitSkillId && getNaibaSkill(explicitSkillId)) return getNaibaSkill(explicitSkillId)
-  const match = INTENT_PATTERNS.find((item) => item.pattern.test(String(message)))
+  const match = INTENT_PATTERNS.find((item) => item.pattern.test(text))
+  if (!match && /不对|不舒服|担心|着急|问题|救命|help|worried|something is wrong|not right/i.test(text)) return getNaibaSkill('triage_and_preassessment')
   return getNaibaSkill(match?.skillId || 'stage_parenting_qa')
 }

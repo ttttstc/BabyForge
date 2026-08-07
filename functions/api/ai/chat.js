@@ -4,7 +4,8 @@ import { runNaibaAgent } from '../../_shared/naibaAgent.js'
 import { selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
-import { extractDecisionFacts, getDecisionUnit, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
+import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
+import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
 
 function sse(events, status = 200) {
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
@@ -87,10 +88,58 @@ async function loadAuthorizedContext(env, accountId, babyId) {
   }
 }
 
-function safeDecisionFacts(value) {
-  const allowed = new Set(['alertness', 'breathing', 'feedingChange', 'wetDiapers', 'temperatureC', 'measurementMethod', 'breathingRate', 'chestIndrawing', 'jaundiceOnset', 'yellowPalmsSoles', 'sleepPosition', 'sleepSurface', 'softObjects'])
+export const SAFE_DECISION_FACT_KEYS = Object.freeze([...DECISION_INPUT_FACT_KEYS])
+const SAFE_DECISION_FACT_KEY_SET = new Set(SAFE_DECISION_FACT_KEYS)
+if (!DECISION_REQUIRED_FACT_KEYS.every((key) => SAFE_DECISION_FACT_KEY_SET.has(key))) throw new Error('decision-fact-allowlist-drift')
+
+export function safeDecisionFacts(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return Object.fromEntries(Object.entries(value).filter(([key, item]) => allowed.has(key) && (typeof item === 'number' || typeof item === 'boolean' || (typeof item === 'string' && item.length <= 80))))
+  return Object.fromEntries(Object.entries(value).filter(([key, item]) => SAFE_DECISION_FACT_KEY_SET.has(key) && (item === null || typeof item === 'number' || typeof item === 'boolean' || (typeof item === 'string' && item.length <= 80))))
+}
+
+function positiveLimit(value, fallback) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
+
+function usageEstimate(message) {
+  return Math.max(256, Math.ceil((String(message || '').length + 2_000) / 4))
+}
+
+async function consumeUsageWindow(env, scopeKey, { accountId = null, babyId = null, day, estimate, requestLimit, tokenLimit, now }) {
+  const result = await env.DB.prepare(`
+    INSERT INTO ai_usage_windows (scope_key, account_id, baby_id, window_start, request_count, token_estimate, updated_at)
+    VALUES (?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(scope_key) DO UPDATE SET
+      request_count = request_count + 1,
+      token_estimate = token_estimate + ?,
+      updated_at = ?
+    WHERE request_count < ? AND token_estimate + ? <= ?
+  `).bind(scopeKey, accountId, babyId, day, estimate, now, estimate, now, requestLimit, estimate, tokenLimit).run()
+  return Number(result?.meta?.changes || 0) > 0
+}
+
+export async function consumeNaibaQuota(env, accountId, babyId, message, now = new Date()) {
+  const day = now.toISOString().slice(0, 10)
+  const nowIso = now.toISOString()
+  const estimate = usageEstimate(message)
+  const accountLimit = positiveLimit(env.NAIBA_DAILY_MESSAGE_LIMIT, 30)
+  const babyLimit = positiveLimit(env.NAIBA_DAILY_BABY_MESSAGE_LIMIT, 30)
+  const globalLimit = positiveLimit(env.NAIBA_GLOBAL_DAILY_MESSAGE_LIMIT, 500)
+  const accountTokenLimit = positiveLimit(env.NAIBA_DAILY_TOKEN_BUDGET, 120_000)
+  const globalTokenLimit = positiveLimit(env.NAIBA_GLOBAL_DAILY_TOKEN_BUDGET, 1_000_000)
+  try {
+    const accountAllowed = await consumeUsageWindow(env, `account:${accountId}:${day}`, { accountId, day, estimate, requestLimit: accountLimit, tokenLimit: accountTokenLimit, now: nowIso })
+    if (!accountAllowed) return { allowed: false, reason: 'account_daily_limit' }
+    const babyAllowed = await consumeUsageWindow(env, `baby:${accountId}:${babyId}:${day}`, { accountId, babyId, day, estimate, requestLimit: babyLimit, tokenLimit: accountTokenLimit, now: nowIso })
+    if (!babyAllowed) return { allowed: false, reason: 'baby_daily_limit' }
+    const globalAllowed = await consumeUsageWindow(env, `global:${day}`, { day, estimate, requestLimit: globalLimit, tokenLimit: globalTokenLimit, now: nowIso })
+    if (!globalAllowed) return { allowed: false, reason: 'global_daily_limit' }
+    return { allowed: true }
+  } catch (error) {
+    console.error('Naiba AI quota unavailable; using safe fallback', error)
+    return { allowed: false, reason: 'quota_unavailable' }
+  }
 }
 
 async function persistDecision(env, accountId, babyId, result) {
@@ -120,10 +169,7 @@ async function persistHealthEpisode(env, accountId, babyId, unitId, facts, resul
 }
 
 async function persistProvisionalEvidence(env, accountId, babyId, query, output) {
-  const allowed = new Set(['www.nhc.gov.cn', 'nhc.gov.cn', 'www.who.int', 'who.int', 'www.cdc.gov', 'cdc.gov'])
-  const urls = [...new Set(String(output).match(/https?:\/\/[^\s)\]]+/g) || [])].filter((url) => {
-    try { return allowed.has(new URL(url).hostname) } catch { return false }
-  })
+  const urls = [...new Set(String(output).match(/https?:\/\/[^\s)\]]+/g) || [])].filter(isApprovedAuthorityUrl)
   if (!urls.length) return
   const now = new Date()
   try {
@@ -157,10 +203,10 @@ export async function onRequestPost({ request, env }) {
   await appendMessage(env, conversation.id, 'user', message, requestedSkillId || null)
   const recommendation = calculateFeedingRecommendation({ baby: context.baby, events: context.careEvents, locale: context.baby.locale || 'zh-CN' })
   const skillId = selectSkillId(message, requestedSkillId)
-  const requestedDecisionUnitId = String(body?.decisionUnitId || '')
-  const decisionUnitId = skillId === 'triage_and_preassessment'
-    ? (getDecisionUnit(requestedDecisionUnitId) ? requestedDecisionUnitId : selectDecisionUnit(message))
-    : ''
+  const healthSensitive = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i.test(message)
+  // The server, not the browser, owns the topic-to-unit mapping. This also
+  // gives health-related explanatory skills the same deterministic floor.
+  const decisionUnitId = (skillId === 'triage_and_preassessment' || healthSensitive) ? selectDecisionUnit(message) : ''
   const decisionFacts = { ...safeDecisionFacts(body?.decisionFacts), ...extractDecisionFacts(message), ageDays: getAgeDays(context.baby.birthDate) }
   const decision = decisionUnitId ? runDecisionUnit({ unitId: decisionUnitId, facts: decisionFacts }) : null
   const decisionResultId = await persistDecision(env, session.accountId, context.baby.id, decision)
@@ -173,6 +219,9 @@ export async function onRequestPost({ request, env }) {
 
   if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([{ type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }], fallback)
   if (!env.OPENAI_API_KEY) return respond([{ type: 'message', delta: fallback }, { type: 'done' }], fallback)
+
+  const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, message)
+  if (!quota.allowed) return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }], fallback)
 
   try {
     const output = await runNaibaAgent({

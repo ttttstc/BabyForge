@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, ArrowLeft, BookOpenCheck, CheckCircle2, ChevronDown, ChevronUp, FileUp, Info, Send, ShieldCheck, Sparkles } from 'lucide-react'
 import { getAgeDays } from '../domain/baby.js'
 import { createCareEvent } from '../domain/careEvents.js'
-import { draftText, isCareEventDraftIntent, parseCareEventDraft } from '../domain/careEventDraft.js'
+import { draftText, isCareEventDraftIntent, parseCareEventDraft, validateCareEventDraft } from '../domain/careEventDraft.js'
 import { createReportFactDraft, executeNaibaSkill, parseMedicalReportText } from '../domain/naibaCapabilities.js'
 import { calculateFeedingRecommendation, feedingRecommendationText } from '../domain/feedingRecommendation.js'
 import { selectNaibaSkill } from '../domain/naibaSkills.js'
@@ -68,7 +68,7 @@ async function remoteAnswer(message, state, recommendation, skillId, decision, c
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ message, skillId, conversationId, baby: state.baby, careEvents: state.careEvents, recommendation, decisionUnitId: decision?.unitId || null, decisionFacts: decision ? decision.facts || null : null }),
+    body: JSON.stringify({ message, skillId, conversationId, baby: state.baby, careEvents: state.careEvents, recommendation, decisionFacts: decision ? decision.facts || null : null }),
   })
   if (!response.ok) throw new Error('AI endpoint unavailable')
   const raw = await response.text()
@@ -158,7 +158,11 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
         report = parseMedicalReportText(await file.text(), { name: file.name })
       } else {
         if (!cloudMode) throw new Error(isEnglish ? 'Image/PDF report recognition requires the Cloudflare account mode. Plain text reports still work locally.' : '图片/PDF 报告识别需要 Cloudflare 账号模式；本地模式仍可使用纯文本报告。')
-        const response = await fetch('/api/ai/report', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ babyId: state.baby.id, name: file.name, mimeType: file.type, dataUrl: await fileDataUrl(file) }) })
+        const consentMessage = isEnglish
+          ? 'This report image/PDF will be sent to the configured AI provider for temporary processing. BabyForge does not save the original file. Continue?'
+          : '这份报告图片/PDF 会发送给当前配置的 AI 服务商进行识别；BabyForge 不保存原始文件。是否同意继续？'
+        if (typeof window === 'undefined' || !window.confirm(consentMessage)) return
+        const response = await fetch('/api/ai/report', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ babyId: state.baby.id, name: file.name, mimeType: file.type, dataUrl: await fileDataUrl(file), thirdPartyProcessingConsent: true }) })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Report recognition failed.' : '报告识别失败。'))
         report = payload.report
@@ -179,6 +183,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
     try {
       let savedEvent
       if (cloudMode) {
+        if (!draftId) throw new Error(isEnglish ? 'The server draft is missing. Prepare the fact again before saving.' : '缺少服务端草稿编号，请重新生成记录草稿后再保存。')
         const response = await fetch('/api/ai/confirm-draft', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -191,6 +196,8 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
         savedEvent = payload?.event || event
         await commitState((current) => ({ ...current, careEvents: [...(current.careEvents || []), savedEvent] }), { skipSync: true })
       } else {
+        const validation = validateCareEventDraft(event, { baby: state.baby, now: new Date() })
+        if (!validation.valid) throw new Error(isEnglish ? 'Please recheck the fact, value, and event time.' : '请重新核对事实、数值和发生时间。')
         savedEvent = createCareEvent(event, { now: new Date().toISOString() })
         await commitState((current) => ({ ...current, careEvents: [...(current.careEvents || []), savedEvent] }))
       }

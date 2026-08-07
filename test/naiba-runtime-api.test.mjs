@@ -54,3 +54,9 @@ test('plain-text report endpoint parses locally and never requires model access'
   assert.equal(payload.report.fields[0].value, '135')
   assert.equal(payload.report.status, 'draft_ready')
 })
+
+test('image report endpoint requires explicit third-party processing consent', async () => {
+  const env = fixture()
+  const response = await parseReport({ request: request('/api/ai/report', { babyId: env.baby.id, name: 'report.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,abc' }), env })
+  assert.equal(response.status, 409)
+})
