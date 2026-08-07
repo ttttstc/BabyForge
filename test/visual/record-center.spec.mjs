@@ -26,7 +26,7 @@ test('record center keeps six P0 facts and secondary records together', async ({
   await page.getByRole('button', { name: '记录', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: '记录中心' })).toBeVisible()
-  await expect(page.getByText('点击卡片，打开低负荷记录')).toBeVisible()
+  await expect(page.getByText('选择最符合宝宝情况的一项')).toBeVisible()
 
   await page.locator('.record-more-card').filter({ hasText: '基础信息' }).click()
   await expect(page.getByTestId('record-entry-basic')).toBeVisible()
@@ -94,8 +94,8 @@ test('record center keeps six P0 facts and secondary records together', async ({
   expect(savedWorkspace.concerns).toHaveLength(1)
   expect(savedWorkspace.careEvents.some((event) => event.category === 'concern_open' && event.payload.concernId === savedWorkspace.concerns[0].id)).toBeTruthy()
 
-  await page.getByRole('button', { name: '阶段', exact: true }).click()
-  await expect(page.getByText('新增测量统一在记录中心录入。')).toBeVisible()
+  await page.getByRole('button', { name: '成长', exact: true }).click()
+  await expect(page.getByRole('button', { name: '去记录中心录入成长测量' })).toBeVisible()
   await expect(page.getByLabel('成长数值')).toHaveCount(0)
   await page.getByRole('button', { name: '设置' }).click()
   await expect(page.getByText('宝宝信息统一在记录中心维护')).toBeVisible()

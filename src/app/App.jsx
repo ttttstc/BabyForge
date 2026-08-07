@@ -8,6 +8,7 @@ import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
+import { VaccineView } from '../features/VaccineView.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
@@ -314,6 +315,10 @@ export function App() {
 
   if (route === ROUTES.naibaAi) {
     return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  }
+
+  if (route === ROUTES.vaccines) {
+    return <VaccineView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />

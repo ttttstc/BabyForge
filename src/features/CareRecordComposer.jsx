@@ -49,7 +49,7 @@ function isoValue(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString()
 }
 
-function initialForm(type, event, recentGrowth = {}, growthAgeBasis = 'chronological') {
+function initialForm(type, event, recentGrowth = {}) {
   const payload = event?.payload || {}
   if (type === 'feeding') {
     const mode = event?.category === 'breastfeeding'
@@ -62,16 +62,16 @@ function initialForm(type, event, recentGrowth = {}, growthAgeBasis = 'chronolog
   if (type === 'medication') return { name: payload.medicationName || payload.name || '', amount: payload.amount || '', unit: payload.unit || 'mg', route: payload.route || '', occurredAt: localInputValue(event?.occurredAt), note: payload.note || '' }
   if (type === 'temperature') return { value: payload.value ?? (event ? '' : '36.5'), unit: payload.unit || '°C', method: payload.method || (event ? '' : 'axillary'), occurredAt: localInputValue(event?.occurredAt) }
   const growthType = payload.type === 'length' ? 'length' : 'weight'
-  return { type: growthType, value: payload.value ?? recentGrowth[growthType]?.value ?? '', measuredAt: String(payload.measuredAt || event?.occurredAt || localDayKey()).slice(0, 10), source: payload.source || 'caregiver_observation', ageBasis: payload.ageBasis || growthAgeBasis }
+  return { type: growthType, value: payload.value ?? recentGrowth[growthType]?.value ?? '', measuredAt: String(payload.measuredAt || event?.occurredAt || localDayKey()).slice(0, 10), source: payload.source || 'caregiver_observation' }
 }
 
 function saveErrorMessage(error, locale) {
   return error?.message || (locale === 'en-US' ? 'Save failed. Retry.' : '保存失败，请重试。')
 }
 
-export function P0RecordComposer({ type, locale = 'zh-CN', readOnly = false, initialEvent = null, recentGrowth = {}, growthAgeBasis = 'chronological', onSave, onCancel }) {
+export function P0RecordComposer({ type, locale = 'zh-CN', readOnly = false, initialEvent = null, recentGrowth = {}, onSave, onCancel }) {
   const isEnglish = locale === 'en-US'
-  const [form, setForm] = useState(() => initialForm(type, initialEvent, recentGrowth, growthAgeBasis))
+  const [form, setForm] = useState(() => initialForm(type, initialEvent, recentGrowth))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const editing = Boolean(initialEvent)
@@ -88,7 +88,7 @@ export function P0RecordComposer({ type, locale = 'zh-CN', readOnly = false, ini
     setSaving(true)
     try {
       await onSave?.(input, message, initialEvent)
-      if (!editing) setForm(initialForm(type, null, recentGrowth, growthAgeBasis))
+      if (!editing) setForm(initialForm(type, null, recentGrowth))
     } catch (saveError) {
       setError(saveErrorMessage(saveError, locale))
       throw saveError
@@ -126,7 +126,7 @@ export function P0RecordComposer({ type, locale = 'zh-CN', readOnly = false, ini
       return save({ kind: hasValue ? 'measurement' : 'caregiver_observation', category: isObservationCorrection ? 'temperature_observation' : hasValue ? 'temperature' : 'temperature_observation', occurredAt: isoValue(form.occurredAt), payload: hasValue ? { value: Number(form.value), unit: form.unit, method: form.method } : { method: form.method } }, isEnglish ? 'Temperature saved' : '体温已保存')
     }
     const definition = GROWTH_TYPES.find((item) => item.id === form.type)
-    return save({ kind: 'measurement', category: 'growth_measurement', occurredAt: `${form.measuredAt}T12:00:00`, payload: { type: form.type, value: String(form.value).trim(), unit: definition.unit, measuredAt: form.measuredAt, source: form.source, ageBasis: form.ageBasis || growthAgeBasis } }, isEnglish ? 'Growth saved' : '成长测量已保存')
+    return save({ kind: 'measurement', category: 'growth_measurement', occurredAt: `${form.measuredAt}T12:00:00`, payload: { type: form.type, value: String(form.value).trim(), unit: definition.unit, measuredAt: form.measuredAt, source: form.source } }, isEnglish ? 'Growth saved' : '成长测量已保存')
   }
 
   function renderHeader() {

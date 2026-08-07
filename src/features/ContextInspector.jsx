@@ -4,30 +4,20 @@ import { JAUNDICE_TOPIC } from '../content/jaundice.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { getCopy } from '../domain/i18n.js'
 import { CareTaskList } from './CareTaskList.jsx'
-import { AdminTaskList } from './AdminTaskList.jsx'
 import { CareOverview } from './CareOverview.jsx'
 
-export function ContextInspector({ topicMode, stage, tasks = [], onTaskUpdate, adminTasks = [], onAdminTaskUpdate, baby = null, careEvents = [], concerns = [], locale = 'zh-CN', readOnly = false }) {
+export function ContextInspector({ topicMode, tasks = [], onTaskUpdate, baby = null, careEvents = [], concerns = [], locale = 'zh-CN', readOnly = false }) {
   const copy = getCopy(locale)
-  const stageLabel = stage.id === 'newborn-early' ? copy.newbornEarly : stage.id === 'newborn-adaptation' ? copy.newbornAdaptation : copy.outOfScope
-  const stageRange = stage.id === 'newborn-early' ? copy.newbornEarlyRange : stage.id === 'newborn-adaptation' ? copy.newbornAdaptationRange : copy.outOfScope
   if (!topicMode) {
     return (
       <aside className="context-inspector" data-testid="context-inspector">
-        <div className="inspector-hero stage-inspector">
-          <p className="eyebrow">{locale === 'en-US' ? 'Current stage' : '当前阶段'}</p>
-          <h2>{stageLabel}</h2>
-          <p>{stageRange}</p>
-        </div>
         <CareOverview baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} />
         <RecordsLink locale={locale} />
         <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
-        <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={onAdminTaskUpdate} readOnly={readOnly} />
         <section className="inspector-block tone-aqua">
           <div className="inspector-section-title"><ShieldCheck size={18} /><span>{locale === 'en-US' ? 'How to use this information' : '信息使用说明'}</span></div>
           <p>{locale === 'en-US' ? 'This helps you understand and record. It does not judge normality or provide a health score.' : '这里帮助你理解和记录，不判断宝宝是否正常，也不给健康评分。'}</p>
         </section>
-        <button className="summary-cta" onClick={() => navigate(ROUTES.summary)}>{copy.generateSummary}<ArrowRight size={17} /></button>
       </aside>
     )
   }

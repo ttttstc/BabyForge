@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { getAgeDays, getStage } from '../domain/baby.js'
-import { getAdminTasks, getDailyTasks, localDateKey } from '../domain/carePlan.js'
+import { getDailyHealthReminders, getDailyTasks, localDateKey } from '../domain/carePlan.js'
 import { createCareEvent, createConcern as createConcernRecord, occurredAtErrorMessage, validateOccurredAt, voidCareEvent } from '../domain/careEvents.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { ROUTES } from '../app/router.js'
@@ -8,15 +8,16 @@ import { Header } from './Header.jsx'
 import { LeftRail } from './LeftRail.jsx'
 import { StageSurface } from './StageSurface.jsx'
 import { BabyAlbum } from './BabyAlbum.jsx'
+import { GrowthRoadmap } from './GrowthRoadmap.jsx'
 import { ContextInspector } from './ContextInspector.jsx'
-import { StageDashboard } from './StageDashboard.jsx'
+import { GrowthDashboard } from './GrowthDashboard.jsx'
 
 export function Workspace({ route, state, setState, onClear, onLogout, readOnly = false, role = 'admin', cloudMode = false }) {
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
   const stage = useMemo(() => getStage(ageDays), [ageDays])
   const topicMode = route === ROUTES.jaundice
   const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs, undefined, stage.id), [state.taskLogs, stage.id])
-  const adminTasks = useMemo(() => getAdminTasks(stage.id, ageDays, state.adminTaskRecords), [stage.id, ageDays, state.adminTaskRecords])
+  const healthReminders = useMemo(() => getDailyHealthReminders(state.taskLogs, ageDays), [state.taskLogs, ageDays])
 
   function updatePreference(key, value) {
     setState((current) => ({ ...current, preferences: { ...current.preferences, [key]: value } }))
@@ -28,12 +29,6 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
     const event = createCareEvent({ babyId: state.baby.id, kind: 'caregiver_observation', category: 'care_action', occurredAt: `${date}T12:00:00.000Z`, recordedAt: now, actor: recorder, source: 'caregiver', payload: { taskId, date, status: input.status || 'done', performedBy: input.actor || null, note: input.note || '' } })
     return setState((current) => ({ ...current, careEvents: [...current.careEvents, event] }))
-  }
-
-  function updateAdminTask(taskId, input) {
-    const now = new Date().toISOString()
-    const recorder = state.careActors.find((actor) => actor.id === state.preferences.currentRecorderId) || state.careActors[0]
-    return setState((current) => ({ ...current, careEvents: [...current.careEvents, createCareEvent({ babyId: current.baby.id, kind: 'caregiver_observation', category: 'admin_task', occurredAt: now, recordedAt: now, actor: recorder, source: 'caregiver', payload: { taskId, ...input } })] }))
   }
 
   function recordCareEvent(input) {
@@ -76,17 +71,20 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
     })
   }
 
-  if (route === ROUTES.stage) {
-    return <StageDashboard state={state} setState={setState} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} />
+  if ([ROUTES.growth, ROUTES.growthChart, ROUTES.growthStage, ROUTES.growthHistory].includes(route)) {
+    return <GrowthDashboard route={route} state={state} setState={setState} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} />
   }
 
   return (
     <main className="app-shell">
       <Header route={route} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => updatePreference('currentRecorderId', value)} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="workspace-grid">
-        <LeftRail baby={state.baby} ageDays={ageDays} stage={stage} locale={state.preferences.locale} />
+        <LeftRail baby={state.baby} ageDays={ageDays} healthReminders={healthReminders} onTaskUpdate={updateTask} locale={state.preferences.locale} readOnly={readOnly} />
         {route === ROUTES.today ? (
-          <BabyAlbum key={state.baby.id} baby={state.baby} locale={state.preferences.locale} readOnly={readOnly} remote={cloudMode} />
+          <div className="today-middle-column">
+            <GrowthRoadmap ageDays={ageDays} stage={stage} locale={state.preferences.locale} />
+            <BabyAlbum key={state.baby.id} baby={state.baby} locale={state.preferences.locale} readOnly={readOnly} remote={cloudMode} />
+          </div>
         ) : (
           <StageSurface
             key={topicMode ? 'topic' : 'stage'}
@@ -102,11 +100,8 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
         <ContextInspector
           baby={state.baby}
           topicMode={topicMode}
-          stage={stage}
           tasks={dailyTasks}
           onTaskUpdate={updateTask}
-          adminTasks={adminTasks}
-          onAdminTaskUpdate={updateAdminTask}
           careEvents={state.careEvents}
           carePlanItems={state.carePlanItems}
           onDeleteQuickRecord={deleteQuickRecord}

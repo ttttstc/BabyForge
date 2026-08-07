@@ -39,43 +39,64 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
   const [copiedId, setCopiedId] = useState('')
   const categoryNavRef = useRef(null)
   const requestControllersRef = useRef(new Map())
+  const requestPromisesRef = useRef(new Map())
+  const loadedCategoryKeysRef = useRef(new Set())
 
   useEffect(() => () => {
     for (const controller of requestControllersRef.current.values()) controller.abort()
     requestControllersRef.current.clear()
   }, [])
 
-  const loadCategory = useCallback(async (categoryId, refresh = false) => {
-    if (!age.band) return
-    requestControllersRef.current.get(categoryId)?.abort()
-    const controller = new AbortController()
-    requestControllersRef.current.set(categoryId, controller)
-    setLoadingCategory(categoryId)
-    setErrors((current) => ({ ...current, [categoryId]: '' }))
-    try {
-      const payload = await fetchExperience({ babyId: state.baby.id, categoryId, refresh, signal: controller.signal })
-      if (controller.signal.aborted) return
-      writeExperienceCache({ babyId: state.baby.id, bandId: age.band.id, categoryId, locale: 'zh-CN', value: payload })
-      setFeeds((current) => ({ ...current, [categoryId]: payload }))
-    } catch (error) {
-      if (error?.code !== 'EXPERIENCE_ABORTED') setErrors((current) => ({ ...current, [categoryId]: error.message || (isEnglish ? 'Unable to update articles.' : '文章暂时无法更新。') }))
-    } finally {
-      if (requestControllersRef.current.get(categoryId) === controller) {
-        requestControllersRef.current.delete(categoryId)
-        setLoadingCategory((current) => current === categoryId ? null : current)
-      }
+  const loadCategory = useCallback((categoryId, refresh = false) => {
+    if (!age.band) return Promise.resolve()
+    const requestKey = `${state.baby.id}:${age.band.id}:${categoryId}:${locale}`
+    if (!refresh && loadedCategoryKeysRef.current.has(requestKey)) return Promise.resolve()
+    if (!refresh && requestPromisesRef.current.has(requestKey)) return requestPromisesRef.current.get(requestKey)
+    if (refresh) {
+      requestControllersRef.current.get(requestKey)?.abort()
+      loadedCategoryKeysRef.current.delete(requestKey)
     }
-  }, [age.band, isEnglish, state.baby.id])
+    const controller = new AbortController()
+    requestControllersRef.current.set(requestKey, controller)
+    const task = (async () => {
+      setLoadingCategory(categoryId)
+      setErrors((current) => ({ ...current, [categoryId]: '' }))
+      try {
+        const payload = await fetchExperience({ babyId: state.baby.id, categoryId, refresh, signal: controller.signal })
+        if (controller.signal.aborted) return
+        writeExperienceCache({ babyId: state.baby.id, bandId: age.band.id, categoryId, locale, value: payload })
+        loadedCategoryKeysRef.current.add(requestKey)
+        setFeeds((current) => ({ ...current, [categoryId]: payload }))
+      } catch (error) {
+        if (error?.code !== 'EXPERIENCE_ABORTED') setErrors((current) => ({ ...current, [categoryId]: error.message || (isEnglish ? 'Unable to update articles.' : '文章暂时无法更新。') }))
+      } finally {
+        if (requestControllersRef.current.get(requestKey) === controller) {
+          requestControllersRef.current.delete(requestKey)
+          setLoadingCategory((current) => current === categoryId ? null : current)
+        }
+      }
+    })()
+    requestPromisesRef.current.set(requestKey, task)
+    return task.finally(() => {
+      if (requestPromisesRef.current.get(requestKey) === task) requestPromisesRef.current.delete(requestKey)
+    })
+  }, [age.band, isEnglish, locale, state.baby.id])
 
   useEffect(() => {
-    if (!age.band || feeds[activeCategory]) return
-    const cached = readExperienceCache({ babyId: state.baby.id, bandId: age.band.id, categoryId: activeCategory, locale: 'zh-CN' })
+    if (!age.band) return
+    const requestKey = `${state.baby.id}:${age.band.id}:${activeCategory}:${locale}`
+    if (feeds[activeCategory]) {
+      loadedCategoryKeysRef.current.add(requestKey)
+      return
+    }
+    const cached = readExperienceCache({ babyId: state.baby.id, bandId: age.band.id, categoryId: activeCategory, locale })
     if (cached) {
+      loadedCategoryKeysRef.current.add(requestKey)
       setFeeds((current) => ({ ...current, [activeCategory]: cached }))
       return
     }
     void loadCategory(activeCategory)
-  }, [activeCategory, age.band, feeds, loadCategory, state.baby.id])
+  }, [activeCategory, age.band, feeds, loadCategory, locale, state.baby.id])
 
   useEffect(() => {
     const active = categoryNavRef.current?.querySelector('[aria-selected="true"]')

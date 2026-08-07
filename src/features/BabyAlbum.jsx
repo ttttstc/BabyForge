@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Baby, CalendarClock, Camera, Check, Clock3, ImagePlus, Sparkles, Upload, X } from 'lucide-react'
+import { Baby, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, Clock3, ImagePlus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import {
   MAX_PHOTO_BYTES,
   dateTimeInputToIso,
   dateTimeInputValue,
+  deleteBabyPhoto,
   detectPhotoTime,
   isSupportedPhoto,
   listBabyPhotos,
@@ -16,7 +17,12 @@ function strings(locale) {
     title: 'Little moments, kept close',
     subtitle: 'Choose a small print below and watch it rise into the frame.',
     privacy: 'Cloud album keeps the original image bytes; EXIF metadata may be visible to household members.',
-    select: 'Choose photos',
+    select: 'Upload photos',
+    dailyShot: 'Daily shot',
+    more: 'More',
+    calendarTitle: 'Photo calendar',
+    calendarEmpty: 'No photos on this day',
+    calendarClose: 'Close calendar',
     readonly: 'View only',
     shelf: 'Photo shelf',
     shelfHint: 'Tap a thumbnail to slide it into the frame',
@@ -32,6 +38,9 @@ function strings(locale) {
     file: 'No camera time; file time will be used',
     upload: 'No camera time; upload time will be used',
     manual: 'Time set by you',
+    delete: 'Delete photo',
+    deleting: 'Deleting',
+    deleteConfirm: 'Delete this photo?',
     cancel: 'Cancel',
     save: 'Save photos',
     saving: 'Saving',
@@ -42,7 +51,12 @@ function strings(locale) {
     title: '把小小日常，珍藏成成长故事',
     subtitle: '从下方照片架挑一张，看它滑进上方相框。',
     privacy: '云端相册保留原始图片内容，照片 EXIF 信息可能会被家庭成员看到。',
-    select: '选择照片',
+    select: '上传照片',
+    dailyShot: '每日一拍',
+    more: '更多',
+    calendarTitle: '按日期查看照片',
+    calendarEmpty: '这一天还没有照片',
+    calendarClose: '关闭日历',
     readonly: '只读查看',
     shelf: '照片书架',
     shelfHint: '轻点缩略图，把这一页滑进上方相框',
@@ -58,6 +72,9 @@ function strings(locale) {
     file: '未找到拍摄时间，将使用文件时间',
     upload: '未找到拍摄时间，将使用上传时间',
     manual: '已手动设置时间',
+    delete: '删除照片',
+    deleting: '正在删除',
+    deleteConfirm: '确定删除这张照片吗？删除后无法恢复。',
     cancel: '取消',
     save: '保存照片',
     saving: '正在保存',
@@ -86,6 +103,25 @@ function displayDate(value, locale) {
   }).format(date)
 }
 
+function calendarDayKey(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function monthDays(cursor) {
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+  const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1 - first.getDay())
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start)
+    date.setDate(start.getDate() + index)
+    return { date, key: calendarDayKey(date), inMonth: date.getMonth() === cursor.getMonth() }
+  })
+}
+
 function withPhotoUrl(photo, remote, objectUrls) {
   if (remote) return { ...photo, url: photo.contentUrl }
   const url = URL.createObjectURL(photo.blob)
@@ -96,6 +132,7 @@ function withPhotoUrl(photo, remote, objectUrls) {
 export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = false }) {
   const copy = strings(locale)
   const inputRef = useRef(null)
+  const dailyInputRef = useRef(null)
   const objectUrls = useRef(new Set())
   const pendingUrls = useRef(new Set())
   const [photos, setPhotos] = useState([])
@@ -104,8 +141,13 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
   const [loading, setLoading] = useState(true)
   const [preparing, setPreparing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [saveProgress, setSaveProgress] = useState(0)
   const [error, setError] = useState('')
+  const [pickerMode, setPickerMode] = useState('upload')
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+  const [calendarDay, setCalendarDay] = useState(() => calendarDayKey(new Date()))
 
   useEffect(() => {
     let active = true
@@ -154,7 +196,15 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     setSaveProgress(0)
   }
 
+  function openPicker(mode) {
+    if (readOnly || preparing) return
+    setPickerMode(mode)
+    ;(mode === 'daily' ? dailyInputRef : inputRef).current?.click()
+  }
+
   async function chooseFiles(event) {
+    const mode = event.currentTarget === dailyInputRef.current ? 'daily' : 'upload'
+    setPickerMode(mode)
     const files = Array.from(event.target.files || [])
     event.target.value = ''
     if (!files.length) return
@@ -174,7 +224,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
         pendingUrls.current.add(previewUrl)
         return { file, previewUrl, ...detected, manualTime: '' }
       }))
-      setPending(prepared)
+      setPending(mode === 'daily' ? prepared.slice(0, 1) : prepared)
     } catch {
       setError(copy.invalid)
     } finally {
@@ -219,7 +269,50 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     }
   }
 
+  async function deleteSelectedPhoto() {
+    if (!selected || readOnly || deleting) return
+    if (typeof globalThis.confirm === 'function' && !globalThis.confirm(copy.deleteConfirm)) return
+    setDeleting(true)
+    setError('')
+    try {
+      await deleteBabyPhoto({ babyId: baby.id, photoId: selected.id }, { remote })
+      const removedIndex = selectedIndex
+      const removedUrl = selected.url
+      if (removedUrl && objectUrls.current.has(removedUrl)) {
+        URL.revokeObjectURL(removedUrl)
+        objectUrls.current.delete(removedUrl)
+      }
+      setPhotos((current) => current.filter((photo) => photo.id !== selected.id))
+      setSelectedId(photos[removedIndex + 1]?.id || photos[removedIndex - 1]?.id || '')
+    } catch (nextError) {
+      setError(nextError?.message || copy.loadError)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const selectedDate = useMemo(() => selected ? displayTime(selected.takenAt, locale) : '', [selected, locale])
+  const photosByDay = useMemo(() => photos.reduce((groups, photo) => {
+    const key = calendarDayKey(photo.takenAt)
+    if (!key) return groups
+    const current = groups.get(key) || []
+    current.push(photo)
+    groups.set(key, current)
+    return groups
+  }, new Map()), [photos])
+
+  function openCalendar() {
+    const anchor = selected ? new Date(selected.takenAt) : new Date()
+    const safeAnchor = Number.isNaN(anchor.getTime()) ? new Date() : anchor
+    setCalendarCursor(new Date(safeAnchor.getFullYear(), safeAnchor.getMonth(), 1))
+    setCalendarDay(calendarDayKey(safeAnchor))
+    setCalendarOpen(true)
+  }
+
+  function selectCalendarPhoto(photo) {
+    setSelectedId(photo.id)
+    setCalendarOpen(false)
+  }
 
   return (
     <section className="baby-album-surface" data-testid="baby-album" aria-labelledby="baby-album-title">
@@ -230,11 +323,18 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
           <p>{copy.subtitle}</p>
           {remote && <small className="album-privacy-note" role="note">{copy.privacy}</small>}
         </div>
-        <button className="album-upload-button" type="button" disabled={readOnly || preparing} onClick={() => inputRef.current?.click()}>
-          {preparing ? <Clock3 size={17} /> : <ImagePlus size={17} />}
-          {readOnly ? copy.readonly : preparing ? copy.prepare : copy.select}
-        </button>
+        <div className="album-header-actions">
+          <button className="album-daily-button" type="button" disabled={readOnly || preparing} onClick={() => openPicker('daily')}>
+            {preparing && pickerMode === 'daily' ? <Clock3 size={16} /> : <Camera size={16} />}
+            {readOnly ? copy.readonly : preparing && pickerMode === 'daily' ? copy.prepare : copy.dailyShot}
+          </button>
+          <button className="album-upload-button" type="button" disabled={readOnly || preparing} onClick={() => openPicker('upload')}>
+            {preparing && pickerMode === 'upload' ? <Clock3 size={17} /> : <ImagePlus size={17} />}
+            {readOnly ? copy.readonly : preparing && pickerMode === 'upload' ? copy.prepare : copy.select}
+          </button>
+        </div>
         <input ref={inputRef} className="sr-only" data-testid="album-upload-input" type="file" accept="image/*,.heic,.heif" multiple onChange={chooseFiles} disabled={readOnly} tabIndex={-1} aria-hidden="true" />
+        <input ref={dailyInputRef} className="sr-only" data-testid="album-daily-input" type="file" accept="image/*,.heic,.heif" capture="environment" onChange={chooseFiles} disabled={readOnly} tabIndex={-1} aria-hidden="true" />
       </header>
 
       <div className="album-feature-area" aria-live="polite">
@@ -247,7 +347,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
               <img className="album-feature-image" src={selected.url} alt={`${baby.nickname} · ${selectedDate}`} />
               <span className="album-photo-corner" aria-hidden="true"><Sparkles size={14} /></span>
             </div>
-            <figcaption><span><Clock3 size={14} />{selectedDate}</span><small>{selected.fileName}</small></figcaption>
+            <figcaption><span><Clock3 size={14} />{selectedDate}</span><small>{selected.fileName}</small><button className="album-delete-button" type="button" disabled={readOnly || deleting} onClick={deleteSelectedPhoto} aria-label={copy.delete} title={copy.delete}>{deleting ? <Clock3 size={14} /> : <Trash2 size={14} />}{deleting ? copy.deleting : copy.delete}</button></figcaption>
           </figure>
         ) : (
           <div className="album-empty-stage" data-testid="album-empty">
@@ -259,7 +359,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
       </div>
 
       <section className="album-shelf-section" aria-label={copy.shelf}>
-        <div className="album-shelf-caption"><span>{copy.shelf}</span><small>{photos.length ? copy.shelfHint : copy.emptyShelf}</small></div>
+        <div className="album-shelf-caption"><div><span>{copy.shelf}</span><small>{photos.length ? copy.shelfHint : copy.emptyShelf}</small></div><button type="button" className="album-more-button" onClick={openCalendar} disabled={!photos.length} aria-haspopup="dialog">{copy.more}<ChevronRight size={13} /></button></div>
         <div className="album-shelf-viewport">
           {photos.length ? (
             <div className={shelfClass}>
@@ -300,7 +400,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
         <div className="album-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closePending() }}>
           <form className="album-upload-dialog" role="dialog" aria-modal="true" aria-label={dialogLabel} onSubmit={savePhotos}>
             <header>
-              <div><p className="eyebrow"><Upload size={13} />{copy.dialogTitle}</p><h2>{dialogLabel}</h2><p>{copy.dialogBody}</p></div>
+              <div><p className="eyebrow">{pickerMode === 'daily' ? <Camera size={13} /> : <Upload size={13} />}{pickerMode === 'daily' ? copy.dailyShot : copy.dialogTitle}</p><h2>{dialogLabel}</h2><p>{copy.dialogBody}</p></div>
               <button type="button" onClick={closePending} disabled={saving} aria-label={copy.cancel}><X size={18} /></button>
             </header>
             <div className="album-pending-list">
@@ -319,6 +419,54 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
           </form>
         </div>
       )}
+      {calendarOpen && <PhotoCalendarDialog locale={locale} copy={copy} photos={photos} photosByDay={photosByDay} cursor={calendarCursor} selectedDay={calendarDay} onChangeCursor={setCalendarCursor} onSelectDay={setCalendarDay} onSelectPhoto={selectCalendarPhoto} onClose={() => setCalendarOpen(false)} />}
     </section>
   )
+}
+
+function PhotoCalendarDialog({ locale, copy, photos, photosByDay, cursor, selectedDay, onChangeCursor, onSelectDay, onSelectPhoto, onClose }) {
+  const isEnglish = locale === 'en-US'
+  const days = monthDays(cursor)
+  const selectedPhotos = photosByDay.get(selectedDay) || []
+  const weekdays = isEnglish ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['日', '一', '二', '三', '四', '五', '六']
+  const monthLabel = cursor.toLocaleDateString(isEnglish ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'long' })
+
+  function shiftMonth(delta) {
+    const next = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1)
+    onChangeCursor(next)
+    const nextKey = monthDays(next).find((day) => photosByDay.has(day.key))?.key || calendarDayKey(next)
+    onSelectDay(nextKey)
+  }
+
+  useEffect(() => {
+    const close = (event) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [onClose])
+
+  return <div className="album-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <article className="album-calendar-dialog" role="dialog" aria-modal="true" aria-labelledby="album-calendar-title">
+      <header className="album-calendar-header">
+        <div><p className="eyebrow"><CalendarClock size={13} />{copy.calendarTitle}</p><h2 id="album-calendar-title">{monthLabel}</h2><small>{photos.length} {isEnglish ? 'photos' : '张照片'}</small></div>
+        <button type="button" onClick={onClose} aria-label={copy.calendarClose}><X size={18} /></button>
+      </header>
+      <div className="album-calendar-toolbar"><button type="button" onClick={() => shiftMonth(-1)} aria-label={isEnglish ? 'Previous month' : '上个月'}><ChevronLeft size={17} /></button><strong>{monthLabel}</strong><button type="button" onClick={() => shiftMonth(1)} aria-label={isEnglish ? 'Next month' : '下个月'}><ChevronRight size={17} /></button></div>
+      <div className="album-calendar-weekdays">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="album-calendar-grid">
+        {days.map((day) => {
+          const dayPhotos = photosByDay.get(day.key) || []
+          const active = day.key === selectedDay
+          return <button type="button" key={day.key} className={`album-calendar-day${day.inMonth ? '' : ' muted'}${active ? ' selected' : ''}${dayPhotos.length ? ' has-photos' : ''}`} onClick={() => onSelectDay(day.key)} aria-label={`${day.key}${dayPhotos.length ? ` · ${dayPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : ''}`}>
+            {dayPhotos[0] ? <img src={dayPhotos[0].url} alt="" /> : <span>{day.date.getDate()}</span>}
+            {dayPhotos.length > 0 && <b>{dayPhotos.length}</b>}
+            {!dayPhotos.length && <small>{day.date.getDate()}</small>}
+          </button>
+        })}
+      </div>
+      <section className="album-calendar-day-panel" aria-live="polite">
+        <header><strong>{selectedDay}</strong><span>{selectedPhotos.length ? `${selectedPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : copy.calendarEmpty}</span></header>
+        {selectedPhotos.length > 0 && <div className="album-calendar-photo-list">{selectedPhotos.map((photo) => <button type="button" key={photo.id} onClick={() => onSelectPhoto(photo)}><img src={photo.url} alt="" /><span>{displayTime(photo.takenAt, locale)}</span></button>)}</div>}
+      </section>
+    </article>
+  </div>
 }

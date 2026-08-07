@@ -8,7 +8,8 @@ import { evaluateMedicalTopic } from '../src/domain/safety.js'
 import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
-import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
+import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyHealthReminders, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
+import { VACCINE_DOSES, VACCINE_STANDARD } from '../src/content/vaccines.js'
 import { applyCareEventsToLegacy, bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState, occurredAtErrorMessage, validateOccurredAt } from '../src/domain/careEvents.js'
 import { changedCareEvents, mergePulledState } from '../src/domain/eventSync.js'
 import { coalesceOutboxItem } from '../src/domain/localDb.js'
@@ -16,12 +17,14 @@ import { safeEventInput } from '../functions/_shared/care.js'
 import { onRequestPost as onEventPost } from '../functions/api/events.js'
 import { onRequestDelete as onEventDelete, onRequestPatch as onEventPatch } from '../functions/api/events/[id].js'
 import { onRequestPost as onPhotoPost } from '../functions/api/photos.js'
-import { onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
+import { onRequestDelete as onPhotoDelete, onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
-import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, getGrowthChartModel, growthLevelLabel, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { ageContextSummary, ageBasisLabel, resolveAgeContext } from '../src/domain/agePolicy.js'
 import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
 import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
+import { getGrowthStageContent } from '../src/content/growthStages.js'
 
 test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -307,14 +310,14 @@ test('growth evaluator keeps birth and corrected-age standards isolated', () => 
   const context = getGrowthAgeContext(preterm, '2026-07-27', 'corrected')
   assert.equal(context.ageDays, 0)
   assert.equal(context.ageMonths, 0)
-  const correctedMeasurement = createEvaluatedGrowthMeasurement({ id: 'corrected-weight', type: 'weight', value: '3.2', measuredAt: '2026-07-27', source: 'caregiver_observation' }, { ...preterm, growthAgeBasis: 'corrected' }, [], { now: '2026-07-28T10:00:00.000Z' })
-  assert.equal(correctedMeasurement.ageBasis, 'corrected')
+  const correctedMeasurement = createEvaluatedGrowthMeasurement({ id: 'corrected-weight', type: 'weight', value: '3.2', measuredAt: '2026-07-27', source: 'caregiver_observation' }, { ...preterm, growthAgeBasis: 'chronological' }, [], { now: '2026-07-28T10:00:00.000Z' })
+  assert.equal(correctedMeasurement.ageBasis, null)
   assert.equal(correctedMeasurement.evaluation.ageBasis, 'corrected')
   const missingGestation = evaluateGrowthMeasurement({ id: 'birth-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-01', source: 'birth_record' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z' })
   assert.equal(missingGestation.standardPackageId, 'ws-t-800-2022')
   assert.equal(missingGestation.dataQuality, 'insufficient')
   assert.match(missingGestation.limitations.join(' '), /24–42/)
-  const missingCorrected = evaluateGrowthMeasurement({ id: 'corrected-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-06', source: 'clinical', ageBasis: 'corrected' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z' })
+  const missingCorrected = evaluateGrowthMeasurement({ id: 'corrected-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-06', source: 'clinical', ageBasis: 'corrected' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z', ageBasis: 'corrected' })
   assert.equal(missingCorrected.dataQuality, 'insufficient')
   assert.match(missingCorrected.limitations.join(' '), /矫正年龄|整月参考/)
   const multiple = evaluateGrowthMeasurement({ id: 'birth-multiple', type: 'weight', value: '3.2', measuredAt: '2026-06-01', source: 'birth_record' }, { ...preterm, birthMultiplicity: 'multiple' }, [], { now: '2026-07-01T10:00:00.000Z' })
@@ -330,17 +333,76 @@ test('postmenstrual age is reported separately from the WS/T 423 reference month
   assert.equal(context.referenceAgeMonths, 0)
   const evaluated = evaluateGrowthMeasurement({ id: 'pma-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical', ageBasis: 'postmenstrual' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
   assert.equal(evaluated.dataQuality, 'sufficient')
-  assert.equal(evaluated.ageDays, 285)
+  assert.equal(evaluated.ageDays, 5)
   assert.equal(evaluated.referenceAgeMonths, 0)
 })
 
-test('preterm chronological follow-ups withhold term references until corrected age is selected', () => {
+test('preterm follow-ups select corrected references automatically', () => {
   const baby = { id: 'baby-preterm-default', birthDate: '2026-08-01', sex: 'female', gestationalWeeks: 28, gestationalDays: 0 }
   const chronological = evaluateGrowthMeasurement({ id: 'preterm-chronological', type: 'weight', value: '2.8', measuredAt: '2026-11-01', source: 'clinical' }, baby, [], { now: '2026-11-02T10:00:00.000Z' })
-  assert.equal(chronological.dataQuality, 'insufficient')
-  assert.match(chronological.limitations.join(' '), /早产儿.*矫正年龄/)
+  assert.equal(chronological.dataQuality, 'sufficient')
+  assert.equal(chronological.ageBasis, 'corrected')
   const corrected = evaluateGrowthMeasurement({ id: 'preterm-corrected', type: 'weight', value: '2.8', measuredAt: '2026-11-01', source: 'clinical', ageBasis: 'corrected' }, baby, [], { now: '2026-11-02T10:00:00.000Z' })
   assert.equal(corrected.dataQuality, 'sufficient')
+})
+
+test('daily health reminders are age-aware and preserve today completion', () => {
+  const date = new Date('2026-08-07T12:00:00+08:00')
+  const newborn = getDailyHealthReminders([], 6, date)
+  assert.equal(newborn.nutrition[0].id, 'nutrition-vitamin-d')
+  assert.equal(newborn.care[0].id, 'care-cord-skin')
+  const completed = getDailyHealthReminders([{ taskId: 'nutrition-vitamin-d', date: '2026-08-07', status: 'done' }], 6, date)
+  assert.equal(completed.nutrition[0].status, 'done')
+  assert.equal(getDailyHealthReminders([], 220, date).nutrition[0].id, 'nutrition-iron-food')
+})
+
+test('vaccine roadmap follows the 2026 national 0–6 year schedule', () => {
+  assert.equal(VACCINE_STANDARD.version, '2026-06')
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'dtap-1' && item.ageLabel === '2 月龄'))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'dtap-5' && item.ageLabel === '6 周岁'))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-i-1' && item.abbreviation === 'JE-I'))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-i-2' && item.ageSpec?.days === 7))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-l-2' && item.ageSpec?.years === 2))
+})
+
+test('every growth stage has distinct educational features, key points, and completion signals', () => {
+  const stageContents = getStages().map((item) => getGrowthStageContent(item.id))
+  for (const content of stageContents) {
+    assert.equal(content.features.length, 3)
+    assert.equal(content.keyPoints.length, 3)
+    assert.equal(content.completionSignals.length, 3)
+    assert.ok(content.features.every((item) => item.title.zh && item.title.en && item.detail.zh && item.detail.en))
+  }
+  assert.equal(new Set(stageContents.map((content) => content.intro)).size, getStages().length)
+})
+
+test('age policy selects the purpose-specific basis and never trusts the legacy preference', () => {
+  const baby = { birthDate: '2026-01-01', gestationalWeeks: 32, gestationalDays: 0, growthAgeBasis: 'chronological' }
+  const stage = resolveAgeContext({ baby, at: '2026-03-01', purpose: 'stage' })
+  const carePlan = resolveAgeContext({ baby, at: '2026-03-01', purpose: 'care_plan' })
+  assert.equal(stage.basis, 'corrected')
+  assert.equal(carePlan.basis, 'chronological')
+  assert.equal(ageBasisLabel(stage.basis), '矫正年龄')
+  assert.match(ageContextSummary(stage), /矫正年龄/)
+})
+
+test('calendar age uses one local calendar-day convention and birth standards fail closed without gestation', () => {
+  assert.equal(getAgeDays('2026-01-31', '2026-02-28'), 28)
+  assert.equal(getAgeDays('2026-01-31', new Date('2026-02-28T23:30:00+08:00')), 28)
+  const birthStandard = resolveAgeContext({ baby: { birthDate: '2026-01-31', gestationalWeeks: null }, at: '2026-02-28', purpose: 'birth_standard' })
+  assert.equal(birthStandard.basis, 'postmenstrual')
+  assert.equal(birthStandard.ageDays, null)
+  assert.match(birthStandard.limitations.join(' '), /出生孕周/)
+})
+
+test('growth chart model keeps all seven official percentile lines and the baby trajectory separate', () => {
+  const baby = { id: 'chart-baby', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40, gestationalDays: 0 }
+  const measurement = createEvaluatedGrowthMeasurement({ id: 'chart-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  const model = getGrowthChartModel({ baby, measurements: [measurement], type: 'weight', startMonth: 0, endMonth: 3, now: '2026-08-06T10:00:00.000Z' })
+  assert.deepEqual(model.reference.map((line) => line.percentile), [3, 10, 25, 50, 75, 90, 97])
+  assert.equal(model.reference.every((line) => line.points.length === 4), true)
+  assert.equal(model.points[0].value, 3.5)
+  assert.equal(growthLevelLabel(measurement.evaluation), '中')
 })
 
 test('growth evaluator reports insufficient history and never fabricates reference values', () => {
@@ -464,6 +526,15 @@ test('legacy event application merges fields and removes voided records', () => 
   assert.deepEqual(voided.taskLogs, [])
 })
 
+test('growth care-plan actions project separately from legacy milestone records', () => {
+  const state = { careEvents: [], milestoneRecords: [], carePlanItems: [] }
+  const event = createCareEvent({ id: 'growth-plan-1', category: 'care_plan_item', payload: { taskId: 'first-visit-plan', status: 'done' } })
+  const projected = applyCareEventsToLegacy(state, [event])
+  assert.equal(projected.carePlanItems[0].taskId, 'first-visit-plan')
+  assert.equal(projected.carePlanItems[0].status, 'done')
+  assert.equal(projected.milestoneRecords.length, 0)
+})
+
 test('outbox coalescing keeps create and sends a voided tombstone', () => {
   const create = coalesceOutboxItem(null, { event: { id: 'event-outbox', status: 'active' }, operation: 'create' }, 'niwa')
   const patched = coalesceOutboxItem(create, { event: { id: 'event-outbox', status: 'corrected' }, operation: 'patch' }, 'niwa')
@@ -529,6 +600,39 @@ test('guest sessions cannot upload album photos', async () => {
   assert.equal((await onPhotoPost({ request, env })).status, 403)
 })
 
+test('guest sessions cannot delete album photos and authorized parents can', async () => {
+  const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
+  const guestEnv = { DB: { prepare: () => ({ bind: () => ({ first: async () => guest }) }) }, BABY_PHOTOS: { delete: async () => assert.fail('guest deletion must not reach R2') } }
+  const guestRequest = new Request('https://babyforge.test/api/photos/photo-1', { method: 'DELETE', headers: { cookie: 'babyforge_session=token' } })
+  assert.equal((await onPhotoDelete({ request: guestRequest, env: guestEnv, params: { id: 'photo-1' } })).status, 403)
+
+  let deletedKey = ''
+  const parent = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-1', username: 'parent', role: 'admin', display_name: '家长' }
+  const parentEnv = {
+    DB: {
+      prepare: (sql) => ({
+        bind: (...args) => ({
+          first: async () => sql.includes('auth_sessions') ? parent : { id: 'photo-1', baby_id: 'baby-1', object_key: 'babies/baby-1/photos/photo-1', baby_status: 'active' },
+          run: async () => { assert.match(sql, /DELETE FROM baby_photos/); assert.deepEqual(args, ['photo-1', 'baby-1']); return { success: true } },
+        }),
+      }),
+    },
+    BABY_PHOTOS: { delete: async (key) => { deletedKey = key } },
+  }
+  const parentResponse = await onPhotoDelete({ request: guestRequest, env: parentEnv, params: { id: 'photo-1' } })
+  assert.equal(parentResponse.status, 200)
+  assert.deepEqual(await parentResponse.json(), { deleted: true, id: 'photo-1' })
+  assert.equal(deletedKey, 'babies/baby-1/photos/photo-1')
+
+  const cleanupPendingEnv = {
+    ...parentEnv,
+    BABY_PHOTOS: { delete: async () => { throw new Error('R2 unavailable') } },
+  }
+  const cleanupPendingResponse = await onPhotoDelete({ request: guestRequest, env: cleanupPendingEnv, params: { id: 'photo-1' } })
+  assert.equal(cleanupPendingResponse.status, 202)
+  assert.deepEqual(await cleanupPendingResponse.json(), { deleted: true, id: 'photo-1', storageCleanupPending: true, warning: 'R2 unavailable' })
+})
+
 test('detached baby profiles cannot read retained cloud album URLs', async () => {
   const env = {
     DB: {
@@ -557,6 +661,8 @@ test('quick care records produce a personal 24-hour snapshot', () => {
   assert.equal(snapshot.metrics.bottleMl, 60)
   assert.equal(snapshot.metrics.wetDiaperCount, 1)
   assert.equal(eventTitle(events[0], 'zh-CN'), '瓶喂 60 mL')
+  assert.equal(eventTitle({ category: 'vaccine', status: 'active' }, 'zh-CN'), '疫苗')
+  assert.equal(eventTitle({ category: 'care_plan_item', status: 'active', payload: { planItemId: 'vaccine:hep-b-1' } }, 'zh-CN'), '疫苗')
 })
 
 test('guided support uses caregiver guidance without a triage label', () => {

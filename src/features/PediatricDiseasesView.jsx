@@ -178,7 +178,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
     <main className="app-shell pediatric-shell">
       <Header route={ROUTES.pediatric} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="pediatric-workspace">
-        <aside className="pediatric-library" aria-label={locale === 'en-US' ? 'Common pediatric conditions' : '常见儿科病'}>
+        <aside className="pediatric-library" aria-label={locale === 'en-US' ? 'Cases' : '病例'}>
           <div className="pediatric-panel-heading"><span>{locale === 'en-US' ? 'Explore library' : '探索资料库'}</span><BookOpen size={16} /></div>
           <div className="pediatric-library-tabs" role="tablist" aria-label={locale === 'en-US' ? 'Library type' : '资料库类型'}>
             <button role="tab" aria-selected={libraryMode === 'diseases'} className={libraryMode === 'diseases' ? 'active' : ''} onClick={() => { setLibraryMode('diseases'); setQuery('') }}><Stethoscope size={14} />{locale === 'en-US' ? 'Conditions' : '疾病分类'}<b>{PEDIATRIC_DISEASES.length}</b></button>

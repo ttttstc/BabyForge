@@ -45,7 +45,6 @@ const PROFILE_FIELDS = [
   { key: 'birthMultiplicity', label: '出生情况' },
   { key: 'sex', label: '性别' },
   { key: 'feedingMode', label: '喂养方式' },
-  { key: 'growthAgeBasis', label: '成长年龄口径' },
   { key: 'medicalHistory', label: '既往史' },
   { key: 'allergies', label: '过敏信息' },
   { key: 'longTermMedications', label: '长期用药' },

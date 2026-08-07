@@ -29,6 +29,24 @@ function eventRecord(event) {
   return payload.record && typeof payload.record === 'object' ? payload.record : payload
 }
 
+function growthRecord(item) {
+  const payload = item?.payload && typeof item.payload === 'object' ? item.payload : item || {}
+  return payload.record && typeof payload.record === 'object' ? payload.record : payload
+}
+
+function growthType(item) {
+  const value = String(growthRecord(item).type || item?.category || '').replaceAll('_', '').toLowerCase()
+  if (value === 'length') return 'length'
+  if (value === 'headcircumference') return 'headCircumference'
+  if (value === 'weight') return 'weight'
+  return ''
+}
+
+function growthLabel(item, locale) {
+  const key = growthType(item)
+  return label(GROWTH_LABELS[key], locale, locale === 'en-US' ? 'Growth measurement' : '成长测量')
+}
+
 function summaryFacts(event, locale) {
   const record = eventRecord(event)
   const isEnglish = locale === 'en-US'
@@ -85,7 +103,7 @@ function formatSummaryText(summary, locale) {
   }
   if (summary.growthMeasurements.length) {
     lines.push(isEnglish ? 'Growth measurements:' : '成长测量：')
-    summary.growthMeasurements.forEach((item) => lines.push(`- ${label(GROWTH_LABELS[item.type], locale, item.type)}: ${item.value} ${item.unit} · ${item.measuredAt}${recorderFor(summary, 'growthMeasurements', item) ? ` · ${isEnglish ? 'entered by' : '记录人'} ${recorderFor(summary, 'growthMeasurements', item)}` : ''}`))
+    summary.growthMeasurements.forEach((item) => { const record = growthRecord(item); lines.push(`- ${growthLabel(item, locale)}: ${record.value} ${record.unit} · ${record.measuredAt}${recorderFor(summary, 'growthMeasurements', item) ? ` · ${isEnglish ? 'entered by' : '记录人'} ${recorderFor(summary, 'growthMeasurements', item)}` : ''}`) })
     lines.push('')
   }
   if (summary.recentCareEvents.length) {
@@ -143,7 +161,7 @@ export function DoctorSummaryView({ state, onBack, onClear, onLogout, readOnly =
           {item.bilirubinValue && <><dt>{isEnglish ? 'Bilirubin' : '胆红素测量'}</dt><dd>{item.bilirubinValue} {item.bilirubinUnit}<small>{item.measuredAt || (isEnglish ? 'Time not provided' : '时间未填')} · {item.measurementSource || (isEnglish ? 'Source not provided' : '来源未填')}</small></dd></>}
         </dl><span className="provenance">{isEnglish ? 'Parent entered / raw fact' : '原始记录'}{recorderFor(summary, 'observations', item) ? ` · ${isEnglish ? 'Entered by' : '记录人'} ${recorderFor(summary, 'observations', item)}` : ''}</span></div></article>)}</section>
         {summary.taskLogs.length > 0 && <section className="summary-section"><h2>{isEnglish ? 'Care actions completed' : '已完成照护事项'}</h2><ul>{summary.taskLogs.filter((item) => item.status === 'done').map((item) => <li key={item.id}>{label(TASK_LABELS[item.taskId], locale, item.taskId)} · {item.date}{recorderFor(summary, 'taskLogs', item) ? ` · ${isEnglish ? 'Entered by' : '记录人'} ${recorderFor(summary, 'taskLogs', item)}` : ''}</li>)}</ul></section>}
-        {summary.growthMeasurements.length > 0 && <section className="summary-section"><h2>{isEnglish ? 'Growth measurements' : '成长测量'}</h2><ul>{summary.growthMeasurements.map((item) => <li key={item.id}>{label(GROWTH_LABELS[item.type], locale, item.type)}: {item.value} {item.unit} · {item.measuredAt}{recorderFor(summary, 'growthMeasurements', item) ? ` · ${isEnglish ? 'Entered by' : '记录人'} ${recorderFor(summary, 'growthMeasurements', item)}` : ''}</li>)}</ul></section>}
+        {summary.growthMeasurements.length > 0 && <section className="summary-section"><h2>{isEnglish ? 'Growth measurements' : '成长测量'}</h2><ul>{summary.growthMeasurements.map((item) => { const record = growthRecord(item); return <li key={item.id}>{growthLabel(item, locale)}: {record.value} {record.unit} · {record.measuredAt}{recorderFor(summary, 'growthMeasurements', item) ? ` · ${isEnglish ? 'Entered by' : '记录人'} ${recorderFor(summary, 'growthMeasurements', item)}` : ''}</li> })}</ul></section>}
         {summary.recentCareEvents.length > 0 && <section className="summary-section"><h2>{isEnglish ? 'Recent care timeline' : '最近照护时间线'}</h2><div className="summary-event-list">{summary.recentCareEvents.map((event) => <article key={event.id}><strong>{eventTitle(event, locale)}</strong><span>{formatEventTime(event, locale)} · {eventFacts(event, locale)}</span></article>)}</div></section>}
         {summary.concerns.filter((item) => item.status === 'open').length > 0 && <section className="summary-section"><h2>{isEnglish ? 'Active follow-up' : '进行中的关注'}</h2><div className="summary-concern-list">{summary.concerns.filter((item) => item.status === 'open').map((item) => <article key={item.id}><strong>{label(item.title, locale, item.title)}</strong>{item.plan?.action && <p>{isEnglish ? 'Now' : '现在'}：{label(item.plan.action, locale)}</p>}{item.plan?.recheck && <p>{isEnglish ? 'Recheck' : '复查'}：{label(item.plan.recheck, locale)}</p>}{item.plan?.source?.url && <small><a href={item.plan.source.url} target="_blank" rel="noreferrer">{isEnglish ? 'Source' : '依据'}：{label(item.plan.source.label, locale)} · {item.plan.source.accessedAt}</a></small>}</article>)}</div></section>}
         {summary.questions.length > 0 && <section className="summary-section"><h2>{isEnglish ? 'Questions for a clinician' : '希望咨询的问题'}</h2><ul>{summary.questions.map((question) => <li key={question}>{question}</li>)}</ul></section>}

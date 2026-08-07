@@ -52,6 +52,26 @@ test('Naiba AI page asks about facts before making a health conclusion', async (
   await expect(page.getByText(/危险信号.*立即联系/)).toBeVisible()
 })
 
+test('Naiba AI local mode answers a general message without waiting for a cloud endpoint', async ({ page }) => {
+  await createBaby(page)
+  await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"type":"message","delta":"本地模型已经收到问题并生成回答。"}\n\ndata: {"type":"done"}\n\n' }))
+  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await expect(page.getByText('嗨，我在这儿陪你。你可以直接说宝宝吃、睡、排便，或者哪里和平时不一样，我们一起慢慢捋清楚。')).toBeVisible()
+  await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好，介绍一下你能帮我做什么')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('本地模型已经收到问题并生成回答。')).toBeVisible({ timeout: 1500 })
+  await expect(page.getByText('正在核对事实和依据…')).toHaveCount(0)
+})
+
+test('Naiba AI keeps a friendly local answer when the model endpoint is unavailable', async ({ page }) => {
+  await createBaby(page)
+  await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'model unavailable' }) }))
+  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('我在这儿。你直接告诉我现在最担心什么就好：吃、睡、排便，或者哪里和平时不一样，我们一起一步一步捋清楚。')).toBeVisible({ timeout: 1500 })
+})
+
 test('today directs actual intake to the record center', async ({ page }) => {
   await createBaby(page)
   await page.getByRole('button', { name: /去记录中心录入/ }).first().click()

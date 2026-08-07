@@ -3,11 +3,11 @@ import { Activity, ArrowLeft, Baby, Check, ChevronRight, CircleHelp, ClipboardLi
 import { getAgeDays, getStage, getStageLabel, getStageRangeLabel } from '../domain/baby.js'
 import { assertCareRecordInput, createCareEvent, createConcern as createConcernRecord, correctCareEvent, voidCareEvent } from '../domain/careEvents.js'
 import { getDailyCareSummary, localDayKey } from '../domain/careSummary.js'
-import { createEvaluatedGrowthMeasurement, GROWTH_AGE_BASES } from '../domain/growth.js'
+import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { getAdminTasks, getDailyTasks, getStageMilestones, localDateKey } from '../domain/carePlan.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { projectBabyState } from '../domain/babyState.js'
-import { navigate, ROUTES } from '../app/router.js'
+import { navigate, parseHashLocation, RECORD_RETURN_ROUTES, ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
@@ -33,6 +33,7 @@ const MORE_CARDS = [
 ]
 
 const P0_PANEL_TYPES = new Set(['feeding', 'sleep', 'diaper', 'medication', 'temperature', 'growth'])
+const RECORD_PANEL_TYPES = new Set([...P0_PANEL_TYPES, ...MORE_CARDS.map((card) => card.id)])
 
 function text(value, locale) {
   return value?.[locale === 'en-US' ? 'en' : 'zh'] || value?.zh || value || ''
@@ -54,7 +55,7 @@ function measurementPayload(event) {
 }
 
 function measurementInputChanged(previous, next) {
-  return ['type', 'value', 'unit', 'measuredAt', 'source', 'method', 'ageBasis', 'note'].some((key) => String(previous?.[key] ?? '') !== String(next?.[key] ?? ''))
+  return ['type', 'value', 'unit', 'measuredAt', 'source', 'method', 'note'].some((key) => String(previous?.[key] ?? '') !== String(next?.[key] ?? ''))
 }
 
 function currentCount(snapshot, stateKey) {
@@ -82,7 +83,17 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
   const initialQuery = new URLSearchParams(window.location.hash.split('?')[1] || '')
-  const [activePanel, setActivePanel] = useState(() => initialQuery.get('type') || initialQuery.get('panel') || null)
+  const returnTo = (() => {
+    const value = initialQuery.get('returnTo')
+    if (!value) return ROUTES.today
+    const route = parseHashLocation(value).route
+    return RECORD_RETURN_ROUTES.includes(route) ? value : ROUTES.today
+  })()
+  const returnRoute = parseHashLocation(returnTo).route
+  const [activePanel, setActivePanel] = useState(() => {
+    const panel = initialQuery.get('type') || initialQuery.get('panel')
+    return RECORD_PANEL_TYPES.has(panel) || panel === 'illness' ? panel : null
+  })
   const [editingEvent, setEditingEvent] = useState(null)
   const [selectedDay, setSelectedDay] = useState(() => localDayKey())
   const [timelineFilter, setTimelineFilter] = useState('')
@@ -228,7 +239,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
         ['length', birthLength, 'cm', 'lying_length'],
         ['headCircumference', birthHeadCircumference, 'cm', 'head_circumference_tape'],
       ]
-      const profileChanged = ['birthDate', 'gestationalWeeks', 'gestationalDays', 'growthAgeBasis', 'birthMultiplicity'].some((key) => String(current.baby?.[key] ?? '') !== String(nextBaby[key] ?? ''))
+      const profileChanged = ['birthDate', 'gestationalWeeks', 'gestationalDays', 'birthMultiplicity'].some((key) => String(current.baby?.[key] ?? '') !== String(nextBaby[key] ?? ''))
       const birthEvents = (current.careEvents || []).filter((event) => {
         const measurement = measurementPayload(event)
         return event.status === 'active' && event.category === 'growth_measurement' && measurement.source === 'birth_record'
@@ -311,25 +322,25 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
       <div className="record-center-shell">
         <header className="record-center-hero">
           <div>
-            <button className="record-back-link" onClick={() => navigate(ROUTES.today)}><ArrowLeft size={15} />{isEnglish ? 'Back to today' : '返回今天'}</button>
-            <p className="eyebrow">{isEnglish ? 'One place for every fact' : '所有事实，一个入口'}</p>
+            <button className="record-back-link" onClick={() => navigate(returnTo)}><ArrowLeft size={15} />{isEnglish ? (returnRoute.startsWith(ROUTES.growth) ? 'Back to growth' : 'Back to today') : (returnRoute.startsWith(ROUTES.growth) ? '返回成长' : '返回今天')}</button>
+            <p className="eyebrow">{isEnglish ? 'For new parents' : '新手爸妈记录'}</p>
             <h1>{isEnglish ? 'Record center' : '记录中心'}</h1>
-            <p>{isEnglish ? 'Save what happened first. BabyForge calculates the baseline and current state from these records.' : '先记录发生了什么。基线和当前状态由这些原始记录自动整理。'}</p>
+            <p>{isEnglish ? 'Keep the moments you notice today, so your family can look back and share them clearly when needed.' : '把今天看到的宝宝情况记下来，之后自己回看或和家人、医生沟通都更清楚。'}</p>
           </div>
           <div className="record-center-stage"><span>{isEnglish ? 'Current stage' : '当前阶段'}</span><strong>{getStageLabel(stage, locale)}</strong><small>{getStageRangeLabel(stage, locale)} · {isEnglish ? `${ageDays} days old` : `出生后 ${ageDays} 天`}</small></div>
         </header>
 
-        <section className="record-center-notice"><ShieldCheck size={18} /><div><strong>{isEnglish ? 'Record facts, not conclusions' : '这里记录事实，不手工填写结论'}</strong><p>{isEnglish ? 'Every entry keeps its time, current role, source, and lifecycle. Current state, baseline, changes, and unknowns are calculated below.' : '每条记录都会保留时间、当前角色、来源和生命周期。当前状态、个人基线、变化与未知信息由系统自动计算。'}</p></div></section>
+        <section className="record-center-notice"><ShieldCheck size={18} /><div><strong>{isEnglish ? 'Start with what you noticed' : '从宝宝今天的日常开始'}</strong><p>{isEnglish ? 'Feeding, sleep, diapers, temperature, growth measurements, and changes worth watching can all be kept here.' : '喂奶、睡眠、尿便、体温、成长测量和需要继续留意的变化，都可以在这里留下。'}</p></div></section>
 
         <section className="record-card-section" aria-labelledby="record-card-heading">
-          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'Quick entry' : '快速记录'}</p><h2 id="record-card-heading">{isEnglish ? 'What do you want to record?' : '现在要记录什么？'}</h2></div><span>{isEnglish ? 'Tap a card to open a light form' : '点击卡片，打开低负荷记录'}</span></div>
+          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'Choose one moment' : '记录一件事'}</p><h2 id="record-card-heading">{isEnglish ? 'What did you notice today?' : '今天想记下什么？'}</h2></div><span>{isEnglish ? 'Choose the closest description' : '选择最符合宝宝情况的一项'}</span></div>
           <div className="record-card-grid">{RECORD_CARDS.map((card) => <RecordCard key={card.id} card={card} active={activePanel === card.id} onClick={() => openPanel(card.id)} meta={cardMeta(card.id, state, snapshot, locale, dailySummary)} />)}</div>
         </section>
 
-        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} growthAgeBasis={state.baby.growthAgeBasis || 'chronological'} onSave={saveP0Record} onCancel={closePanel} />}
+        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} onSave={saveP0Record} onCancel={closePanel} />}
 
         {activePanel && !P0_PANEL_TYPES.has(activePanel) && <section className="record-entry-sheet" data-testid={`record-entry-${activePanel}`}>
-          <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Light entry' : '低负荷记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={() => setActivePanel(null)} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>
+          <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Add a note' : '补充记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={() => setActivePanel(null)} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>
           {activePanel === 'basic' && <BasicInfoPanel baby={state.baby} birthMeasurements={state.growthMeasurements} locale={locale} readOnly={readOnly} onSave={updateProfile} />}
           {activePanel === 'illness' && <IllnessPanel locale={locale} readOnly={readOnly} onRecord={recordEvent} />}
         </section>}
@@ -354,7 +365,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
         <DailyCareTimeline events={state.careEvents} locale={locale} selectedDay={selectedDay} filter={timelineFilter} onDayChange={setSelectedDay} onFilterChange={setTimelineFilter} onEdit={editRecord} onVoid={voidRecord} readOnly={readOnly} />
 
         <section className="record-card-section record-more-section" aria-labelledby="record-more-heading">
-          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More records' : '更多记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Keep related facts together' : '把相关事实也放在这里'}</h2></div><span>{isEnglish ? 'No editing on other pages' : '其他页面只展示，不分散编辑入口'}</span></div>
+          <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More to add' : '还可以记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Other moments worth keeping' : '其他想留下的宝宝情况'}</h2></div><span>{isEnglish ? 'Keep related moments together' : '把相关情况放在一起，更方便回看'}</span></div>
           <div className="record-more-grid">{MORE_CARDS.map((card) => { const Icon = card.icon; return <button key={card.id} className={`record-more-card ${activePanel === card.id ? 'active' : ''}`} type="button" onClick={() => openPanel(card.id)}><span className="record-more-icon"><Icon size={17} /></span><span><strong>{isEnglish ? moreTitle(card.id) : card.title}</strong><small>{isEnglish ? moreDetail(card.id) : card.detail}</small></span><ChevronRight size={16} /></button> })}</div>
         </section>
 
@@ -364,7 +375,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
           {activePanel === 'questions' && <RecordSubsection title={isEnglish ? 'Questions for a clinician' : '咨询问题'} onClose={() => setActivePanel(null)}><QuestionPanel questions={state.questions} locale={locale} readOnly={readOnly} onSave={saveQuestions} /></RecordSubsection>}
 
         {(toast || entryError) && <div className={`record-toast ${entryError ? 'error' : ''}`} role={entryError ? 'alert' : 'status'}>{entryError || toast}</div>}
-        <footer className="record-center-footer"><Clock3 size={15} /><span>{isEnglish ? 'The current role selector in the header applies to every new entry. Existing records keep their original recorder.' : '顶部当前角色选择会应用于新记录；已有记录保留原来的记录人。'}</span><button type="button" onClick={() => navigate(ROUTES.summary)}>{isEnglish ? 'Care summary' : '就医摘要'}<ChevronRight size={15} /></button></footer>
+        <footer className="record-center-footer"><Clock3 size={15} /><span>{isEnglish ? 'You can switch the recorder in the header; older entries keep their original name.' : '顶部可以切换记录人；之前的记录会保留原记录人。'}</span><button type="button" onClick={() => navigate(ROUTES.summary)}>{isEnglish ? 'Care summary' : '就医摘要'}<ChevronRight size={15} /></button></footer>
       </div>
     </main>
   )
@@ -426,7 +437,6 @@ function BasicInfoPanel({ baby, birthMeasurements = [], locale, readOnly, onSave
     gestationalWeeks: baby.gestationalWeeks ?? 40,
     gestationalDays: baby.gestationalDays ?? 0,
     birthMultiplicity: baby.birthMultiplicity || 'singleton',
-    growthAgeBasis: baby.growthAgeBasis || 'chronological',
     sex: baby.sex || '',
     feedingMode: baby.feedingMode || 'breastfeeding',
     birthWeight: birthMeasurements.find((item) => item.source === 'birth_record' && item.type === 'weight')?.value || '',
@@ -450,7 +460,7 @@ function BasicInfoPanel({ baby, birthMeasurements = [], locale, readOnly, onSave
     setSaving(true)
     try { await onSave({ ...form, gestationalWeeks: Number(form.gestationalWeeks), gestationalDays: Number(form.gestationalDays) }); setFormError('') } catch (error) { setFormError(error?.message || (locale === 'en-US' ? 'Save failed. Retry.' : '保存失败，请重试。')) } finally { setSaving(false) }
   }
-  return <form className="record-form" onSubmit={submit}><p className="record-form-lede">{isEnglish ? 'Profile facts are used as background context. Leave a field blank when you do not know it.' : '这些内容只作为稳定背景。不了解的字段可以留空，系统不会替你猜测。'}</p><fieldset disabled={readOnly || saving}><div className="form-grid two"><label>{isEnglish ? 'Nickname' : '宝宝昵称'}<input value={form.nickname} onChange={(event) => change('nickname', event.target.value)} required /></label><label>{isEnglish ? 'Birth date' : '出生日期'}<input type="date" value={form.birthDate} onChange={(event) => change('birthDate', event.target.value)} required /></label></div><div className="form-grid four"><label>{isEnglish ? 'Gestational weeks' : '出生孕周'}<input type="number" min="20" max="44" value={form.gestationalWeeks} onChange={(event) => change('gestationalWeeks', event.target.value)} /></label><label>{isEnglish ? 'Extra days' : '孕周余天'}<input type="number" min="0" max="6" value={form.gestationalDays} onChange={(event) => change('gestationalDays', event.target.value)} /></label><label>{isEnglish ? 'Birth type' : '出生情况'}<select value={form.birthMultiplicity} onChange={(event) => change('birthMultiplicity', event.target.value)}><option value="singleton">{isEnglish ? 'Singleton' : '单胎'}</option><option value="multiple">{isEnglish ? 'Multiple birth' : '多胎'}</option></select></label><label>{isEnglish ? 'Age basis' : '年龄口径'}<select value={form.growthAgeBasis} onChange={(event) => change('growthAgeBasis', event.target.value)}>{GROWTH_AGE_BASES.map((basis) => <option key={basis} value={basis}>{basis === 'corrected' ? (isEnglish ? 'Corrected age' : '矫正年龄') : basis === 'postmenstrual' ? (isEnglish ? 'Postmenstrual age' : '经后年龄') : (isEnglish ? 'Chronological age' : '实际年龄')}</option>)}</select></label></div><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Profile details' : '档案细节'}</legend><div className="form-grid three"><label>{isEnglish ? 'Sex' : '性别'}<select value={form.sex} onChange={(event) => change('sex', event.target.value)}><option value="">{isEnglish ? 'Not set' : '未设置'}</option><option value="male">{isEnglish ? 'Boy' : '男孩'}</option><option value="female">{isEnglish ? 'Girl' : '女孩'}</option></select></label><label>{isEnglish ? 'Feeding mode' : '喂养方式'}<select value={form.feedingMode} onChange={(event) => change('feedingMode', event.target.value)}><option value="breastfeeding">{isEnglish ? 'Breastfeeding' : '母乳喂养'}</option><option value="formula">{isEnglish ? 'Formula' : '配方奶喂养'}</option><option value="mixed">{isEnglish ? 'Mixed' : '混合喂养'}</option><option value="other">{isEnglish ? 'Other / unknown' : '其他 / 未确定'}</option></select></label></div></fieldset><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Birth measurements' : '出生测量'}</legend><div className="form-grid three"><label>{isEnglish ? 'Weight (kg)' : '体重（kg）'}<input type="number" min="0" max="20" step="0.01" inputMode="decimal" value={form.birthWeight} onChange={(event) => change('birthWeight', event.target.value)} /></label><label>{isEnglish ? 'Length (cm)' : '身长（cm）'}<input type="number" min="0" max="100" step="0.1" inputMode="decimal" value={form.birthLength} onChange={(event) => change('birthLength', event.target.value)} /></label><label>{isEnglish ? 'Head circumference (cm)' : '头围（cm）'}<input type="number" min="0" max="70" step="0.1" inputMode="decimal" value={form.birthHeadCircumference} onChange={(event) => change('birthHeadCircumference', event.target.value)} /></label></div></fieldset><div className="form-grid three"><label>{isEnglish ? 'Past history' : '既往史'}<textarea rows="2" value={form.medicalHistory} onChange={(event) => change('medicalHistory', event.target.value)} placeholder={isEnglish ? 'Optional factual note' : '可填写已知事实'} /></label><label>{isEnglish ? 'Allergies' : '过敏信息'}<textarea rows="2" value={form.allergies} onChange={(event) => change('allergies', event.target.value)} placeholder={isEnglish ? 'Unknown is okay' : '不确定可以留空'} /></label><label>{isEnglish ? 'Long-term medicines' : '长期用药'}<textarea rows="2" value={form.longTermMedications} onChange={(event) => change('longTermMedications', event.target.value)} placeholder={isEnglish ? 'Name and factual note' : '药名和已知事实'} /></label></div></fieldset>{formError && <p className="save-error" role="alert">{formError}</p>}{!readOnly && <PanelActions locale={locale} saving={saving} onCancel={() => { setForm(initialForm()); setFormError('') }} />}</form>
+  return <form className="record-form" onSubmit={submit}><p className="record-form-lede">{isEnglish ? 'Profile facts are used as background context. Leave a field blank when you do not know it.' : '这些内容只作为稳定背景。不了解的字段可以留空，系统不会替你猜测。'}</p><fieldset disabled={readOnly || saving}><div className="form-grid two"><label>{isEnglish ? 'Nickname' : '宝宝昵称'}<input value={form.nickname} onChange={(event) => change('nickname', event.target.value)} required /></label><label>{isEnglish ? 'Birth date' : '出生日期'}<input type="date" value={form.birthDate} onChange={(event) => change('birthDate', event.target.value)} required /></label></div><div className="form-grid three"><label>{isEnglish ? 'Gestational weeks' : '出生孕周'}<input type="number" min="20" max="44" value={form.gestationalWeeks} onChange={(event) => change('gestationalWeeks', event.target.value)} /></label><label>{isEnglish ? 'Extra days' : '孕周余天'}<input type="number" min="0" max="6" value={form.gestationalDays} onChange={(event) => change('gestationalDays', event.target.value)} /></label><label>{isEnglish ? 'Birth type' : '出生情况'}<select value={form.birthMultiplicity} onChange={(event) => change('birthMultiplicity', event.target.value)}><option value="singleton">{isEnglish ? 'Singleton' : '单胎'}</option><option value="multiple">{isEnglish ? 'Multiple birth' : '多胎'}</option></select></label></div><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Profile details' : '档案细节'}</legend><div className="form-grid three"><label>{isEnglish ? 'Sex' : '性别'}<select value={form.sex} onChange={(event) => change('sex', event.target.value)}><option value="">{isEnglish ? 'Not set' : '未设置'}</option><option value="male">{isEnglish ? 'Boy' : '男孩'}</option><option value="female">{isEnglish ? 'Girl' : '女孩'}</option></select></label><label>{isEnglish ? 'Feeding mode' : '喂养方式'}<select value={form.feedingMode} onChange={(event) => change('feedingMode', event.target.value)}><option value="breastfeeding">{isEnglish ? 'Breastfeeding' : '母乳喂养'}</option><option value="formula">{isEnglish ? 'Formula' : '配方奶喂养'}</option><option value="mixed">{isEnglish ? 'Mixed' : '混合喂养'}</option><option value="other">{isEnglish ? 'Other / unknown' : '其他 / 未确定'}</option></select></label></div></fieldset><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Birth measurements' : '出生测量'}</legend><div className="form-grid three"><label>{isEnglish ? 'Weight (kg)' : '体重（kg）'}<input type="number" min="0" max="20" step="0.01" inputMode="decimal" value={form.birthWeight} onChange={(event) => change('birthWeight', event.target.value)} /></label><label>{isEnglish ? 'Length (cm)' : '身长（cm）'}<input type="number" min="0" max="100" step="0.1" inputMode="decimal" value={form.birthLength} onChange={(event) => change('birthLength', event.target.value)} /></label><label>{isEnglish ? 'Head circumference (cm)' : '头围（cm）'}<input type="number" min="0" max="70" step="0.1" inputMode="decimal" value={form.birthHeadCircumference} onChange={(event) => change('birthHeadCircumference', event.target.value)} /></label></div></fieldset><div className="form-grid three"><label>{isEnglish ? 'Past history' : '既往史'}<textarea rows="2" value={form.medicalHistory} onChange={(event) => change('medicalHistory', event.target.value)} placeholder={isEnglish ? 'Optional factual note' : '可填写已知事实'} /></label><label>{isEnglish ? 'Allergies' : '过敏信息'}<textarea rows="2" value={form.allergies} onChange={(event) => change('allergies', event.target.value)} placeholder={isEnglish ? 'Unknown is okay' : '不确定可以留空'} /></label><label>{isEnglish ? 'Long-term medicines' : '长期用药'}<textarea rows="2" value={form.longTermMedications} onChange={(event) => change('longTermMedications', event.target.value)} placeholder={isEnglish ? 'Name and factual note' : '药名和已知事实'} /></label></div></fieldset>{formError && <p className="save-error" role="alert">{formError}</p>}{!readOnly && <PanelActions locale={locale} saving={saving} onCancel={() => { setForm(initialForm()); setFormError('') }} />}</form>
 }
 
 function QuestionPanel({ questions = [], locale, readOnly, onSave }) {

@@ -31,7 +31,7 @@ test('all anatomy models load without entering the 2D fallback', async ({ page }
   const errors = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   await createBaby(page)
-  await page.getByRole('button', { name: '常见儿科病', exact: true }).click()
+  await page.getByRole('button', { name: '病例', exact: true }).click()
   await page.getByRole('tab', { name: /器官模型/ }).click()
   const organs = ['心脏', '大脑', '肺', '肝脏', '肾脏', '眼睛', '肠道', '胰腺', '皮肤']
   for (const organ of organs) {

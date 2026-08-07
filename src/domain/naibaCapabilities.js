@@ -7,6 +7,7 @@ import { calculateFeedingRecommendation } from './feedingRecommendation.js'
 import { searchApprovedKnowledge } from './knowledgePack.js'
 import { buildBabyContextSummary } from './naibaContext.js'
 import { runDecisionUnit } from './decisionKernel.js'
+import { resolveAgeContext } from './agePolicy.js'
 
 const HOUR_MS = 3_600_000
 
@@ -115,7 +116,7 @@ export function buildGrowthInterpretation({ baby, events = [], locale = 'zh-CN' 
     status: evaluation ? 'ready' : 'limited',
     summary: evaluation ? (isEnglish ? 'The latest measurement keeps its stored standard evaluation.' : '最近一次测量沿用已保存的标准评价。') : (isEnglish ? 'The measurement is shown as a fact; no reference conclusion is invented.' : '只展示测量事实，不补造标准结论。'),
     measurements: measurements.slice(0, 6).map((event) => ({ id: event.id, occurredAt: event.occurredAt, type: event.payload?.type, value: event.payload?.value, unit: event.payload?.unit, evaluation: event.payload?.evaluation || null })),
-    ageBasis: baby?.growthAgeBasis || 'chronological',
+    ageBasis: resolveAgeContext({ baby, at: latest.occurredAt || new Date(), purpose: 'growth_standard' }).basis,
   }
 }
 

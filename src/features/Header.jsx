@@ -1,4 +1,4 @@
-import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope } from 'lucide-react'
+import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope, Syringe } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
@@ -7,7 +7,8 @@ import { getCopy, getLocaleLabel } from '../domain/i18n.js'
 const PRIMARY_NAV_ITEMS = [
   { route: ROUTES.today, copyKey: 'today', icon: House },
   { route: ROUTES.records, copyKey: 'records', icon: ClipboardPlus },
-  { route: ROUTES.stage, copyKey: 'stage', icon: CalendarRange },
+  { route: ROUTES.growth, copyKey: 'growth', icon: CalendarRange },
+  { route: ROUTES.vaccines, copyKey: 'vaccines', icon: Syringe },
   { route: ROUTES.pediatric, copyKey: 'pediatric', icon: Stethoscope },
   { route: ROUTES.experience, copyKey: 'experience', icon: BookOpen },
   { route: ROUTES.naibaAi, copyKey: 'naibaAi', icon: Sparkles },

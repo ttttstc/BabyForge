@@ -20,6 +20,7 @@ export const CARE_EVENT_TYPES = Object.freeze([
   'care_action',
   'health_visit',
   'vaccination',
+  'care_plan_item',
   'doctor_instruction',
 ])
 
@@ -454,6 +455,7 @@ export function applyCareEventsToLegacy(state = {}, events = []) {
   next.growthMeasurements = []
   next.adminTaskRecords = []
   next.milestoneRecords = []
+  next.carePlanItems = []
   for (const event of events) {
     if (event.status !== 'active') continue
     const payload = event.payload || {}
@@ -462,6 +464,8 @@ export function applyCareEventsToLegacy(state = {}, events = []) {
     const project = (record) => isNestedLegacyRecord ? record : { ...record, id: event.id, createdAt: event.createdAt, updatedAt: event.updatedAt }
     if (event.category === 'admin_task') {
       next.adminTaskRecords.push(isNestedLegacyRecord ? sourceRecord : { ...payload, id: event.id, updatedAt: event.updatedAt, provenance: 'parent-entered' })
+    } else if (event.category === 'care_plan_item' || payload.carePlanItem || payload.planItemId) {
+      next.carePlanItems.push(isNestedLegacyRecord ? sourceRecord : { ...payload, id: event.id, updatedAt: event.updatedAt, provenance: 'parent-entered' })
     } else if (payload.taskId || payload.legacyCollection === 'taskLogs') {
       const record = sourceRecord
       const prior = isNestedLegacyRecord ? (state.taskLogs || []).find((item) => item.id === record.id || (item.taskId === record.taskId && item.date === record.date)) : null
@@ -488,5 +492,6 @@ export function applyCareEventsToLegacy(state = {}, events = []) {
   next.taskLogs = latestBy(next.taskLogs, (record) => `${record.taskId || record.id}:${record.date || ''}`)
   next.adminTaskRecords = latestBy(next.adminTaskRecords, (record) => record.taskId || record.id)
   next.milestoneRecords = latestBy(next.milestoneRecords, (record) => record.milestoneId || record.id)
+  next.carePlanItems = latestBy(next.carePlanItems, (record) => record.taskId || record.planItemId || record.id)
   return next
 }
