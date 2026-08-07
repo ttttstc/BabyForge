@@ -6,13 +6,11 @@ import {
   BookOpen,
   CircleHelp,
   CircleDashed,
+  ChevronDown,
   ChevronRight,
   FileText,
   ImageIcon,
   Layers3,
-  Maximize2,
-  Minimize2,
-  PanelBottom,
   Play,
   RefreshCcw,
   RotateCcw,
@@ -78,7 +76,6 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
   const [compare, setCompare] = useState(false)
   const [zoomToken, setZoomToken] = useState(0)
   const [resetToken, setResetToken] = useState(0)
-  const [sheet, setSheet] = useState('peek')
   const [selectedHotspot, setSelectedHotspot] = useState(null)
   const [modal, setModal] = useState(null)
   const [modelReady, setModelReady] = useState(false)
@@ -211,6 +208,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
               </div>
             )}
           </div>
+          {((libraryMode === 'diseases' ? filteredDiseases.length : filteredResources.length) > 2) && <p className="pediatric-library-scroll-hint"><ChevronDown size={14} />{locale === 'en-US' ? 'Scroll down to browse more' : '下滑查看更多资料'}</p>}
           {libraryMode === 'diseases' && <blockquote className="pediatric-quote"><Sparkles size={17} /><p>{locale === 'en-US' ? 'Keep time, location, change, and source together.' : '把时间、部位、变化和来源放在一起记录。'}</p><em>{locale === 'en-US' ? 'Useful for the next care conversation.' : '方便下一次照护沟通。'}</em></blockquote>}
         </aside>
 
@@ -248,7 +246,7 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
           </div>
         </section>
 
-        <aside className="pediatric-info-panel" data-sheet={sheet}>
+        <aside className="pediatric-info-panel">
           <div className="pediatric-info-hero"><p className="eyebrow">{localized(disease.category, locale)}</p><div className="pediatric-title-row"><div><h2>{localized(disease.title, locale)}</h2><em>{localized(disease.poetic, locale)}</em></div><span className="pediatric-stamp"><Art organId={disease.organId} asset="organ" alt="" /></span></div><p>{localized(disease.description, locale)}</p></div>
           <div className="pediatric-rule" />
           <section className="pediatric-facts"><h3>{locale === 'en-US' ? 'Key facts' : '观察框架'}</h3>{disease.facts.map((fact) => <div key={fact.label.zh}><b>{localized(fact.label, locale)}</b><span>{localized(fact.value, locale)}</span></div>)}</section>
@@ -258,11 +256,6 @@ export function PediatricDiseasesView({ state, setState, onClear, onLogout, read
           <button className="record-center-cta pediatric-record-cta" type="button" onClick={() => navigate(`${ROUTES.records}?panel=illness`)}><span><strong>{locale === 'en-US' ? 'Record this in the center' : '去记录中心录入这次观察'}</strong><small>{locale === 'en-US' ? 'Keep timing, symptoms, measurements, and questions together.' : '把时间、表现、测量和咨询问题放在同一处。'}</small></span><ArrowRight size={16} /></button>
           <div className="pediatric-source-note"><ShieldCheck size={15} /><span>{copy.studyOnly} · {copy.noDiagnosis}</span></div>
         </aside>
-      </div>
-      <div className="mobile-sheet-controls pediatric-mobile-sheet" aria-label={locale === 'en-US' ? 'Details sheet height' : '详情抽屉高度'}>
-        <button className={sheet === 'peek' ? 'active' : ''} onClick={() => setSheet('peek')}><Minimize2 size={15} />{locale === 'en-US' ? 'Peek' : '收起'}</button>
-        <button className={sheet === 'half' ? 'active' : ''} onClick={() => setSheet('half')}><PanelBottom size={15} />{locale === 'en-US' ? 'Half' : '半屏'}</button>
-        <button className={sheet === 'full' ? 'active' : ''} onClick={() => setSheet('full')}><Maximize2 size={15} />{locale === 'en-US' ? 'Full' : '全屏'}</button>
       </div>
       {compare && <section className="pediatric-compare-strip" aria-label={locale === 'en-US' ? 'Resource comparison' : '资源比较'}><div><Art organId={resource.id} asset="thumb" alt="" /><span>{localized(resource.title, locale)}</span></div><b>vs.</b><div><Art organId={reference.id} asset="thumb" alt="" /><span>{localized(reference.title, locale)}</span></div><button onClick={() => setCompare(false)} aria-label={copy.close}><X size={16} /></button></section>}
       {modal?.type === 'case' && <CaseModal item={modal.item} category={disease} locale={locale} onClose={() => setModal(null)} />}
