@@ -4,7 +4,7 @@ export const EVENT_STATUSES = new Set(['active', 'corrected', 'voided'])
 
 const SOURCE_ALIASES = { caregiver_entered: 'caregiver', doctor_entered: 'clinical_record', device_imported: 'device_import' }
 const LEGACY_SOURCE = { caregiver: 'caregiver_entered', clinical_record: 'doctor_entered', device_import: 'device_imported', unknown: 'device_imported' }
-const LEGACY_TYPES = new Set(['breastfeeding', 'bottle_feeding', 'diaper', 'sleep', 'medication', 'temperature', 'temperature_observation', 'growth_measurement', 'symptom_observation', 'concern_open', 'care_action', 'health_visit', 'vaccination', 'doctor_instruction'])
+const LEGACY_TYPES = new Set(['breastfeeding', 'bottle_feeding', 'diaper', 'sleep', 'medication', 'temperature', 'temperature_observation', 'growth_measurement', 'symptom_observation', 'concern_open', 'care_action', 'care_plan_item', 'health_visit', 'vaccination', 'doctor_instruction'])
 const P0_CATEGORIES = new Set(['breastfeeding', 'bottle_feeding', 'sleep', 'diaper', 'medication', 'temperature', 'temperature_observation', 'growth_measurement'])
 const DIAPER_KINDS = new Set(['urine', 'stool', 'both'])
 const MILK_TYPES = new Set(['breast_milk', 'formula'])

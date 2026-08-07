@@ -317,7 +317,7 @@ test('growth evaluator keeps birth and corrected-age standards isolated', () => 
   assert.equal(missingGestation.standardPackageId, 'ws-t-800-2022')
   assert.equal(missingGestation.dataQuality, 'insufficient')
   assert.match(missingGestation.limitations.join(' '), /24–42/)
-  const missingCorrected = evaluateGrowthMeasurement({ id: 'corrected-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-06', source: 'clinical', ageBasis: 'corrected' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z' })
+  const missingCorrected = evaluateGrowthMeasurement({ id: 'corrected-no-gestation', type: 'weight', value: '3.2', measuredAt: '2026-06-06', source: 'clinical', ageBasis: 'corrected' }, { ...preterm, gestationalWeeks: null }, [], { now: '2026-07-01T10:00:00.000Z', ageBasis: 'corrected' })
   assert.equal(missingCorrected.dataQuality, 'insufficient')
   assert.match(missingCorrected.limitations.join(' '), /矫正年龄|整月参考/)
   const multiple = evaluateGrowthMeasurement({ id: 'birth-multiple', type: 'weight', value: '3.2', measuredAt: '2026-06-01', source: 'birth_record' }, { ...preterm, birthMultiplicity: 'multiple' }, [], { now: '2026-07-01T10:00:00.000Z' })
@@ -333,7 +333,7 @@ test('postmenstrual age is reported separately from the WS/T 423 reference month
   assert.equal(context.referenceAgeMonths, 0)
   const evaluated = evaluateGrowthMeasurement({ id: 'pma-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical', ageBasis: 'postmenstrual' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
   assert.equal(evaluated.dataQuality, 'sufficient')
-  assert.equal(evaluated.ageDays, 285)
+  assert.equal(evaluated.ageDays, 5)
   assert.equal(evaluated.referenceAgeMonths, 0)
 })
 
@@ -360,7 +360,9 @@ test('vaccine roadmap follows the 2026 national 0–6 year schedule', () => {
   assert.equal(VACCINE_STANDARD.version, '2026-06')
   assert.ok(VACCINE_DOSES.some((item) => item.id === 'dtap-1' && item.ageLabel === '2 月龄'))
   assert.ok(VACCINE_DOSES.some((item) => item.id === 'dtap-5' && item.ageLabel === '6 周岁'))
-  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-start' && /JE-L \/ JE-I/.test(item.abbreviation)))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-i-1' && item.abbreviation === 'JE-I'))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-i-2' && item.ageSpec?.days === 7))
+  assert.ok(VACCINE_DOSES.some((item) => item.id === 'je-l-2' && item.ageSpec?.years === 2))
 })
 
 test('every growth stage has distinct educational features, key points, and completion signals', () => {
@@ -382,6 +384,15 @@ test('age policy selects the purpose-specific basis and never trusts the legacy 
   assert.equal(carePlan.basis, 'chronological')
   assert.equal(ageBasisLabel(stage.basis), '矫正年龄')
   assert.match(ageContextSummary(stage), /矫正年龄/)
+})
+
+test('calendar age uses one local calendar-day convention and birth standards fail closed without gestation', () => {
+  assert.equal(getAgeDays('2026-01-31', '2026-02-28'), 28)
+  assert.equal(getAgeDays('2026-01-31', new Date('2026-02-28T23:30:00+08:00')), 28)
+  const birthStandard = resolveAgeContext({ baby: { birthDate: '2026-01-31', gestationalWeeks: null }, at: '2026-02-28', purpose: 'birth_standard' })
+  assert.equal(birthStandard.basis, 'postmenstrual')
+  assert.equal(birthStandard.ageDays, null)
+  assert.match(birthStandard.limitations.join(' '), /出生孕周/)
 })
 
 test('growth chart model keeps all seven official percentile lines and the baby trajectory separate', () => {
@@ -612,6 +623,14 @@ test('guest sessions cannot delete album photos and authorized parents can', asy
   assert.equal(parentResponse.status, 200)
   assert.deepEqual(await parentResponse.json(), { deleted: true, id: 'photo-1' })
   assert.equal(deletedKey, 'babies/baby-1/photos/photo-1')
+
+  const cleanupPendingEnv = {
+    ...parentEnv,
+    BABY_PHOTOS: { delete: async () => { throw new Error('R2 unavailable') } },
+  }
+  const cleanupPendingResponse = await onPhotoDelete({ request: guestRequest, env: cleanupPendingEnv, params: { id: 'photo-1' } })
+  assert.equal(cleanupPendingResponse.status, 202)
+  assert.deepEqual(await cleanupPendingResponse.json(), { deleted: true, id: 'photo-1', storageCleanupPending: true, warning: 'R2 unavailable' })
 })
 
 test('detached baby profiles cannot read retained cloud album URLs', async () => {

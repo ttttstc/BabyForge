@@ -20,6 +20,7 @@ export const CARE_EVENT_TYPES = Object.freeze([
   'care_action',
   'health_visit',
   'vaccination',
+  'care_plan_item',
   'doctor_instruction',
 ])
 

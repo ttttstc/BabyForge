@@ -7,7 +7,7 @@ import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { getAdminTasks, getDailyTasks, getStageMilestones, localDateKey } from '../domain/carePlan.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { projectBabyState } from '../domain/babyState.js'
-import { navigate, ROUTES } from '../app/router.js'
+import { navigate, parseHashLocation, RECORD_RETURN_ROUTES, ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
@@ -33,6 +33,7 @@ const MORE_CARDS = [
 ]
 
 const P0_PANEL_TYPES = new Set(['feeding', 'sleep', 'diaper', 'medication', 'temperature', 'growth'])
+const RECORD_PANEL_TYPES = new Set([...P0_PANEL_TYPES, ...MORE_CARDS.map((card) => card.id)])
 
 function text(value, locale) {
   return value?.[locale === 'en-US' ? 'en' : 'zh'] || value?.zh || value || ''
@@ -84,11 +85,14 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   const initialQuery = new URLSearchParams(window.location.hash.split('?')[1] || '')
   const returnTo = (() => {
     const value = initialQuery.get('returnTo')
-    return value && /^#\/(today|growth(?:\/|$))/.test(value) ? value : ROUTES.today
+    if (!value) return ROUTES.today
+    const route = parseHashLocation(value).route
+    return RECORD_RETURN_ROUTES.includes(route) ? value : ROUTES.today
   })()
+  const returnRoute = parseHashLocation(returnTo).route
   const [activePanel, setActivePanel] = useState(() => {
     const panel = initialQuery.get('type') || initialQuery.get('panel')
-    return ['illness', 'feeding', 'growth', 'care', 'basic', 'concern', 'professional', 'questions'].includes(panel) ? panel : null
+    return RECORD_PANEL_TYPES.has(panel) || panel === 'illness' ? panel : null
   })
   const [editingEvent, setEditingEvent] = useState(null)
   const [selectedDay, setSelectedDay] = useState(() => localDayKey())
@@ -318,7 +322,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
       <div className="record-center-shell">
         <header className="record-center-hero">
           <div>
-            <button className="record-back-link" onClick={() => navigate(returnTo)}><ArrowLeft size={15} />{isEnglish ? 'Back' : '返回'}</button>
+            <button className="record-back-link" onClick={() => navigate(returnTo)}><ArrowLeft size={15} />{isEnglish ? (returnRoute.startsWith(ROUTES.growth) ? 'Back to growth' : 'Back to today') : (returnRoute.startsWith(ROUTES.growth) ? '返回成长' : '返回今天')}</button>
             <p className="eyebrow">{isEnglish ? 'For new parents' : '新手爸妈记录'}</p>
             <h1>{isEnglish ? 'Record center' : '记录中心'}</h1>
             <p>{isEnglish ? 'Keep the moments you notice today, so your family can look back and share them clearly when needed.' : '把今天看到的宝宝情况记下来，之后自己回看或和家人、医生沟通都更清楚。'}</p>

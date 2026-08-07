@@ -1,4 +1,4 @@
-const DAY_MS = 86_400_000
+import { calendarDayNumber } from './date.js'
 
 const STAGES = [
   { id: 'newborn-early', label: '新生儿早期', labelEn: 'Early newborn', rangeLabel: '出生后 0–7 天', rangeLabelEn: 'Days 0–7', min: 0, max: 7 },
@@ -50,25 +50,8 @@ export function getSexLabel(sex, locale = 'zh-CN') {
   return SEX_LABELS[sex] || '性别未设置'
 }
 
-function dayNumber(value) {
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) throw new TypeError('Invalid date')
-    return Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()) / DAY_MS
-  }
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value))
-  if (!match) throw new TypeError('Date must use YYYY-MM-DD')
-  const [, year, month, day] = match.map(Number)
-  const stamp = Date.UTC(year, month - 1, day)
-  const parsed = new Date(stamp)
-  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
-    throw new TypeError('Invalid calendar date')
-  }
-  return stamp / DAY_MS
-}
-
 export function getAgeDays(birthDate, today = new Date()) {
-  const days = dayNumber(today) - dayNumber(birthDate)
+  const days = calendarDayNumber(today) - calendarDayNumber(birthDate)
   if (days < 0) throw new RangeError('Birth date cannot be in the future')
   return days
 }

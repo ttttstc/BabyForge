@@ -90,6 +90,23 @@ test('parent uploads, switches, and reloads album photos', async ({ page }) => {
   await expect(page.getByTestId('album-shelf-photo')).toHaveCount(1)
 })
 
+test('parent can take a daily shot and browse photos by date', async ({ page }) => {
+  await createBaby(page)
+  await page.getByTestId('album-daily-input').setInputFiles('public/assets/login/login-hero.png')
+  const dialog = page.getByRole('dialog', { name: '添加 1 张照片' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: /保存照片/ }).click()
+  await expect(page.getByTestId('album-shelf-photo')).toHaveCount(1)
+  await page.getByRole('button', { name: '更多' }).click()
+  const calendar = page.locator('.album-calendar-dialog')
+  await expect(calendar).toBeVisible()
+  await expect(calendar.locator('.album-calendar-day.has-photos')).toHaveCount(1)
+  await calendar.locator('.album-calendar-day.has-photos').click()
+  await expect(calendar.locator('.album-calendar-photo-list')).toBeVisible()
+  await calendar.locator('.album-calendar-photo-list button').click()
+  await expect(page.locator('.album-photo-feature figcaption small')).toHaveText('login-hero.png')
+})
+
 test('parent records a growth fact with its source and reference context', async ({ page }) => {
   await createBaby(page)
 

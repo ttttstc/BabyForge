@@ -213,9 +213,10 @@ function baseResult(measurement, age, limitations, now) {
 export function evaluateGrowthMeasurement(measurement, baby, history = [], options = {}) {
   const now = options.now || new Date()
   const policyAge = resolveAgeContext({ baby, at: measurement?.measuredAt, purpose: 'growth_standard' })
-  // `options.ageBasis` is reserved for deterministic internal calculations;
-  // the legacy baby.growthAgeBasis field is never a formal evaluation input.
-  const requestedBasis = GROWTH_AGE_BASES.includes(options.ageBasis) ? options.ageBasis : GROWTH_AGE_BASES.includes(measurement?.ageBasis) ? measurement.ageBasis : policyAge.basis
+  // Only an explicit chronological/corrected override is accepted for
+  // deterministic internal calculations. Persisted measurement ageBasis is
+  // legacy metadata and cannot change the purpose-owned policy.
+  const requestedBasis = ['chronological', 'corrected'].includes(options.ageBasis) ? options.ageBasis : policyAge.basis
   let age
   try {
     age = getGrowthAgeContext(baby, measurement?.measuredAt, requestedBasis)
@@ -224,6 +225,9 @@ export function evaluateGrowthMeasurement(measurement, baby, history = [], optio
     age = { basis: requestedBasis, ageMonths: null, ageDays: null, limitations: ['缺少有效出生日期或测量日期'] }
   }
   const result = baseResult(measurement || {}, age, [], now)
+  if (measurement?.ageBasis === 'postmenstrual' && age.basis !== 'postmenstrual') {
+    result.limitations.push('经后年龄仅保留为输入口径，不替代标准年龄')
+  }
   result.inputObservationIds = [...new Set([...(Array.isArray(history) ? history : []).filter((item) => item?.type === measurement?.type && item?.status !== 'voided'), measurement].filter(Boolean).map((item) => item.id).filter(Boolean))]
   const validationErrors = validateMeasurement(measurement || {}, baby, now)
   if (validationErrors.length) {
@@ -300,7 +304,9 @@ export function evaluateGrowthMeasurement(measurement, baby, history = [], optio
 }
 
 export function createEvaluatedGrowthMeasurement(input, baby, history = [], options = {}) {
-  const measurement = createGrowthMeasurement({ ...input, ageBasis: input?.ageBasis || null }, options)
+  // Age basis is derived at evaluation time from the age policy; do not copy
+  // a legacy basis into a new observation.
+  const measurement = createGrowthMeasurement({ ...input, ageBasis: null }, options)
   return { ...measurement, evaluation: evaluateGrowthMeasurement(measurement, baby, history, options) }
 }
 

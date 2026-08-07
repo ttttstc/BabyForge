@@ -1921,6 +1921,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .album-header h1 { margin-bottom: 5px; font-family: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif; font-size: clamp(1.72rem, 2.4vw, 2.42rem); line-height: 1.05; letter-spacing: -.05em; }
 .album-header > div > p:last-child { margin: 0; color: #83786f; font-size: .68rem; line-height: 1.55; }
 .album-privacy-note { display: block; max-width: 640px; margin-top: 7px; color: #8d6f5d; font-size: .61rem; line-height: 1.45; }
+.album-header-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.album-daily-button { min-height: 39px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; color: #8e6558; border: 1px solid rgba(235, 124, 107, .28); border-radius: 999px; background: rgba(255, 247, 239, .76); cursor: pointer; font-size: .64rem; font-weight: 800; }
+.album-daily-button:hover:not(:disabled) { color: #b24f45; border-color: rgba(235, 124, 107, .52); background: #fff0eb; }
+.album-daily-button:disabled, .album-more-button:disabled { cursor: not-allowed; opacity: .5; }
 .album-upload-button {
   flex: 0 0 auto;
   min-height: 39px;
@@ -1992,9 +1996,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .growth-roadmap-dialog-source { display: grid; gap: 4px; padding: 12px 24px 18px; color: var(--muted); border-top: 1px solid var(--line); font-size: .56rem; line-height: 1.4; }
 .growth-roadmap-dialog-source a { width: fit-content; color: #7a5b8c; text-decoration: underline; }
 .album-shelf-section { position: relative; z-index: 3; min-width: 0; padding: 2px 0 5px; }
-.album-shelf-caption { display: flex; align-items: baseline; gap: 9px; padding: 0 24px 2px; }
+.album-shelf-caption { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 0 24px 2px; }
+.album-shelf-caption > div { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
 .album-shelf-caption span { color: #665c54; font-family: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif; font-size: .89rem; font-weight: 800; }
 .album-shelf-caption small { color: var(--muted); font-size: .56rem; }
+.album-more-button { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; padding: 3px 5px 3px 7px; color: #8e6558; border: 1px solid rgba(235, 124, 107, .24); border-radius: 999px; background: rgba(255, 247, 239, .75); cursor: pointer; font-size: .56rem; font-weight: 800; }
+.album-more-button:hover:not(:disabled) { color: #b24f45; border-color: rgba(235, 124, 107, .5); background: #fff0eb; }
 .album-shelf-viewport { position: relative; min-height: 105px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; }
 .album-shelf-track { width: max-content; min-width: max-content; height: 101px; display: flex; align-items: flex-end; padding: 12px 42px 15px; }
 .album-shelf-track.is-short { width: 100%; min-width: 100%; justify-content: center; }
@@ -2068,6 +2075,34 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .album-pending-photo input { min-height: 37px; padding: 0 8px; font-size: .62rem; }
 .album-upload-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px 19px; border-top: 1px solid var(--line); }
 .album-upload-dialog > footer button { min-height: 40px; padding: 0 15px; font-size: .68rem; }
+.album-calendar-dialog { width: min(720px, 100%); max-height: min(820px, calc(100vh - 36px)); overflow: auto; border: 1px solid rgba(255, 255, 255, .72); border-radius: 24px; background: #fffaf4; box-shadow: 0 26px 70px rgba(47, 42, 39, .24); animation: album-dialog-in .24s ease-out; }
+.album-calendar-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 21px 23px 13px; border-bottom: 1px solid var(--line); }
+.album-calendar-header .eyebrow { display: flex; align-items: center; gap: 5px; margin: 0 0 3px; color: var(--coral); }
+.album-calendar-header h2 { margin: 0 0 2px; color: #665c54; font-family: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif; font-size: 1.55rem; letter-spacing: -.04em; }
+.album-calendar-header small { color: var(--muted); font-size: .6rem; }
+.album-calendar-header > button { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 0; border-radius: 50%; background: #f2e7dd; cursor: pointer; }
+.album-calendar-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 13px 24px 6px; color: #665c54; }
+.album-calendar-toolbar strong { font-family: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif; font-size: .97rem; }
+.album-calendar-toolbar button { width: 29px; height: 29px; display: grid; place-items: center; color: #8e6558; border: 1px solid var(--line); border-radius: 50%; background: rgba(255, 247, 239, .72); cursor: pointer; }
+.album-calendar-weekdays, .album-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding-inline: 22px; }
+.album-calendar-weekdays { padding-bottom: 5px; color: var(--muted); font-size: .56rem; text-align: center; }
+.album-calendar-day { position: relative; min-height: 70px; overflow: hidden; padding: 0; color: #665c54; border: 1px solid rgba(117, 91, 70, .1); border-radius: 12px; background: rgba(247, 239, 231, .5); cursor: pointer; }
+.album-calendar-day:hover, .album-calendar-day.selected { border-color: rgba(235, 124, 107, .58); box-shadow: 0 0 0 2px rgba(235, 124, 107, .1); }
+.album-calendar-day.muted { opacity: .36; }
+.album-calendar-day img { width: 100%; height: 70px; display: block; object-fit: cover; filter: saturate(.88); }
+.album-calendar-day > span, .album-calendar-day > small { position: absolute; z-index: 1; top: 6px; left: 7px; font-size: .67rem; font-weight: 800; }
+.album-calendar-day > small { position: static; display: block; padding-top: 8px; font-size: .69rem; }
+.album-calendar-day.has-photos::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(47, 42, 39, .34), transparent 45%); pointer-events: none; }
+.album-calendar-day b { position: absolute; z-index: 2; right: 5px; bottom: 4px; min-width: 16px; padding: 2px 4px; color: #fffaf4; border-radius: 999px; background: rgba(47, 42, 39, .62); font-size: .5rem; }
+.album-calendar-day-panel { margin: 15px 22px 21px; padding: 12px; border-top: 1px solid var(--line); border-radius: 14px; background: rgba(247, 239, 231, .46); }
+.album-calendar-day-panel > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.album-calendar-day-panel > header strong { color: #665c54; font-size: .72rem; }
+.album-calendar-day-panel > header span { color: var(--muted); font-size: .58rem; }
+.album-calendar-photo-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 8px; margin-top: 10px; }
+.album-calendar-photo-list button { min-width: 0; padding: 0; overflow: hidden; text-align: left; border: 1px solid rgba(117, 91, 70, .12); border-radius: 10px; background: #fffaf4; cursor: pointer; }
+.album-calendar-photo-list button:hover { border-color: rgba(235, 124, 107, .56); transform: translateY(-1px); }
+.album-calendar-photo-list img { width: 100%; aspect-ratio: 1; display: block; object-fit: cover; }
+.album-calendar-photo-list span { display: block; overflow: hidden; padding: 4px 5px 5px; color: var(--muted); font-size: .5rem; text-overflow: ellipsis; white-space: nowrap; }
 
 @keyframes album-photo-rise {
   0% { opacity: .22; transform: translateY(104px) scale(.82) rotateX(-8deg); filter: blur(2px); }
@@ -2200,6 +2235,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .album-header { padding: 17px 15px 8px; }
   .album-header h1 { font-size: 1.72rem; }
   .album-header > div > p:last-child { max-width: 240px; }
+  .album-header-actions { gap: 5px; }
+  .album-daily-button, .album-upload-button { padding-inline: 10px; }
   .album-upload-button { padding-inline: 11px; }
   .growth-roadmap-heading { padding-inline: 16px; }
   .growth-roadmap-track { padding-inline: max(16px, calc(50% - 60px)); }
@@ -2217,6 +2254,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .album-empty-stage { min-height: 285px; }
   .album-dialog-backdrop { align-items: end; padding: 8px; }
   .album-upload-dialog { max-height: calc(100svh - 16px); border-radius: 22px 22px 17px 17px; }
+  .album-calendar-dialog { max-height: calc(100svh - 16px); border-radius: 22px 22px 17px 17px; }
+  .album-calendar-weekdays, .album-calendar-grid { gap: 4px; padding-inline: 14px; }
+  .album-calendar-day { min-height: 53px; border-radius: 9px; }
+  .album-calendar-day img { height: 53px; }
+  .album-calendar-day-panel { margin-inline: 14px; }
   .album-pending-photo { grid-template-columns: 58px minmax(0, 1fr); }
   .album-pending-photo > img { width: 58px; height: 58px; }
   .album-pending-photo label { grid-column: 1 / -1; }
@@ -2227,7 +2269,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .album-header { gap: 9px; }
   .album-header h1 { max-width: 250px; font-size: 1.42rem; }
   .album-header > div > p:last-child { display: none; }
-  .album-upload-button { min-height: 36px; padding: 0 10px; font-size: .61rem; }
+  .album-header-actions { align-self: stretch; }
+  .album-daily-button, .album-upload-button { min-height: 36px; padding: 0 9px; font-size: .59rem; }
   .album-shelf-caption small { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .album-feature-area { padding-bottom: 7px; }
   .album-photo-feature figcaption { align-items: flex-start; flex-direction: column; gap: 2px; }

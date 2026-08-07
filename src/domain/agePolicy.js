@@ -1,3 +1,5 @@
+import { calendarDateKey } from './date.js'
+
 const DAY_MS = 86_400_000
 const TERM_GESTATION_DAYS = 37 * 7
 const STANDARD_GESTATION_DAYS = 40 * 7
@@ -26,9 +28,7 @@ function dateKey(value) {
 }
 
 function localDateKey(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) throw new TypeError('Invalid date')
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+  return calendarDateKey(value)
 }
 
 function completedMonths(start, end) {
@@ -109,6 +109,22 @@ export function resolveAgeContext({ baby, at = new Date(), purpose = 'dashboard'
   const limitations = []
   if (chronologicalAgeDays < 0) limitations.push('评估日期早于出生日期')
   const gestationalDays = getGestationalDays(baby)
+  if (normalizedPurpose === 'birth_standard' && gestationalDays === null) {
+    return {
+      purpose: normalizedPurpose,
+      basis: 'postmenstrual',
+      at: measuredAt,
+      ageDays: null,
+      ageMonths: null,
+      chronological: { days: chronologicalAgeDays, months: chronologicalAgeMonths },
+      corrected: null,
+      postmenstrual: null,
+      gestationalDays: null,
+      correctionActive: false,
+      correctionLimitDays: null,
+      limitations: ['缺少有效出生孕周，无法使用出生标准'],
+    }
+  }
   const preterm = gestationalDays !== null && gestationalDays < TERM_GESTATION_DAYS
   const correctionLimit = preterm ? correctionLimitDays(gestationalDays) : null
   const correctedAgeDays = gestationalDays === null ? null : chronologicalAgeDays - (STANDARD_GESTATION_DAYS - gestationalDays)

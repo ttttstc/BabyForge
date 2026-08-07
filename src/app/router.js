@@ -20,6 +20,14 @@ export const ROUTES = {
   settings: '#/settings',
 }
 
+export const RECORD_RETURN_ROUTES = Object.freeze([
+  ROUTES.today,
+  ROUTES.growth,
+  ROUTES.growthChart,
+  ROUTES.growthStage,
+  ROUTES.growthHistory,
+])
+
 const LEGACY_ROUTE_ALIASES = {
   '#/stage': ROUTES.growth,
   '#/stage/newborn': ROUTES.growth,

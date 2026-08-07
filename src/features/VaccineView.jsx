@@ -1,20 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, BookOpenCheck, CalendarClock, Check, ChevronRight, Circle, ExternalLink, ShieldCheck, Syringe, X } from 'lucide-react'
 import { getAgeDays } from '../domain/baby.js'
+import { calendarDateKey } from '../domain/date.js'
 import { VACCINE_DOSES, VACCINE_GUIDANCE, VACCINE_STANDARD } from '../content/vaccines.js'
 import { createCareEvent, voidCareEvent } from '../domain/careEvents.js'
 import { ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 
-function addDays(dateText, days) {
-  const date = new Date(`${dateText}T12:00:00`)
+function addCalendarPeriod(dateText, ageSpec = {}) {
+  const [year, month, day] = String(dateText).slice(0, 10).split('-').map(Number)
+  const months = Number(ageSpec.months || 0) + Number(ageSpec.years || 0) * 12
+  const days = Number(ageSpec.days || 0)
+  const targetMonth = month - 1 + months
+  const targetYear = year + Math.floor(targetMonth / 12)
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12
+  const lastDay = new Date(targetYear, normalizedMonth + 1, 0).getDate()
+  const date = new Date(targetYear, normalizedMonth, Math.min(day, lastDay), 12)
   date.setDate(date.getDate() + days)
-  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+  return calendarDateKey(date)
 }
 
-function statusOf(targetDays, currentAgeDays) {
-  if (targetDays === currentAgeDays) return 'current'
-  if (targetDays < currentAgeDays) return 'past'
+function dueDateFor(birthDate, item) {
+  return addCalendarPeriod(birthDate, item.ageSpec || { days: item.ageDays || 0 })
+}
+
+function formatPlanDate(dateKey) {
+  return new Date(`${dateKey}T12:00:00`).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function statusOf(targetKey, currentKey) {
+  if (targetKey === currentKey) return 'current'
+  if (targetKey < currentKey) return 'past'
   return 'later'
 }
 
@@ -24,22 +40,24 @@ export function VaccineView({ state, setState, onClear, onLogout, readOnly = fal
   const ageDays = getAgeDays(state.baby.birthDate)
   const [selected, setSelected] = useState(null)
   const roadmapRef = useRef(null)
+  const todayKey = calendarDateKey(new Date())
   const groups = useMemo(() => Object.values(VACCINE_DOSES.reduce((map, item) => {
-    map[item.ageLabel] ||= { ageLabel: item.ageLabel, ageDays: item.ageDays, doses: [] }
+    map[item.ageLabel] ||= { ageLabel: item.ageLabel, ageDays: item.ageDays, dueKey: dueDateFor(state.baby.birthDate, item), doses: [] }
     map[item.ageLabel].doses.push(item)
     return map
-  }, {})), [])
-  const currentGroup = [...groups].filter((group) => group.ageDays <= ageDays).at(-1) || groups[0]
-  const nextGroup = groups.find((group) => group.ageDays > ageDays)
+  }, {})), [state.baby.birthDate])
+  const currentIndex = Math.max(0, groups.reduce((index, group, groupIndex) => group.dueKey <= todayKey ? groupIndex : index, -1))
+  const currentGroup = groups[currentIndex] || groups[0]
+  const nextGroup = groups[currentIndex + 1]
   const completedVaccineIds = useMemo(() => new Set((state.careEvents || [])
-    .filter((event) => event.status === 'active' && event.category === 'vaccine' && event.payload?.status === 'completed')
+    .filter((event) => event.status === 'active' && ((event.category === 'care_plan_item' && event.payload?.status === 'done') || (event.category === 'vaccine' && event.payload?.status === 'completed')))
     .map((event) => event.payload.vaccineId)
     .filter(Boolean)), [state.careEvents])
 
   useEffect(() => {
     const current = roadmapRef.current?.querySelector('.vaccine-stop.current')
     current?.scrollIntoView?.({ inline: 'center', block: 'nearest' })
-  }, [ageDays])
+  }, [currentGroup?.dueKey])
 
   const scrollRoadmap = (direction) => roadmapRef.current?.scrollBy({ left: direction * 620, behavior: 'smooth' })
 
@@ -48,7 +66,7 @@ export function VaccineView({ state, setState, onClear, onLogout, readOnly = fal
     const now = new Date().toISOString()
     setState((current) => {
       const actor = current.careActors.find((entry) => entry.id === current.preferences.currentRecorderId) || current.careActors[0]
-      const existing = [...(current.careEvents || [])].reverse().find((event) => event.status === 'active' && event.category === 'vaccine' && event.payload?.vaccineId === item.id)
+      const existing = [...(current.careEvents || [])].reverse().find((event) => event.status === 'active' && ((event.category === 'care_plan_item' && event.payload?.planItemId === `vaccine:${item.id}`) || (event.category === 'vaccine' && event.payload?.vaccineId === item.id)))
       if (existing) {
         const voided = voidCareEvent(existing, { now })
         return { ...current, careEvents: current.careEvents.map((event) => event.id === existing.id ? voided : event) }
@@ -56,12 +74,12 @@ export function VaccineView({ state, setState, onClear, onLogout, readOnly = fal
       const completed = createCareEvent({
         babyId: current.baby.id,
         kind: 'caregiver_observation',
-        category: 'vaccine',
+        category: 'care_plan_item',
         occurredAt: now,
         recordedAt: now,
         actor,
         source: 'caregiver',
-        payload: { vaccineId: item.id, status: 'completed', vaccine: item.vaccine, doseLabel: item.doseLabel, ageLabel: item.ageLabel, completedAt: now },
+        payload: { planItemId: `vaccine:${item.id}`, vaccineId: item.id, status: 'done', dueAt: dueDateFor(current.baby.birthDate, item), vaccine: item.vaccine, doseLabel: item.doseLabel, ageLabel: item.ageLabel, updatedAt: now },
       }, { now })
       return { ...current, careEvents: [...(current.careEvents || []), completed] }
     })
@@ -79,7 +97,7 @@ export function VaccineView({ state, setState, onClear, onLogout, readOnly = fal
         <div className="vaccine-position" aria-label={isEnglish ? 'Current position' : '宝宝当前所处节点'}>
           <span>{isEnglish ? 'Current position' : `${state.baby.nickname}现在`}</span>
           <strong>{currentGroup.ageLabel}</strong>
-          <small>{nextGroup ? `${isEnglish ? 'Next' : '下一节点'} ${nextGroup.ageLabel} · ${addDays(state.baby.birthDate, nextGroup.ageDays)}` : (isEnglish ? 'Roadmap complete' : '已到本路标末端')}</small>
+          <small>{nextGroup ? `${isEnglish ? 'Next' : '下一节点'} ${nextGroup.ageLabel} · ${formatPlanDate(nextGroup.dueKey)}` : (isEnglish ? 'Roadmap complete' : '已到本路标末端')}</small>
         </div>
       </header>
 
@@ -100,9 +118,9 @@ export function VaccineView({ state, setState, onClear, onLogout, readOnly = fal
 
         <div className="vaccine-roadmap" ref={roadmapRef} aria-label={isEnglish ? 'Vaccination roadmap' : '疫苗接种路标'}>
           {groups.map((group) => {
-            const status = statusOf(group.ageDays, currentGroup.ageDays)
+            const status = statusOf(group.dueKey, currentGroup.dueKey)
             const statusLabel = status === 'current' ? '宝宝当前节点' : status === 'past' ? '计划月龄已到' : '后续计划'
-            return <article key={group.ageLabel} className={`vaccine-stop ${status}`} data-vaccine-age={group.ageDays}>
+            return <article key={group.ageLabel} className={`vaccine-stop ${status}`} data-vaccine-age={group.ageDays} data-vaccine-due={group.dueKey}>
               <header><span className="vaccine-stop-age">{group.ageLabel}</span><small>{statusLabel}</small></header>
               <div className="vaccine-stop-doses">
                 {group.doses.map((item) => {
@@ -117,7 +135,7 @@ export function VaccineView({ state, setState, onClear, onLogout, readOnly = fal
                   </div>
                 })}
               </div>
-              <footer><CalendarClock size={14} /><span>计划日期</span><strong>{addDays(state.baby.birthDate, group.ageDays)}</strong></footer>
+              <footer><CalendarClock size={14} /><span>计划日期</span><strong>{formatPlanDate(group.dueKey)}</strong></footer>
             </article>
           })}
         </div>
@@ -143,7 +161,7 @@ function VaccineDialog({ item, birthDate, completed, readOnly, onToggle, onClose
   return <div className="vaccine-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <article className="vaccine-dialog" role="dialog" aria-modal="true" aria-labelledby="vaccine-dialog-title">
       <button type="button" className="vaccine-dialog-close" onClick={onClose} aria-label="关闭"><X size={20} /></button>
-      <header><span>{item.ageLabel} · {item.doseLabel} · {item.abbreviation}</span><h2 id="vaccine-dialog-title">{item.vaccine}</h2><p><CalendarClock size={15} />标准计划日期：{addDays(birthDate, item.ageDays)}</p><button type="button" className={`vaccine-dialog-complete${completed ? ' done' : ''}`} onClick={onToggle} disabled={readOnly} aria-pressed={completed}>{completed ? <><Check size={15} />已完成 · 取消标记</> : <><Circle size={15} />标记为已完成</>}</button></header>
+      <header><span>{item.ageLabel} · {item.doseLabel} · {item.abbreviation}</span><h2 id="vaccine-dialog-title">{item.vaccine}</h2><p><CalendarClock size={15} />标准计划日期：{formatPlanDate(dueDateFor(birthDate, item))}</p><button type="button" className={`vaccine-dialog-complete${completed ? ' done' : ''}`} onClick={onToggle} disabled={readOnly} aria-pressed={completed}>{completed ? <><Check size={15} />已完成 · 取消标记</> : <><Circle size={15} />标记为已完成</>}</button></header>
       <section className="vaccine-purpose"><strong>这针（剂）是做什么的</strong><p>{item.purpose}</p>{item.note && <small>{item.note}</small>}</section>
       <div className="vaccine-guidance-grid">
         <GuidanceBlock title="接种前准备" items={VACCINE_GUIDANCE.before} tone="before" />

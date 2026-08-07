@@ -15,35 +15,38 @@ const PURPOSES = {
   hepa: '预防甲型病毒性肝炎。减毒活疫苗采用 1 剂程序；灭活疫苗采用 2 剂程序。',
 }
 
-function dose(id, ageDays, ageLabel, vaccine, doseLabel, abbreviation, purposeKey, note = '') {
-  return { id, ageDays, ageLabel, vaccine, doseLabel, abbreviation, purpose: PURPOSES[purposeKey], note }
+function dose(id, ageSpec, ageDays, ageLabel, vaccine, doseLabel, abbreviation, purposeKey, note = '') {
+  return { id, ageSpec, ageDays, ageLabel, vaccine, doseLabel, abbreviation, purpose: PURPOSES[purposeKey], note }
 }
 
 export const VACCINE_DOSES = [
-  dose('hepb-1', 0, '出生时', '乙肝疫苗', '第 1 剂', 'HepB', 'hepB', '建议出生后 24 小时内完成。'),
-  dose('bcg-1', 0, '出生时', '卡介苗', '第 1 剂', 'BCG', 'bcg', '接种后局部可经历红肿、脓疱、结痂等过程，不挤压、不自行处理；异常扩大或持续担忧时咨询接种门诊。'),
-  dose('hepb-2', 30, '1 月龄', '乙肝疫苗', '第 2 剂', 'HepB', 'hepB'),
-  dose('ipv-1', 61, '2 月龄', '脊灰灭活疫苗', '第 1 剂', 'IPV', 'polio'),
-  dose('dtap-1', 61, '2 月龄', '百白破疫苗', '第 1 剂', 'DTaP', 'dtap'),
-  dose('ipv-2', 91, '3 月龄', '脊灰灭活疫苗', '第 2 剂', 'IPV', 'polio'),
-  dose('bopv-3', 122, '4 月龄', '脊灰减毒活疫苗', '第 3 剂', 'bOPV', 'polio', '本剂为口服疫苗；是否改用含 IPV 方案由接种门诊结合健康状况和既往记录决定。'),
-  dose('dtap-2', 122, '4 月龄', '百白破疫苗', '第 2 剂', 'DTaP', 'dtap'),
-  dose('hepb-3', 183, '6 月龄', '乙肝疫苗', '第 3 剂', 'HepB', 'hepB'),
-  dose('dtap-3', 183, '6 月龄', '百白破疫苗', '第 3 剂', 'DTaP', 'dtap'),
-  dose('mpsva-1', 183, '6 月龄', 'A 群流脑多糖疫苗', '第 1 剂', 'MPSV-A', 'meningococcal'),
-  dose('mmr-1', 244, '8 月龄', '麻腮风疫苗', '第 1 剂', 'MMR', 'mmr'),
-  dose('je-start', 244, '8 月龄', '乙脑疫苗', '起始剂次', 'JE-L / JE-I', 'je', '当地使用减毒活或灭活疫苗时程序不同；以接种证和门诊安排为准。'),
-  dose('mpsva-2', 274, '9 月龄', 'A 群流脑多糖疫苗', '第 2 剂', 'MPSV-A', 'meningococcal'),
-  dose('dtap-4', 548, '18 月龄', '百白破疫苗', '第 4 剂', 'DTaP', 'dtap'),
-  dose('mmr-2', 548, '18 月龄', '麻腮风疫苗', '第 2 剂', 'MMR', 'mmr'),
-  dose('hepa-start', 548, '18 月龄', '甲肝疫苗', '起始剂次', 'HepA-L / HepA-I', 'hepa', '当地使用减毒活或灭活疫苗时程序不同；以接种证和门诊安排为准。'),
-  dose('je-follow', 730, '2 周岁', '乙脑疫苗', '后续剂次', 'JE-L / JE-I', 'je'),
-  dose('hepa-follow', 730, '2 周岁', '甲肝灭活疫苗', '第 2 剂（如采用灭活程序）', 'HepA-I', 'hepa'),
-  dose('mpsvac-1', 1095, '3 周岁', 'A 群 C 群流脑多糖疫苗', '第 1 剂', 'MPSV-AC', 'meningococcal'),
-  dose('bopv-4', 1461, '4 周岁', '脊灰减毒活疫苗', '第 4 剂', 'bOPV', 'polio'),
-  dose('dtap-5', 2191, '6 周岁', '百白破疫苗', '第 5 剂', 'DTaP', 'dtap'),
-  dose('mpsvac-2', 2191, '6 周岁', 'A 群 C 群流脑多糖疫苗', '第 2 剂', 'MPSV-AC', 'meningococcal'),
-  dose('jei-4', 2191, '6 周岁', '乙脑灭活疫苗', '第 4 剂（如采用灭活程序）', 'JE-I', 'je'),
+  dose('hepb-1', { months: 0 }, 0, '出生时', '乙肝疫苗', '第 1 剂', 'HepB', 'hepB', '建议出生后 24 小时内完成。'),
+  dose('bcg-1', { months: 0 }, 0, '出生时', '卡介苗', '第 1 剂', 'BCG', 'bcg', '接种后局部可经历红肿、脓疱、结痂等过程，不挤压、不自行处理；异常扩大或持续担忧时咨询接种门诊。'),
+  dose('hepb-2', { months: 1 }, 30, '1 月龄', '乙肝疫苗', '第 2 剂', 'HepB', 'hepB'),
+  dose('ipv-1', { months: 2 }, 61, '2 月龄', '脊灰灭活疫苗', '第 1 剂', 'IPV', 'polio'),
+  dose('dtap-1', { months: 2 }, 61, '2 月龄', '百白破疫苗', '第 1 剂', 'DTaP', 'dtap'),
+  dose('ipv-2', { months: 3 }, 91, '3 月龄', '脊灰灭活疫苗', '第 2 剂', 'IPV', 'polio'),
+  dose('bopv-3', { months: 4 }, 122, '4 月龄', '脊灰减毒活疫苗', '第 3 剂', 'bOPV', 'polio', '本剂为口服疫苗；是否改用含 IPV 方案由接种门诊结合健康状况和既往记录决定。'),
+  dose('dtap-2', { months: 4 }, 122, '4 月龄', '百白破疫苗', '第 2 剂', 'DTaP', 'dtap'),
+  dose('hepb-3', { months: 6 }, 183, '6 月龄', '乙肝疫苗', '第 3 剂', 'HepB', 'hepB'),
+  dose('dtap-3', { months: 6 }, 183, '6 月龄', '百白破疫苗', '第 3 剂', 'DTaP', 'dtap'),
+  dose('mpsva-1', { months: 6 }, 183, '6 月龄', 'A 群流脑多糖疫苗', '第 1 剂', 'MPSV-A', 'meningococcal'),
+  dose('mmr-1', { months: 8 }, 244, '8 月龄', '麻腮风疫苗', '第 1 剂', 'MMR', 'mmr'),
+  dose('je-l-1', { months: 8 }, 244, '8 月龄', '乙脑减毒活疫苗', '第 1 剂', 'JE-L', 'je', '减毒活疫苗程序：8 月龄、2 周岁各 1 剂。'),
+  dose('je-i-1', { months: 8 }, 244, '8 月龄', '乙脑灭活疫苗', '第 1 剂', 'JE-I', 'je', '灭活疫苗程序：8 月龄接种 2 剂，间隔 7–10 天；之后 2 周岁、6 周岁各 1 剂。'),
+  dose('je-i-2', { months: 8, days: 7 }, 251, '8 月龄后 7–10 天', '乙脑灭活疫苗', '第 2 剂', 'JE-I', 'je', '与第 1 剂间隔 7–10 天，具体日期由接种门诊安排。'),
+  dose('mpsva-2', { months: 9 }, 274, '9 月龄', 'A 群流脑多糖疫苗', '第 2 剂', 'MPSV-A', 'meningococcal'),
+  dose('dtap-4', { months: 18 }, 548, '18 月龄', '百白破疫苗', '第 4 剂', 'DTaP', 'dtap'),
+  dose('mmr-2', { months: 18 }, 548, '18 月龄', '麻腮风疫苗', '第 2 剂', 'MMR', 'mmr'),
+  dose('hepa-start', { months: 18 }, 548, '18 月龄', '甲肝疫苗', '起始剂次', 'HepA-L / HepA-I', 'hepa', '当地使用减毒活或灭活疫苗时程序不同；以接种证和门诊安排为准。'),
+  dose('je-l-2', { years: 2 }, 730, '2 周岁', '乙脑减毒活疫苗', '第 2 剂', 'JE-L', 'je'),
+  dose('je-i-3', { years: 2 }, 730, '2 周岁', '乙脑灭活疫苗', '第 3 剂', 'JE-I', 'je'),
+  dose('hepa-follow', { years: 2 }, 730, '2 周岁', '甲肝灭活疫苗', '第 2 剂（如采用灭活程序）', 'HepA-I', 'hepa'),
+  dose('mpsvac-1', { years: 3 }, 1095, '3 周岁', 'A 群 C 群流脑多糖疫苗', '第 1 剂', 'MPSV-AC', 'meningococcal'),
+  dose('bopv-4', { years: 4 }, 1461, '4 周岁', '脊灰减毒活疫苗', '第 4 剂', 'bOPV', 'polio'),
+  dose('dtap-5', { years: 6 }, 2191, '6 周岁', '百白破疫苗', '第 5 剂', 'DTaP', 'dtap'),
+  dose('mpsvac-2', { years: 6 }, 2191, '6 周岁', 'A 群 C 群流脑多糖疫苗', '第 2 剂', 'MPSV-AC', 'meningococcal'),
+  dose('je-i-4', { years: 6 }, 2191, '6 周岁', '乙脑灭活疫苗', '第 4 剂', 'JE-I', 'je'),
 ]
 
 export const VACCINE_GUIDANCE = {
