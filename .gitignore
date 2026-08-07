@@ -4,5 +4,7 @@ dist/
 test-results/
 playwright-report/
 .env
+.env.*
+.dev.vars*
 .DS_Store
 prompt/image/黄疸/source/ill

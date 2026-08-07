@@ -5,6 +5,7 @@ import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
+import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
 import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
@@ -42,7 +43,7 @@ export function App() {
     return next
   }
 
-  function commitState(updater) {
+  function commitState(updater, options = {}) {
     if (readOnly) return Promise.resolve(false)
     const previous = stateRef.current
     const rawNext = typeof updater === 'function' ? updater(previous) : updater
@@ -54,7 +55,7 @@ export function App() {
     stateRef.current = next
     saveState(globalThis.localStorage, next, session?.username)
     setState(next)
-    if (session?.mode !== 'cloudflare' || !next.baby) return Promise.resolve(true)
+    if (options.skipSync || session?.mode !== 'cloudflare' || !next.baby) return Promise.resolve(true)
     if (eventChanges.length) {
       pendingSyncRef.current = [...pendingSyncRef.current.filter((item) => !eventChanges.some((change) => change.event.id === item.event.id)), ...eventChanges]
     }
@@ -297,6 +298,10 @@ export function App() {
 
   if (route === ROUTES.pediatric) {
     return <PediatricDiseasesView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  }
+
+  if (route === ROUTES.naibaAi) {
+    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />
