@@ -154,7 +154,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
     try {
       if (file.size > 6_000_000) throw new Error(isEnglish ? 'Compress the report to about 6 MB or less.' : '请把报告压缩到约 6 MB 以内。')
       let report
-      if (file.type === 'text/plain') {
+      if (file.type === 'text/plain' || file.name?.toLowerCase().endsWith('.txt')) {
         report = parseMedicalReportText(await file.text(), { name: file.name })
       } else {
         if (!cloudMode) throw new Error(isEnglish ? 'Image/PDF report recognition requires the Cloudflare account mode. Plain text reports still work locally.' : '图片/PDF 报告识别需要 Cloudflare 账号模式；本地模式仍可使用纯文本报告。')

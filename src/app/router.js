@@ -10,11 +10,8 @@ export const ROUTES = {
   pediatric: '#/topic/pediatric-diseases',
   experience: '#/experience',
   naibaAi: '#/naiba-ai',
+  summary: '#/doctor-summary',
   settings: '#/settings',
-}
-
-const LEGACY_ROUTE_ALIASES = {
-  '#/doctor-summary': ROUTES.records,
 }
 
 export function navigate(route) {
@@ -26,8 +23,7 @@ function rawHashRoute() {
 }
 
 function hashRoute() {
-  const rawRoute = rawHashRoute()
-  return LEGACY_ROUTE_ALIASES[rawRoute] || rawRoute
+  return rawHashRoute()
 }
 
 export function useHashRoute() {
@@ -35,11 +31,7 @@ export function useHashRoute() {
 
   useEffect(() => {
     const update = () => {
-      const nextRoute = hashRoute()
-      if (rawHashRoute() !== nextRoute) {
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextRoute}`)
-      }
-      setRoute(nextRoute)
+      setRoute(hashRoute())
     }
     update()
     window.addEventListener('hashchange', update)
