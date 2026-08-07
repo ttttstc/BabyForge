@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createNaibaTools } from '../functions/_shared/naibaTools.js'
 import { isApprovedAuthorityUrl, outputAllowed, toolOutputAllowed } from '../src/domain/naibaGuardrails.js'
 
 test('authority URL guard requires exact https hosts without URL tricks', () => {
@@ -16,4 +17,10 @@ test('tool output uses the same medical and authority boundary', () => {
   assert.equal(toolOutputAllowed({ text: '请按处方剂量服用' }), false)
   assert.equal(toolOutputAllowed({ text: '来源：https://attacker.example' }), false)
   assert.equal(toolOutputAllowed({ text: '已记录事实，不含行动建议' }), true)
+})
+
+test('hosted search tools remain constructible while local tools are wrapped', () => {
+  const tools = createNaibaTools('stage_parenting_qa', { allowExternalSearch: true })
+  assert.ok(tools.some((item) => item.name === 'web_search'))
+  assert.ok(tools.filter((item) => item.name !== 'web_search').every((item) => typeof item.invoke === 'function'))
 })

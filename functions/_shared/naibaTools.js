@@ -13,6 +13,10 @@ function runtime(runContext) {
 }
 
 function guardToolResult(definition) {
+  // Hosted provider tools (for example web search) expose only providerData;
+  // their results are still covered by the agent output guardrail, but there
+  // is no local invoke function to wrap.
+  if (typeof definition?.invoke !== 'function') return definition
   const invoke = definition.invoke.bind(definition)
   return {
     ...definition,

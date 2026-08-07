@@ -56,7 +56,9 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
     name: '奶爸AI',
     model,
     instructions: () => instructionsFor(context),
-    tools: createNaibaTools(skillId, { allowExternalSearch: localKnowledge.length === 0 }),
+    // Hosted web search is a Responses-only tool. Chat-completions-compatible
+    // gateways must rely on the frozen local knowledge pack instead.
+    tools: createNaibaTools(skillId, { allowExternalSearch: localKnowledge.length === 0 && parseOptionalBoolean(useResponses) !== false }),
     modelSettings: { temperature: 0 },
     inputGuardrails: [{ name: 'naiba-input-boundary', runInParallel: false, execute: async ({ input }) => ({ tripwireTriggered: String(input || '').length > INPUT_LIMIT, outputInfo: { rule: 'input_length' } }) }],
     outputGuardrails: [{ name: 'naiba-output-safety', execute: async ({ agentOutput }) => ({ tripwireTriggered: !outputAllowed(String(agentOutput || ''), context), outputInfo: { rule: 'medical_and_authority_boundary' } }) }],
