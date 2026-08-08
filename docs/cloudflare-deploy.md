@@ -90,6 +90,8 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 
 GitHub Actions 发布会从同名 Repository Secrets 同步这四项到 Cloudflare Pages，并在任何一项缺失时停止发布，避免生产环境静默退回固定本地回答。更新模型配置时应修改 GitHub Repository Secrets，再运行发布工作流；不要只修改本地 `.env.local`。
 
+发布环境还需要独立的 `AI_HEALTH_TOKEN` Repository Secret。部署完成后，工作流使用该 Secret 调用受保护的 `/api/ai/health`，只有生产 Pages Function 真正取得模型回答后发布任务才会通过；健康检查不读取或写入家庭数据。
+
 Windows 环境可运行 `powershell -File scripts/sync-model-secrets.ps1 -EnvFile .env.local`，从本地文件安全更新这四项 Repository Secrets；脚本只输出变量名，不输出值。
 
 本地 Pages Functions 联调可在 `wrangler.jsonc` 同目录创建未提交的 `.dev.vars`：

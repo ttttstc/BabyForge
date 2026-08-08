@@ -65,15 +65,18 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           OPENAI_USE_RESPONSES: ${{ secrets.OPENAI_USE_RESPONSES }}
+          AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
         run: |
           test -n "$OPENAI_API_KEY"
           test -n "$OPENAI_BASE_URL"
           test -n "$OPENAI_MODEL"
           test -n "$OPENAI_USE_RESPONSES"
+          test -n "$AI_HEALTH_TOKEN"
           printf '%s' "$OPENAI_API_KEY" | npx wrangler pages secret put OPENAI_API_KEY --project-name babyforge
           printf '%s' "$OPENAI_BASE_URL" | npx wrangler pages secret put OPENAI_BASE_URL --project-name babyforge
           printf '%s' "$OPENAI_MODEL" | npx wrangler pages secret put OPENAI_MODEL --project-name babyforge
           printf '%s' "$OPENAI_USE_RESPONSES" | npx wrangler pages secret put OPENAI_USE_RESPONSES --project-name babyforge
+          printf '%s' "$AI_HEALTH_TOKEN" | npx wrangler pages secret put AI_HEALTH_TOKEN --project-name babyforge
 
       - name: Deploy Pages
         uses: cloudflare/wrangler-action@v3
@@ -82,3 +85,10 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name babyforge --branch main --commit-hash ${{ github.sha }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify production model call
+        env:
+          AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
+        run: |
+          response="$(curl --fail --retry 3 --retry-delay 3 --max-time 70 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" https://babyforge.pages.dev/api/ai/health)"
+          RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); if (!result.ok || result.answerLength < 10) process.exit(1); console.log('Production model answered:', result.answerLength, 'characters')"

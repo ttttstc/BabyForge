@@ -9,4 +9,7 @@ test('Cloudflare deployment publishes the default LLM configuration before Pages
     assert.match(workflow, new RegExp(`pages secret put \\"?${name}`), `${name} is not published to Cloudflare Pages`)
   }
   assert.ok(workflow.indexOf('pages secret put OPENAI_API_KEY') < workflow.indexOf('pages deploy dist'), 'model secrets must be published before the Pages deployment')
+  assert.match(workflow, /secrets\.AI_HEALTH_TOKEN/)
+  assert.match(workflow, /pages secret put AI_HEALTH_TOKEN/)
+  assert.ok(workflow.indexOf('pages deploy dist') < workflow.indexOf('babyforge.pages.dev/api/ai/health'), 'production model verification must run after deployment')
 })
