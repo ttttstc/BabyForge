@@ -12,7 +12,8 @@ test('Cloudflare deployment publishes the default LLM configuration before Pages
   assert.match(workflow, /secrets\.AI_HEALTH_TOKEN/)
   assert.match(workflow, /pages secret put AI_HEALTH_TOKEN/)
   assert.match(workflow, /steps\.deploy\.outputs\.deployment-url/)
-  assert.ok(workflow.indexOf('pages deploy dist') < workflow.indexOf('$DEPLOYMENT_URL/api/ai/health'), 'the exact deployed artifact must be verified after deployment')
+  assert.match(workflow, /result\.deployment === process\.env\.EXPECTED_DEPLOYMENT\.slice\(0, 12\)/)
+  assert.ok(workflow.indexOf('pages deploy dist') < workflow.indexOf('babyforge.pages.dev/api/ai/health'), 'the production alias must be verified after deployment')
 })
 
 test('local secret sync preserves exact values without PowerShell pipeline newlines', async () => {

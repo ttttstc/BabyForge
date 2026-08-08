@@ -16,11 +16,19 @@ function parseOptionalBoolean(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
 }
 
-export async function createNaibaModelProvider({ apiKey, baseURL = '', useResponses } = {}) {
+export async function createNaibaModelProvider({ apiKey, baseURL = '', useResponses, transportFetch } = {}) {
   const parsedUseResponses = parseOptionalBoolean(useResponses)
   const directIpFetch = await cloudflareDirectIpFetch(baseURL)
   if (directIpFetch) {
     const options = { openAIClient: new OpenAI({ apiKey, baseURL, fetch: directIpFetch, maxRetries: 0 }) }
+    if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
+    return new OpenAIProvider(options)
+  }
+  if (transportFetch) {
+    // Local DNS overrides still use a normal HTTPS provider. Keep the SDK's
+    // bounded retries so a transient 429 does not immediately become the
+    // generic local fallback shown in the chat UI.
+    const options = { openAIClient: new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch, maxRetries: 2 }) }
     if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
     return new OpenAIProvider(options)
   }
@@ -66,7 +74,7 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses }) {
+export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses, transportFetch }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
@@ -84,7 +92,7 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
     outputGuardrails: [{ name: 'naiba-output-safety', execute: async ({ agentOutput }) => ({ tripwireTriggered: !outputAllowed(String(agentOutput || ''), context), outputInfo: { rule: 'medical_and_authority_boundary' } }) }],
   })
   const runner = new Runner({
-    modelProvider: await createNaibaModelProvider({ apiKey, baseURL, useResponses }),
+    modelProvider: await createNaibaModelProvider({ apiKey, baseURL, useResponses, transportFetch }),
     tracingDisabled: true,
     traceIncludeSensitiveData: false,
     workflowName: 'BabyForge Naiba AI',

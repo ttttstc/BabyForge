@@ -1,5 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { Resolver } from 'node:dns/promises'
+import { Agent as HttpAgent, fetch as undiciFetch } from 'undici'
 import { describeNaibaAgentFailure, runNaibaAgent } from './functions/_shared/naibaAgent.js'
 import { resolvedLlmConfig } from './functions/_shared/llmConfig.js'
 import { buildNaibaLocalAnswer } from './src/domain/naibaLocalAnswer.js'
@@ -28,6 +30,25 @@ async function runLocalAgentWithTimeout(input, timeoutMs = 45_000) {
 
 function localNaibaPlugin(mode) {
   const env = loadEnv(mode, process.cwd(), '')
+  let localDispatcher = null
+  function localProviderFetch() {
+    const dnsServer = String(env.OPENAI_DNS_SERVER || '').trim()
+    if (!dnsServer) return undefined
+    const resolver = new Resolver()
+    resolver.setServers(dnsServer.split(',').map((item) => item.trim()).filter(Boolean))
+    localDispatcher ||= new HttpAgent({
+      connect: {
+        lookup(hostname, options, callback) {
+          resolver.resolve4(hostname).then((addresses) => {
+            if (!addresses.length) throw new Error(`No IPv4 address found for ${hostname}`)
+            if (options.all) callback(null, addresses.map((address) => ({ address, family: 4 })))
+            else callback(null, addresses[0], 4)
+          }).catch(callback)
+        },
+      },
+    })
+    return (url, init) => undiciFetch(url, { ...init, dispatcher: localDispatcher })
+  }
   async function modelConfig() {
     if (env.OPENAI_API_KEY) {
       const customGateway = Boolean(String(env.OPENAI_BASE_URL || '').trim())
@@ -35,7 +56,7 @@ function localNaibaPlugin(mode) {
       // the Responses endpoint. Keep OPENAI_USE_RESPONSES for official OpenAI
       // deployments, but select the compatible protocol for local testing.
       const config = resolvedLlmConfig(env)
-      return { apiKey: config.apiKey, baseURL: config.baseUrl, model: config.model, useResponses: config.useResponses, provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
+      return { apiKey: config.apiKey, baseURL: config.baseUrl, model: config.model, useResponses: config.useResponses, transportFetch: localProviderFetch(), provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
     }
     return null
   }
