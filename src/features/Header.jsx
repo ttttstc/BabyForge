@@ -1,5 +1,5 @@
 import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope, Syringe } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
@@ -18,11 +18,20 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
   const copy = getCopy(locale)
   const primaryNavRef = useRef(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const isMobile = typeof window.matchMedia !== 'function' || window.matchMedia('(max-width: 820px)').matches
     if (!isMobile) return
-    const active = primaryNavRef.current?.querySelector('[aria-current="page"]')
-    active?.scrollIntoView?.({ block: 'nearest', inline: 'center' })
+    const nav = primaryNavRef.current
+    const active = nav?.querySelector('[aria-current="page"]')
+    if (!nav || !active) return
+    const activeLeft = active.offsetLeft
+    const activeRight = activeLeft + active.offsetWidth
+    const visibleLeft = nav.scrollLeft
+    const visibleRight = visibleLeft + nav.clientWidth
+    if (activeLeft >= visibleLeft && activeRight <= visibleRight) return
+    const centered = activeLeft + active.offsetWidth / 2 - nav.clientWidth / 2
+    const maxScrollLeft = Math.max(0, nav.scrollWidth - nav.clientWidth)
+    nav.scrollLeft = Math.max(0, Math.min(maxScrollLeft, centered))
   }, [route])
 
   return (
