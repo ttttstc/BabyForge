@@ -79,6 +79,7 @@ jobs:
           printf '%s' "$AI_HEALTH_TOKEN" | npx wrangler pages secret put AI_HEALTH_TOKEN --project-name babyforge
 
       - name: Deploy Pages
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -89,8 +90,13 @@ jobs:
       - name: Verify production model call
         env:
           AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
         run: |
-          sleep 10
-          response="$(curl --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 70 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" https://babyforge.pages.dev/api/ai/health)"
-          echo "Production model health: $response"
+          test -n "$DEPLOYMENT_URL"
+          provider_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 -H "Authorization: Bearer $OPENAI_API_KEY" "$OPENAI_BASE_URL/models")"
+          echo "Provider credential preflight status: $provider_status"
+          response="$(curl --silent --show-error --max-time 70 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" "$DEPLOYMENT_URL/api/ai/health")"
+          echo "Deployed model health: $response"
           RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); if (!result.ok || result.answerLength < 10) process.exit(1); console.log('Production model answered:', result.answerLength, 'characters')"

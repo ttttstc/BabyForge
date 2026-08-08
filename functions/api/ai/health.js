@@ -30,9 +30,9 @@ export async function onRequestPost({ request, env }) {
       baseURL: config.baseUrl,
       useResponses: config.useResponses,
     })
-    return json({ ok: true, answerLength: answer.length })
+    return json({ ok: true, answerLength: answer.length, deployment: String(env.CF_PAGES_COMMIT_SHA || '').slice(0, 12) })
   } catch (error) {
     const failure = describeNaibaAgentFailure(error)
-    return json({ ok: false, reason: failure.reason, providerStatus: failure.status || null }, 503)
+    return json({ ok: false, reason: failure.reason, providerStatus: failure.status || null, deployment: String(env.CF_PAGES_COMMIT_SHA || '').slice(0, 12) }, 503)
   }
 }
