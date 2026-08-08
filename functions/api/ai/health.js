@@ -32,6 +32,7 @@ export async function onRequestPost({ request, env }) {
     })
     return json({ ok: true, answerLength: answer.length })
   } catch (error) {
-    return json({ ok: false, reason: describeNaibaAgentFailure(error).reason }, 503)
+    const failure = describeNaibaAgentFailure(error)
+    return json({ ok: false, reason: failure.reason, providerStatus: failure.status || null }, 503)
   }
 }

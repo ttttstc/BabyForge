@@ -91,5 +91,6 @@ jobs:
           AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
         run: |
           sleep 10
-          response="$(curl --fail-with-body --retry 6 --retry-all-errors --retry-delay 5 --max-time 70 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" https://babyforge.pages.dev/api/ai/health)"
+          response="$(curl --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 70 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" https://babyforge.pages.dev/api/ai/health)"
+          echo "Production model health: $response"
           RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); if (!result.ok || result.answerLength < 10) process.exit(1); console.log('Production model answered:', result.answerLength, 'characters')"
