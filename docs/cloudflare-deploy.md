@@ -88,6 +88,10 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 - `OPENAI_MODEL`：可选，模型 ID；默认 `gpt-4o-mini`。
 - `OPENAI_USE_RESPONSES`：可选。兼容服务只支持 `/chat/completions` 时设为 `false`；未设置时使用 Agents SDK 默认 Responses 行为。
 
+GitHub Actions 发布会从同名 Repository Secrets 同步这四项到 Cloudflare Pages，并在任何一项缺失时停止发布，避免生产环境静默退回固定本地回答。更新模型配置时应修改 GitHub Repository Secrets，再运行发布工作流；不要只修改本地 `.env.local`。
+
+Windows 环境可运行 `powershell -File scripts/sync-model-secrets.ps1 -EnvFile .env.local`，从本地文件安全更新这四项 Repository Secrets；脚本只输出变量名，不输出值。
+
 本地 Pages Functions 联调可在 `wrangler.jsonc` 同目录创建未提交的 `.dev.vars`：
 
 ```dotenv

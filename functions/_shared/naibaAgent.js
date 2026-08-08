@@ -1,4 +1,5 @@
 import { Agent, OpenAIProvider, Runner } from '@openai/agents'
+import OpenAI from 'openai'
 import { z } from 'zod'
 import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { sanitizeMedicalReport } from '../../src/domain/careEventDraft.js'
@@ -6,6 +7,7 @@ import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { outputAllowed } from '../../src/domain/naibaGuardrails.js'
 import { getSkillContract } from './skillRegistry.js'
 import { createNaibaTools } from './naibaTools.js'
+import { cloudflareDirectIpFetch } from './directIpFetch.js'
 
 const INPUT_LIMIT = 4_000
 
@@ -14,10 +16,16 @@ function parseOptionalBoolean(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
 }
 
-export function createNaibaModelProvider({ apiKey, baseURL = '', useResponses } = {}) {
+export async function createNaibaModelProvider({ apiKey, baseURL = '', useResponses } = {}) {
+  const parsedUseResponses = parseOptionalBoolean(useResponses)
+  const directIpFetch = await cloudflareDirectIpFetch(baseURL)
+  if (directIpFetch) {
+    const options = { openAIClient: new OpenAI({ apiKey, baseURL, fetch: directIpFetch, maxRetries: 0 }) }
+    if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
+    return new OpenAIProvider(options)
+  }
   const options = { apiKey }
   if (String(baseURL || '').trim()) options.baseURL = String(baseURL).trim()
-  const parsedUseResponses = parseOptionalBoolean(useResponses)
   if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
   return new OpenAIProvider(options)
 }
@@ -76,7 +84,7 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
     outputGuardrails: [{ name: 'naiba-output-safety', execute: async ({ agentOutput }) => ({ tripwireTriggered: !outputAllowed(String(agentOutput || ''), context), outputInfo: { rule: 'medical_and_authority_boundary' } }) }],
   })
   const runner = new Runner({
-    modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }),
+    modelProvider: await createNaibaModelProvider({ apiKey, baseURL, useResponses }),
     tracingDisabled: true,
     traceIncludeSensitiveData: false,
     workflowName: 'BabyForge Naiba AI',
@@ -118,7 +126,7 @@ export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby,
   if (text) content.push({ type: 'input_text', text: text.slice(0, 20_000) })
   if (dataUrl && mimeType === 'application/pdf') content.push({ type: 'input_file', file: dataUrl, filename: name })
   else if (dataUrl) content.push({ type: 'input_image', image: dataUrl, detail: 'high' })
-  const runner = new Runner({ modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: true, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
+  const runner = new Runner({ modelProvider: await createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: true, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
   const result = await runner.run(agent, [{ role: 'user', content }], { context, maxTurns: 3, groupId: baby?.id })
   const report = sanitizeMedicalReport(result.finalOutput || {})
   if (!report?.fields) throw new Error('naiba-report-output-invalid')
