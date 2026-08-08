@@ -139,7 +139,7 @@ test('growth entry reaches the stage timeline with evaluated provenance', async 
 test('growth dashboard exposes the national chart, stage guide, and history routes', async ({ page }) => {
   await createBaby(page)
   await page.getByRole('button', { name: '成长', exact: true }).click()
-  await expect(page.getByText('最近成长事实', { exact: true })).toBeVisible()
+  await expect(page.getByText('成长数据', { exact: true })).toBeVisible()
   await expect(page.getByTestId('growth-roadmap')).toBeVisible()
   await page.getByRole('button', { name: '打开完整生长曲线', exact: true }).click()
   await expect(page.locator('.growth-chart-svg')).toBeVisible()
