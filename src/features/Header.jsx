@@ -1,4 +1,5 @@
 import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope, Syringe } from 'lucide-react'
+import { useLayoutEffect, useRef } from 'react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy, getLocaleLabel } from '../domain/i18n.js'
@@ -15,6 +16,23 @@ const PRIMARY_NAV_ITEMS = [
 
 export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
   const copy = getCopy(locale)
+  const primaryNavRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const isMobile = typeof window.matchMedia !== 'function' || window.matchMedia('(max-width: 820px)').matches
+    if (!isMobile) return
+    const nav = primaryNavRef.current
+    const active = nav?.querySelector('[aria-current="page"]')
+    if (!nav || !active) return
+    const activeLeft = active.offsetLeft
+    const activeRight = activeLeft + active.offsetWidth
+    const visibleLeft = nav.scrollLeft
+    const visibleRight = visibleLeft + nav.clientWidth
+    if (activeLeft >= visibleLeft && activeRight <= visibleRight) return
+    const centered = activeLeft + active.offsetWidth / 2 - nav.clientWidth / 2
+    const maxScrollLeft = Math.max(0, nav.scrollWidth - nav.clientWidth)
+    nav.scrollLeft = Math.max(0, Math.min(maxScrollLeft, centered))
+  }, [route])
 
   return (
     <header className="app-header">
@@ -26,7 +44,7 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
         <span className="baby-avatar">{baby.nickname.slice(0, 1)}</span>
         <span><strong>{baby.nickname}</strong><small>{copy.profile(getSexLabel(baby.sex, locale), ageDays)}</small></span>
       </div>
-      <nav aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
+      <nav ref={primaryNavRef} aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
         {PRIMARY_NAV_ITEMS.map(({ route: target, copyKey, icon: Icon }) => (
           <button key={target} type="button" className={route === target ? 'active' : ''} aria-current={route === target ? 'page' : undefined} onClick={() => navigate(target)}>
             <Icon size={17} />{copy.nav[copyKey]}
@@ -35,12 +53,12 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
       </nav>
       <div className="header-actions">
         <label className="recorder-picker">
-          <span>{locale === 'en-US' ? 'Recorder' : '记录人'}</span>
-          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Recorder' : '记录人'}>
+          <span>{locale === 'en-US' ? 'Current role' : '当前角色'}</span>
+          <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current role' : '当前角色'}>
             {careActors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
           </select>
         </label>
-        {syncStatus === 'offline' ? <button type="button" className="sync-status offline" onClick={onSyncRetry} aria-live="polite">{locale === 'en-US' ? 'Offline · Retry' : '离线 · 点击重试'}</button> : <span className={`sync-status ${syncStatus}`} aria-live="polite">{syncStatus === 'online' ? (locale === 'en-US' ? 'Synced' : '已同步') : (locale === 'en-US' ? 'Local first' : '本地优先')}</span>}
+        {syncStatus === 'offline' ? <button type="button" className="sync-status offline" onClick={onSyncRetry} aria-live="polite">{locale === 'en-US' ? 'Pending · Retry' : '待同步 · 点击重试'}</button> : <span className={`sync-status ${syncStatus === 'online' ? 'online' : 'pending'}`} aria-live="polite">{syncStatus === 'online' ? (locale === 'en-US' ? 'Synced' : '已同步') : (locale === 'en-US' ? 'Pending' : '待同步')}</span>}
         <span className={`role-pill ${role === 'guest' ? 'guest' : role === 'caregiver' ? 'caregiver' : 'admin'}`}>
           {role === 'guest'
             ? (locale === 'en-US' ? 'Guest · read only' : '游客 · 只读')

@@ -19,6 +19,12 @@ import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
 import { navigate, ROUTES, useHashRoute } from './router.js'
 
+const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
+
+function sameValue(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
 export function App() {
   const route = useHashRoute()
   const [session, setSession] = useState(() => loadSession())
@@ -32,7 +38,15 @@ export function App() {
   const stateRef = useRef(state)
   const syncingRef = useRef(false)
   const pendingSyncRef = useRef([])
+  const pendingWorkspaceRef = useRef(null)
+  const pendingWritesRef = useRef(0)
+  const pendingSequenceRef = useRef(0)
+  const localRevisionRef = useRef(0)
   const readOnly = Boolean(session) && !canEdit(session)
+
+  function hasPendingSync() {
+    return pendingWritesRef.current > 0 || pendingSyncRef.current.length > 0 || Boolean(pendingWorkspaceRef.current)
+  }
 
   useEffect(() => {
     sessionRef.current = session
@@ -53,30 +67,53 @@ export function App() {
     const rawNext = typeof updater === 'function' ? updater(previous) : updater
     const next = applyCareEventsToLegacy(rawNext, rawNext.careEvents || [])
     const eventChanges = changedCareEvents(previous.careEvents || [], next.careEvents || [])
-    const nonEventWorkspaceChanged = JSON.stringify(previous.baby || null) !== JSON.stringify(next.baby || null)
-      || JSON.stringify(previous.questions || []) !== JSON.stringify(next.questions || [])
-      || JSON.stringify(previous.growthMeasurements || []) !== JSON.stringify(next.growthMeasurements || [])
-    stateRef.current = next
-    saveState(globalThis.localStorage, next, session?.username)
-    setState(next)
-    if (options.skipSync || session?.mode !== 'cloudflare' || !next.baby) return Promise.resolve(true)
+    const nonEventWorkspaceChanged = REMOTE_WORKSPACE_FIELDS.some((field) => !sameValue(previous[field], next[field]))
+    const shouldSyncRemotely = !options.skipSync && session?.mode === 'cloudflare' && Boolean(next.baby)
+    const hasRemoteChanges = eventChanges.length > 0 || nonEventWorkspaceChanged
+    if (shouldSyncRemotely && hasRemoteChanges) pendingWritesRef.current += 1
+    const visibleNext = shouldSyncRemotely && hasRemoteChanges
+      ? { ...next, syncMeta: { ...(next.syncMeta || {}), status: 'pending' } }
+      : next
+    localRevisionRef.current += 1
+    stateRef.current = visibleNext
+    saveState(globalThis.localStorage, visibleNext, session?.username)
+    setState(visibleNext)
+    if (!shouldSyncRemotely || !hasRemoteChanges) return Promise.resolve(true)
+    const workspaceSnapshot = nonEventWorkspaceChanged ? visibleNext : null
+    if (workspaceSnapshot) pendingWorkspaceRef.current = workspaceSnapshot
+    const queuedEventChanges = eventChanges.map((change) => ({ ...change, syncId: ++pendingSequenceRef.current }))
     if (eventChanges.length) {
-      pendingSyncRef.current = [...pendingSyncRef.current.filter((item) => !eventChanges.some((change) => change.event.id === item.event.id)), ...eventChanges]
+      pendingSyncRef.current = [...pendingSyncRef.current.filter((item) => !eventChanges.some((change) => change.event.id === item.event.id)), ...queuedEventChanges]
     }
+    let eventSyncFailed = false
     const eventSync = eventChanges.length
-      ? syncCareEventChanges(eventChanges).then(() => {
-        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !eventChanges.some((change) => change.event.id === item.event.id))
-        updateSyncMeta({ status: 'online' })
+      ? syncCareEventChanges(queuedEventChanges).then(() => {
+        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !queuedEventChanges.some((change) => change.syncId === item.syncId))
         return true
+      }).catch((error) => {
+        eventSyncFailed = true
+        throw error
       })
       : Promise.resolve(true)
-    const workspaceSync = nonEventWorkspaceChanged ? pushWorkspace(stateRef.current) : Promise.resolve(null)
-    return Promise.all([eventSync, workspaceSync]).then(() => true).catch((error) => {
+    const workspaceSync = workspaceSnapshot
+      ? pushWorkspace(workspaceSnapshot).then((result) => {
+        if (pendingWorkspaceRef.current === workspaceSnapshot) pendingWorkspaceRef.current = null
+        return result
+      })
+      : Promise.resolve(null)
+    return Promise.allSettled([eventSync, workspaceSync]).then((results) => {
+      const failure = results.find((result) => result.status === 'rejected')
+      if (failure) throw failure.reason
+      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1)
+      updateSyncMeta({ status: hasPendingSync() ? 'pending' : 'online' })
+      return true
+    }).catch((error) => {
+      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1)
       // Event writes are optimistic. Revert every event touched by this
       // commit, including corrections and voids, so a failed save never looks
       // successful in the local timeline. The entry form remains mounted and
       // keeps its input for an explicit retry.
-      if (eventChanges.length) {
+      if (eventChanges.length && eventSyncFailed) {
         const currentEvents = stateRef.current.careEvents || []
         const restored = rollbackCareEventChanges(previous.careEvents || [], currentEvents, eventChanges)
         const rolledBack = applyCareEventsToLegacy({ ...stateRef.current, careEvents: restored }, restored)
@@ -86,7 +123,8 @@ export function App() {
         saveState(globalThis.localStorage, rolledBack, session?.username)
         setState(rolledBack)
       }
-      updateSyncMeta({ status: 'offline' })
+      if (workspaceSnapshot && pendingWorkspaceRef.current === workspaceSnapshot) pendingWorkspaceRef.current = stateRef.current
+      updateSyncMeta({ status: hasPendingSync() ? 'pending' : 'offline' })
       throw error
     })
   }
@@ -95,25 +133,29 @@ export function App() {
     if (!babyId || sessionRef.current?.mode !== 'cloudflare' || syncingRef.current) return
     syncingRef.current = true
     try {
-      let current = stateRef.current
       const payload = await pullCareEvents(babyId)
-      let next = mergePulledState(current, payload)
-      next = applyCareEventsToLegacy(next, next.careEvents)
+      let actors = []
       try {
-        const actors = await pullCareActors(babyId)
-        if (actors.length) {
-          const currentRecorderId = actors.some((actor) => actor.id === next.preferences?.currentRecorderId) ? next.preferences.currentRecorderId : actors[0].id
-          next = { ...next, careActors: actors, preferences: { ...next.preferences, currentRecorderId } }
-        }
+        actors = await pullCareActors(babyId)
       } catch {
         // Actor sync is best effort; event sync remains useful without it.
       }
-      next = { ...next, syncMeta: { ...(next.syncMeta || {}), status: 'online' } }
+      // Both requests can overlap with optimistic local writes. Build the
+      // merged snapshot only after every remote read resolves, using the
+      // latest local state so stale responses never roll back a new event.
+      let next = mergePulledState(stateRef.current, payload)
+      next = applyCareEventsToLegacy(next, next.careEvents)
+      if (actors.length) {
+        const latest = stateRef.current
+        const currentRecorderId = actors.some((actor) => actor.id === latest.preferences?.currentRecorderId) ? latest.preferences.currentRecorderId : actors[0].id
+        next = { ...next, careActors: actors, preferences: { ...latest.preferences, currentRecorderId } }
+      }
+      next = { ...next, syncMeta: { ...(next.syncMeta || {}), status: hasPendingSync() ? 'pending' : 'online' } }
       stateRef.current = next
       saveState(globalThis.localStorage, next, owner)
       setState(next)
     } catch {
-      stateRef.current = { ...stateRef.current, syncMeta: { ...(stateRef.current.syncMeta || {}), status: 'offline' } }
+      stateRef.current = { ...stateRef.current, syncMeta: { ...(stateRef.current.syncMeta || {}), status: hasPendingSync() ? 'pending' : 'offline' } }
       saveState(globalThis.localStorage, stateRef.current, owner)
       setState(stateRef.current)
     } finally {
@@ -126,12 +168,17 @@ export function App() {
       if (pendingSyncRef.current.length) {
         const pending = [...pendingSyncRef.current]
         await syncCareEventChanges(pending)
-        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !pending.some((change) => change.event.id === item.event.id))
+        pendingSyncRef.current = pendingSyncRef.current.filter((item) => !pending.some((change) => change.syncId === item.syncId))
+      }
+      if (pendingWorkspaceRef.current) {
+        const pendingWorkspace = pendingWorkspaceRef.current
+        await pushWorkspace(pendingWorkspace)
+        if (pendingWorkspaceRef.current === pendingWorkspace) pendingWorkspaceRef.current = null
       }
       await pullEventWorkspace(sessionRef.current?.username, stateRef.current.baby?.id)
-      updateSyncMeta({ status: 'online' })
+      updateSyncMeta({ status: hasPendingSync() ? 'pending' : 'online' })
     } catch {
-      updateSyncMeta({ status: 'offline' })
+      updateSyncMeta({ status: hasPendingSync() ? 'pending' : 'offline' })
     }
   }
 
@@ -151,16 +198,45 @@ export function App() {
     let active = true
     const owner = initialOwnerRef.current
     const initialSession = sessionRef.current
+    const revisionAtEffectStart = localRevisionRef.current
     hydrateState(globalThis.localStorage, owner).then(async (next) => {
       if (!active || !next?.version || sessionRef.current?.username !== owner) return
       let hydrated = next
       const remoteBabyId = initialSession?.mode === 'cloudflare' ? initialSession.babies?.[0]?.id : null
       if (remoteBabyId) {
+        const revisionBeforeRemote = localRevisionRef.current
+        const stateBeforeRemote = stateRef.current
         try {
           const remote = await pullWorkspace(remoteBabyId)
-          if (remote?.baby && sessionRef.current?.username === owner) hydrated = { ...createInitialState(), ...remote, preferences: { ...next.preferences, locale: remote.baby.locale || next.preferences.locale } }
+          if (remote?.baby && sessionRef.current?.username === owner) {
+            const latest = stateRef.current
+            const localChangedBeforeRemote = revisionBeforeRemote !== revisionAtEffectStart
+            const localChangedDuringRemote = localRevisionRef.current !== revisionBeforeRemote
+            const remoteState = { ...createInitialState(), ...remote }
+            const localChanges = localChangedBeforeRemote || localChangedDuringRemote
+            if (localChanges) {
+              const baseline = localChangedBeforeRemote ? next : stateBeforeRemote
+              REMOTE_WORKSPACE_FIELDS.forEach((field) => {
+                if (!sameValue(latest[field], baseline[field])) remoteState[field] = latest[field]
+              })
+              remoteState.careEvents = latest.careEvents
+              remoteState.carePlanItems = latest.carePlanItems
+              remoteState.concerns = latest.concerns
+              remoteState.careActors = latest.careActors
+              remoteState.preferences = latest.preferences
+              remoteState.syncMeta = latest.syncMeta
+            } else {
+              remoteState.preferences = { ...next.preferences, locale: remote.baby.locale || next.preferences.locale }
+              remoteState.careEvents = next.careEvents
+              remoteState.carePlanItems = next.carePlanItems
+              remoteState.concerns = next.concerns
+              remoteState.careActors = next.careActors
+            }
+            hydrated = remoteState
+          }
         } catch {
           // Keep the account-scoped local copy if the remote refresh is offline.
+          if (localRevisionRef.current !== revisionAtEffectStart) hydrated = stateRef.current
         }
       }
       if (!active || sessionRef.current?.username !== owner) return
@@ -294,7 +370,7 @@ export function App() {
   }
 
   if (route === ROUTES.settings) {
-    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} />
+    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} />
   }
 
   if (route === ROUTES.records) {

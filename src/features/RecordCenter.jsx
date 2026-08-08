@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Activity, ArrowLeft, Baby, Check, ChevronRight, CircleHelp, ClipboardList, Clock3, Droplets, FileText, HeartPulse, Moon, Pill, Plus, Save, ShieldCheck, Thermometer, Utensils, X } from 'lucide-react'
+import { Activity, ArrowLeft, Baby, Check, ChevronRight, CircleHelp, ClipboardList, Clock3, Droplets, FileText, HeartPulse, Info, Moon, Pill, Plus, Save, ShieldCheck, Thermometer, Utensils, X } from 'lucide-react'
 import { getAgeDays, getStage, getStageLabel, getStageRangeLabel } from '../domain/baby.js'
 import { assertCareRecordInput, createCareEvent, createConcern as createConcernRecord, correctCareEvent, voidCareEvent } from '../domain/careEvents.js'
 import { getDailyCareSummary, localDayKey } from '../domain/careSummary.js'
-import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { getAdminTasks, getDailyTasks, getStageMilestones, localDateKey } from '../domain/carePlan.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { projectBabyState } from '../domain/babyState.js'
+import { updateBabyProfileState, validateBasicInfoForm } from '../domain/babyProfile.js'
 import { navigate, parseHashLocation, RECORD_RETURN_ROUTES, ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
@@ -49,34 +49,8 @@ function actorFor(state) {
   return state.careActors?.find((actor) => actor.id === state.preferences?.currentRecorderId) || state.careActors?.[0]
 }
 
-function measurementPayload(event) {
-  const payload = event?.payload || {}
-  return payload.record && typeof payload.record === 'object' ? payload.record : payload
-}
-
-function measurementInputChanged(previous, next) {
-  return ['type', 'value', 'unit', 'measuredAt', 'source', 'method', 'note'].some((key) => String(previous?.[key] ?? '') !== String(next?.[key] ?? ''))
-}
-
 function currentCount(snapshot, stateKey) {
   return snapshot.recent24h.facts.filter((fact) => fact.stateKey === stateKey).length
-}
-
-function validateBasicInfoForm(form, isEnglish) {
-  const message = (zh, en) => isEnglish ? en : zh
-  if (!String(form.nickname || '').trim()) return message('请填写宝宝昵称。', 'Enter the baby nickname.')
-  if (!String(form.birthDate || '').trim() || Number.isNaN(new Date(form.birthDate).getTime())) return message('请填写有效的出生日期。', 'Enter a valid birth date.')
-  const weeks = Number(form.gestationalWeeks)
-  if (!Number.isFinite(weeks) || weeks < 20 || weeks > 44) return message('出生孕周必须在 20–44 周之间。', 'Gestational weeks must be between 20 and 44.')
-  const days = Number(form.gestationalDays)
-  if (!Number.isInteger(days) || days < 0 || days > 6) return message('孕周余天必须是 0–6 的整数。', 'Extra gestational days must be an integer from 0 to 6.')
-  for (const [key, label, max] of [['birthWeight', '体重', 20], ['birthLength', '身长', 100], ['birthHeadCircumference', '头围', 70]]) {
-    const value = String(form[key] || '').trim()
-    if (!value) continue
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0 || numeric > max) return message(`${label}必须在 0–${max} 范围内。`, `${key} must be between 0 and ${max}.`)
-  }
-  return ''
 }
 
 export function RecordCenter({ state, commitState, onClear, onLogout, readOnly = false, role = 'admin' }) {
@@ -224,54 +198,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   }
 
   function updateProfile(profile) {
-    const validationError = validateBasicInfoForm(profile, isEnglish)
-    if (validationError) {
-      setEntryError(validationError)
-      return Promise.reject(new Error(validationError))
-    }
-    return commitWithFeedback((current) => {
-      const { birthWeight, birthLength, birthHeadCircumference, ...profileFields } = profile
-      const now = new Date().toISOString()
-      const nextBaby = { ...current.baby, ...profileFields }
-      const birthDate = nextBaby.birthDate
-      const birthInputs = [
-        ['weight', birthWeight, 'kg', 'weight_scale'],
-        ['length', birthLength, 'cm', 'lying_length'],
-        ['headCircumference', birthHeadCircumference, 'cm', 'head_circumference_tape'],
-      ]
-      const profileChanged = ['birthDate', 'gestationalWeeks', 'gestationalDays', 'birthMultiplicity'].some((key) => String(current.baby?.[key] ?? '') !== String(nextBaby[key] ?? ''))
-      const birthEvents = (current.careEvents || []).filter((event) => {
-        const measurement = measurementPayload(event)
-        return event.status === 'active' && event.category === 'growth_measurement' && measurement.source === 'birth_record'
-      })
-      const existingByType = new Map(birthEvents.filter((event) => String(measurementPayload(event).measuredAt).slice(0, 10) === String(birthDate).slice(0, 10)).map((event) => [measurementPayload(event).type, event]))
-      const nonBirth = (current.growthMeasurements || []).filter((item) => item.source !== 'birth_record')
-      const actor = actorFor(current)
-      if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose the current role first.' : '请先选择当前角色。')
-      const birthMeasurements = birthInputs.filter(([, value]) => String(value || '').trim()).map(([type, value, unit, method]) => {
-        const prior = existingByType.get(type)
-        return createEvaluatedGrowthMeasurement({ id: prior ? measurementPayload(prior).id || prior.id : undefined, type, value: String(value).trim(), unit, measuredAt: birthDate, method, source: 'birth_record' }, nextBaby, nonBirth)
-      })
-      const eventsById = new Map((current.careEvents || []).map((event) => [event.id, event]))
-      for (const measurement of birthMeasurements) {
-        const prior = existingByType.get(measurement.type)
-        if (!prior) {
-          const event = createCareEvent({ id: measurement.id, babyId: nextBaby.id, kind: 'measurement', category: 'growth_measurement', occurredAt: `${birthDate}T12:00:00.000Z`, recordedAt: now, actor, source: 'caregiver', payload: measurement })
-          eventsById.set(event.id, event)
-        } else if (profileChanged || measurementInputChanged(measurementPayload(prior), measurement)) {
-          const corrected = correctCareEvent([...eventsById.values()], prior.id, { kind: 'measurement', category: 'growth_measurement', occurredAt: `${birthDate}T12:00:00.000Z`, recordedAt: now, actor, source: 'caregiver', payload: measurement }, { now })
-          eventsById.clear()
-          corrected.forEach((event) => eventsById.set(event.id, event))
-        }
-      }
-      const retainedTypes = new Set(birthMeasurements.map((measurement) => measurement.type))
-      for (const prior of birthEvents) {
-        const priorMeasurement = measurementPayload(prior)
-        const sameBirthDate = String(priorMeasurement.measuredAt).slice(0, 10) === String(birthDate).slice(0, 10)
-        if (!sameBirthDate || !retainedTypes.has(priorMeasurement.type)) eventsById.set(prior.id, voidCareEvent(prior, { now }))
-      }
-      return { ...current, baby: nextBaby, careEvents: [...eventsById.values()] }
-    }, isEnglish ? 'Baby profile saved' : '基础信息已保存')
+    return commitWithFeedback((current) => updateBabyProfileState(current, profile, { locale }), isEnglish ? 'Baby profile saved' : '基础信息已保存')
   }
 
   function updateTask(taskId, input) {
@@ -317,7 +244,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   }
 
   return (
-    <main className="record-center-page app-shell">
+    <main className="record-center-page">
       <Header route={ROUTES.records} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => commitState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="record-center-shell">
         <header className="record-center-hero">
@@ -366,6 +293,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
 
         <section className="record-card-section record-more-section" aria-labelledby="record-more-heading">
           <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More to add' : '还可以记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Other moments worth keeping' : '其他想留下的宝宝情况'}</h2></div><span>{isEnglish ? 'Keep related moments together' : '把相关情况放在一起，更方便回看'}</span></div>
+          <div className="record-more-purpose" role="note"><Info size={17} /><p><strong>{isEnglish ? 'What is this for?' : '它有什么用？'}</strong>{isEnglish ? 'Use it for facts that do not fit the six quick cards but may matter later, such as symptom changes, a clinician’s conclusion, an open concern, or a question for the next visit. It keeps the record traceable without changing the health assessment by itself.' : '用来保存不属于六个快捷记录、但之后可能影响照护或就医沟通的事实，例如症状变化、医生结论、待跟进事项或下次想问的问题。它只保留事实，不会自动改变健康判断。'}</p></div>
           <div className="record-more-grid">{MORE_CARDS.map((card) => { const Icon = card.icon; return <button key={card.id} className={`record-more-card ${activePanel === card.id ? 'active' : ''}`} type="button" onClick={() => openPanel(card.id)}><span className="record-more-icon"><Icon size={17} /></span><span><strong>{isEnglish ? moreTitle(card.id) : card.title}</strong><small>{isEnglish ? moreDetail(card.id) : card.detail}</small></span><ChevronRight size={16} /></button> })}</div>
         </section>
 
@@ -424,12 +352,12 @@ function moreDetail(id) {
   return { basic: 'Birth details and profile facts', illness: 'Observed symptoms and measured facts', care: 'Daily actions, errands, and milestones', concern: 'Open, track, and close a topic', professional: 'Clinician conclusions and instructions', questions: 'Keep questions for the next professional conversation' }[id]
 }
 
-function PanelActions({ locale, saving = false, onCancel }) {
+function PanelActions({ locale, saving = false, onCancel, saveLabel = '' }) {
   const isEnglish = locale === 'en-US'
-  return <div className="record-panel-actions"><button type="button" className="secondary-button compact" onClick={onCancel}>{isEnglish ? 'Cancel' : '取消'}</button><button type="submit" className="primary-button compact" disabled={saving}><Save size={15} />{saving ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save fact' : '保存事实')}</button></div>
+  return <div className="record-panel-actions"><button type="button" className="secondary-button compact" onClick={onCancel}>{isEnglish ? 'Cancel' : '取消'}</button><button type="submit" className="primary-button compact" disabled={saving}><Save size={15} />{saving ? (isEnglish ? 'Saving…' : '保存中…') : (saveLabel || (isEnglish ? 'Save fact' : '保存事实'))}</button></div>
 }
 
-function BasicInfoPanel({ baby, birthMeasurements = [], locale, readOnly, onSave }) {
+export function BasicInfoPanel({ baby, birthMeasurements = [], locale, readOnly, onSave, saveLabel = '' }) {
   const isEnglish = locale === 'en-US'
   const initialForm = () => ({
     nickname: baby.nickname || '',
@@ -460,7 +388,7 @@ function BasicInfoPanel({ baby, birthMeasurements = [], locale, readOnly, onSave
     setSaving(true)
     try { await onSave({ ...form, gestationalWeeks: Number(form.gestationalWeeks), gestationalDays: Number(form.gestationalDays) }); setFormError('') } catch (error) { setFormError(error?.message || (locale === 'en-US' ? 'Save failed. Retry.' : '保存失败，请重试。')) } finally { setSaving(false) }
   }
-  return <form className="record-form" onSubmit={submit}><p className="record-form-lede">{isEnglish ? 'Profile facts are used as background context. Leave a field blank when you do not know it.' : '这些内容只作为稳定背景。不了解的字段可以留空，系统不会替你猜测。'}</p><fieldset disabled={readOnly || saving}><div className="form-grid two"><label>{isEnglish ? 'Nickname' : '宝宝昵称'}<input value={form.nickname} onChange={(event) => change('nickname', event.target.value)} required /></label><label>{isEnglish ? 'Birth date' : '出生日期'}<input type="date" value={form.birthDate} onChange={(event) => change('birthDate', event.target.value)} required /></label></div><div className="form-grid three"><label>{isEnglish ? 'Gestational weeks' : '出生孕周'}<input type="number" min="20" max="44" value={form.gestationalWeeks} onChange={(event) => change('gestationalWeeks', event.target.value)} /></label><label>{isEnglish ? 'Extra days' : '孕周余天'}<input type="number" min="0" max="6" value={form.gestationalDays} onChange={(event) => change('gestationalDays', event.target.value)} /></label><label>{isEnglish ? 'Birth type' : '出生情况'}<select value={form.birthMultiplicity} onChange={(event) => change('birthMultiplicity', event.target.value)}><option value="singleton">{isEnglish ? 'Singleton' : '单胎'}</option><option value="multiple">{isEnglish ? 'Multiple birth' : '多胎'}</option></select></label></div><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Profile details' : '档案细节'}</legend><div className="form-grid three"><label>{isEnglish ? 'Sex' : '性别'}<select value={form.sex} onChange={(event) => change('sex', event.target.value)}><option value="">{isEnglish ? 'Not set' : '未设置'}</option><option value="male">{isEnglish ? 'Boy' : '男孩'}</option><option value="female">{isEnglish ? 'Girl' : '女孩'}</option></select></label><label>{isEnglish ? 'Feeding mode' : '喂养方式'}<select value={form.feedingMode} onChange={(event) => change('feedingMode', event.target.value)}><option value="breastfeeding">{isEnglish ? 'Breastfeeding' : '母乳喂养'}</option><option value="formula">{isEnglish ? 'Formula' : '配方奶喂养'}</option><option value="mixed">{isEnglish ? 'Mixed' : '混合喂养'}</option><option value="other">{isEnglish ? 'Other / unknown' : '其他 / 未确定'}</option></select></label></div></fieldset><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Birth measurements' : '出生测量'}</legend><div className="form-grid three"><label>{isEnglish ? 'Weight (kg)' : '体重（kg）'}<input type="number" min="0" max="20" step="0.01" inputMode="decimal" value={form.birthWeight} onChange={(event) => change('birthWeight', event.target.value)} /></label><label>{isEnglish ? 'Length (cm)' : '身长（cm）'}<input type="number" min="0" max="100" step="0.1" inputMode="decimal" value={form.birthLength} onChange={(event) => change('birthLength', event.target.value)} /></label><label>{isEnglish ? 'Head circumference (cm)' : '头围（cm）'}<input type="number" min="0" max="70" step="0.1" inputMode="decimal" value={form.birthHeadCircumference} onChange={(event) => change('birthHeadCircumference', event.target.value)} /></label></div></fieldset><div className="form-grid three"><label>{isEnglish ? 'Past history' : '既往史'}<textarea rows="2" value={form.medicalHistory} onChange={(event) => change('medicalHistory', event.target.value)} placeholder={isEnglish ? 'Optional factual note' : '可填写已知事实'} /></label><label>{isEnglish ? 'Allergies' : '过敏信息'}<textarea rows="2" value={form.allergies} onChange={(event) => change('allergies', event.target.value)} placeholder={isEnglish ? 'Unknown is okay' : '不确定可以留空'} /></label><label>{isEnglish ? 'Long-term medicines' : '长期用药'}<textarea rows="2" value={form.longTermMedications} onChange={(event) => change('longTermMedications', event.target.value)} placeholder={isEnglish ? 'Name and factual note' : '药名和已知事实'} /></label></div></fieldset>{formError && <p className="save-error" role="alert">{formError}</p>}{!readOnly && <PanelActions locale={locale} saving={saving} onCancel={() => { setForm(initialForm()); setFormError('') }} />}</form>
+  return <form className="record-form" onSubmit={submit}><p className="record-form-lede">{isEnglish ? 'Profile facts are used as background context. Leave a field blank when you do not know it.' : '这些内容只作为稳定背景。不了解的字段可以留空，系统不会替你猜测。'}</p><fieldset disabled={readOnly || saving}><div className="form-grid two"><label>{isEnglish ? 'Nickname' : '宝宝昵称'}<input value={form.nickname} onChange={(event) => change('nickname', event.target.value)} required /></label><label>{isEnglish ? 'Birth date' : '出生日期'}<input type="date" value={form.birthDate} onChange={(event) => change('birthDate', event.target.value)} required /></label></div><div className="form-grid three"><label>{isEnglish ? 'Gestational weeks' : '出生孕周'}<input type="number" min="20" max="44" value={form.gestationalWeeks} onChange={(event) => change('gestationalWeeks', event.target.value)} /></label><label>{isEnglish ? 'Extra days' : '孕周余天'}<input type="number" min="0" max="6" value={form.gestationalDays} onChange={(event) => change('gestationalDays', event.target.value)} /></label><label>{isEnglish ? 'Birth type' : '出生情况'}<select value={form.birthMultiplicity} onChange={(event) => change('birthMultiplicity', event.target.value)}><option value="singleton">{isEnglish ? 'Singleton' : '单胎'}</option><option value="multiple">{isEnglish ? 'Multiple birth' : '多胎'}</option></select></label></div><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Profile details' : '档案细节'}</legend><div className="form-grid three"><label>{isEnglish ? 'Sex' : '性别'}<select value={form.sex} onChange={(event) => change('sex', event.target.value)}><option value="">{isEnglish ? 'Not set' : '未设置'}</option><option value="male">{isEnglish ? 'Boy' : '男孩'}</option><option value="female">{isEnglish ? 'Girl' : '女孩'}</option></select></label><label>{isEnglish ? 'Feeding mode' : '喂养方式'}<select value={form.feedingMode} onChange={(event) => change('feedingMode', event.target.value)}><option value="breastfeeding">{isEnglish ? 'Breastfeeding' : '母乳喂养'}</option><option value="formula">{isEnglish ? 'Formula' : '配方奶喂养'}</option><option value="mixed">{isEnglish ? 'Mixed' : '混合喂养'}</option><option value="other">{isEnglish ? 'Other / unknown' : '其他 / 未确定'}</option></select></label></div></fieldset><fieldset className="record-inline-fieldset"><legend>{isEnglish ? 'Birth measurements' : '出生测量'}</legend><div className="form-grid three"><label>{isEnglish ? 'Weight (kg)' : '体重（kg）'}<input type="number" min="0" max="20" step="0.01" inputMode="decimal" value={form.birthWeight} onChange={(event) => change('birthWeight', event.target.value)} /></label><label>{isEnglish ? 'Length (cm)' : '身长（cm）'}<input type="number" min="0" max="100" step="0.1" inputMode="decimal" value={form.birthLength} onChange={(event) => change('birthLength', event.target.value)} /></label><label>{isEnglish ? 'Head circumference (cm)' : '头围（cm）'}<input type="number" min="0" max="70" step="0.1" inputMode="decimal" value={form.birthHeadCircumference} onChange={(event) => change('birthHeadCircumference', event.target.value)} /></label></div></fieldset><div className="form-grid three"><label>{isEnglish ? 'Past history' : '既往史'}<textarea rows="2" value={form.medicalHistory} onChange={(event) => change('medicalHistory', event.target.value)} placeholder={isEnglish ? 'Optional factual note' : '可填写已知事实'} /></label><label>{isEnglish ? 'Allergies' : '过敏信息'}<textarea rows="2" value={form.allergies} onChange={(event) => change('allergies', event.target.value)} placeholder={isEnglish ? 'Unknown is okay' : '不确定可以留空'} /></label><label>{isEnglish ? 'Long-term medicines' : '长期用药'}<textarea rows="2" value={form.longTermMedications} onChange={(event) => change('longTermMedications', event.target.value)} placeholder={isEnglish ? 'Name and factual note' : '药名和已知事实'} /></label></div></fieldset>{formError && <p className="save-error" role="alert">{formError}</p>}{!readOnly && <PanelActions locale={locale} saving={saving} saveLabel={saveLabel} onCancel={() => { setForm(initialForm()); setFormError('') }} />}</form>
 }
 
 function QuestionPanel({ questions = [], locale, readOnly, onSave }) {

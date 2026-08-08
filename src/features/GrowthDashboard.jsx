@@ -8,6 +8,7 @@ import { getGrowthStageContent } from '../content/growthStages.js'
 import { createCareEvent } from '../domain/careEvents.js'
 
 const GROWTH_CHART_TYPES = GROWTH_TYPES.filter((item) => item.id !== 'headCircumference')
+const GROWTH_REFERENCE_TYPES = GROWTH_CHART_TYPES
 import { navigate, ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
@@ -23,11 +24,20 @@ function formatDate(value, locale) {
 
 function ageLabel(context, locale) {
   if (!context || context.ageDays === null || context.ageDays === undefined) return locale === 'en-US' ? 'Age unavailable' : '年龄信息不足'
-  if (context.ageDays < 0) return locale === 'en-US' ? 'Before due date' : '尚未到预产期'
+  if (context.ageDays < 0) {
+    const chronologicalDays = Math.max(0, context.chronological?.days ?? 0)
+    const daysBeforeDue = Math.abs(context.ageDays)
+    return locale === 'en-US' ? `Actual ${chronologicalDays} days · corrected age is ${daysBeforeDue} days before due` : `实际 ${chronologicalDays} 天 · 矫正年龄尚未到预产期（还差 ${daysBeforeDue} 天）`
+  }
   const days = Math.max(0, context.ageDays)
   if (days < 60) return locale === 'en-US' ? `${days} days` : `${days} 天`
   const months = context.ageMonths ?? Math.floor(days / 30.4375)
   return locale === 'en-US' ? `${months} months` : `${months} 个月`
+}
+
+function growthAgeLimitation(context, locale) {
+  if (context?.correctionActive) return locale === 'en-US' ? 'Development references use corrected age; the stage window uses days since birth.' : '发展参考年龄按矫正年龄；阶段范围按出生后的实际天数显示。'
+  return context?.limitations?.[0] || ''
 }
 
 function metricLabel(type, locale) {
@@ -77,10 +87,10 @@ export function GrowthDashboard({ route = ROUTES.growth, state, setState, onClea
   const locale = state.preferences.locale
   const [metric, setMetric] = useState('weight')
   const ageContext = useMemo(() => resolveAgeContext({ baby: state.baby, at: new Date(), purpose: 'dashboard' }), [state.baby])
-  const stage = useMemo(() => getStage(Math.max(0, ageContext.ageDays ?? getAgeDays(state.baby.birthDate))), [ageContext.ageDays, state.baby.birthDate])
+  const stage = useMemo(() => getStage(Math.max(0, ageContext.chronological?.days ?? getAgeDays(state.baby.birthDate))), [ageContext.chronological?.days, state.baby.birthDate])
   const content = useMemo(() => getGrowthStageContent(stage.id), [stage.id])
   const evaluations = useMemo(() => state.growthMeasurements.map((item) => ({ ...item, evaluation: evaluateGrowthMeasurement(item, state.baby, state.growthMeasurements) })), [state.baby, state.growthMeasurements])
-  const metricCards = useMemo(() => GROWTH_TYPES.map((definition) => {
+  const metricCards = useMemo(() => GROWTH_REFERENCE_TYPES.map((definition) => {
     const { latest, previous } = latestForType(evaluations, definition.id)
     return { ...definition, latest, previous }
   }), [evaluations])
@@ -92,7 +102,7 @@ export function GrowthDashboard({ route = ROUTES.growth, state, setState, onClea
   const milestones = useMemo(() => getStageMilestones(stage.id, parentActionRecords), [parentActionRecords, stage.id])
   const adminTasks = useMemo(() => getAdminTasks(stage.id, Math.max(0, ageContext.chronological?.days ?? 0), state.adminTaskRecords), [ageContext.chronological?.days, stage.id, state.adminTaskRecords])
   const calendarEvents = useMemo(() => getCalendarEvents(state.baby, state.milestoneRecords || [], state.adminTaskRecords || []).filter((event) => event.status !== 'done'), [state.adminTaskRecords, state.baby, state.milestoneRecords])
-  const dataIssues = evaluations.filter((item) => item.evaluation?.dataQuality !== 'sufficient').slice(-3)
+  const dataIssues = evaluations.filter((item) => item.type !== 'headCircumference' && item.evaluation?.dataQuality !== 'sufficient').slice(-3)
   const chartRoute = route === ROUTES.growthChart
   const stageRoute = route === ROUTES.growthStage
   const historyRoute = route === ROUTES.growthHistory
@@ -129,7 +139,7 @@ function GrowthSubnav({ route, locale }) {
 function GrowthOverview({ locale, stage, ageContext, content, metricCards, dataIssues, milestones, adminTasks, onAdminTaskUpdate, readOnly, calendarEvents, onRecord, onOpenRecord, onOpenBasicInfo, onOpenChart, onOpenStage, onOpenHistory }) {
   const isEnglish = locale === 'en-US'
   return <div className="growth-overview">
-    <section className="growth-board-card growth-age-board"><header className="growth-card-heading"><div><p className="eyebrow">{isEnglish ? 'Current stage' : '当前阶段'}</p><h2>{isEnglish ? stage.labelEn : stage.label}</h2></div><Baby size={20} /></header><div className="growth-age-grid"><div><span>{isEnglish ? 'Age today' : '今天的年龄'}</span><strong>{ageLabel({ ...ageContext, basis: 'chronological', ageDays: ageContext.chronological?.days, ageMonths: ageContext.chronological?.months }, locale)}</strong></div><div><span>{isEnglish ? 'Reference age' : '发展参考年龄'}</span><strong>{ageLabel(ageContext, locale)}</strong></div><div><span>{isEnglish ? 'Stage window' : '阶段范围'}</span><strong>{isEnglish ? stage.rangeLabelEn : stage.rangeLabel}</strong></div></div><p className="growth-card-note">{isEnglish ? content.introEn : content.intro}</p>{ageContext.limitations?.length > 0 && <p className="growth-age-limit"><Info size={14} />{ageContext.limitations[0]}</p>}</section>
+    <section className="growth-board-card growth-age-board"><header className="growth-card-heading"><div><p className="eyebrow">{isEnglish ? 'Current stage' : '当前阶段'}</p><h2>{isEnglish ? stage.labelEn : stage.label}</h2></div><Baby size={20} /></header><div className="growth-age-grid"><div><span>{isEnglish ? 'Age today' : '今天的年龄'}</span><strong>{ageLabel({ ...ageContext, basis: 'chronological', ageDays: ageContext.chronological?.days, ageMonths: ageContext.chronological?.months }, locale)}</strong></div><div><span>{isEnglish ? 'Reference age' : '发展参考年龄'}</span><strong>{ageLabel(ageContext, locale)}</strong></div><div><span>{isEnglish ? 'Stage window' : '阶段范围'}</span><strong>{isEnglish ? stage.rangeLabelEn : stage.rangeLabel}</strong></div></div><p className="growth-card-note">{isEnglish ? content.introEn : content.intro}</p>{(ageContext.limitations?.length > 0 || ageContext.ageDays < 0) && <p className="growth-age-limit"><Info size={14} />{growthAgeLimitation(ageContext, locale)}</p>}</section>
     <GrowthCalendar locale={locale} events={calendarEvents} />
     <AdminTaskList tasks={adminTasks} locale={locale} onUpdate={onAdminTaskUpdate} readOnly={readOnly} testId="growth-admin-task-list" />
     <section className="growth-board-card"><header className="growth-card-heading"><div><p className="eyebrow">{isEnglish ? 'Growth standard reference' : '生长标准参考'}</p><h2>{isEnglish ? 'Recent measurements' : '最近成长测量'}</h2></div><button type="button" className="text-button" onClick={onOpenChart}>{isEnglish ? 'Open growth standard chart' : '看生长标准曲线'}<ArrowRight size={15} /></button></header><p className="growth-card-note">{isEnglish ? 'Each result is compared with the Chinese national standard population for the same age and sex.' : '每项结果都与中国国家标准中同年龄、同性别儿童人群比较，不做用户排名。'}</p><div className="growth-metric-grid">{metricCards.map((item) => <MetricCard key={item.id} item={item} locale={locale} />)}</div><div className="growth-board-actions"><button type="button" className="secondary-button compact" onClick={onRecord}>{isEnglish ? 'Add a record' : '补录一次测量'}</button><button type="button" className="text-button" onClick={onOpenHistory}>{isEnglish ? 'View all history' : '查看全部历史'}<ArrowRight size={15} /></button></div></section>
@@ -257,6 +267,6 @@ function NationalGrowthChart({ locale, model }) {
 
 function GrowthHistoryPage({ locale, evaluations, onRecord }) {
   const isEnglish = locale === 'en-US'
-  const sorted = [...evaluations].sort((a, b) => String(b.measuredAt).localeCompare(String(a.measuredAt)))
+  const sorted = evaluations.filter((item) => item.type !== 'headCircumference').sort((a, b) => String(b.measuredAt).localeCompare(String(a.measuredAt)))
   return <div className="growth-detail-page"><section className="growth-detail-lede"><p className="eyebrow">{isEnglish ? 'Measurement history' : '成长历史记录'}</p><h2>{isEnglish ? 'Facts first, references attached' : '先看事实，再看参考'}</h2><p>{isEnglish ? 'Every value keeps its date, source, standard version, and limitations.' : '每个数值都保留日期、来源、标准版本和适用限制。'}</p><button type="button" className="primary-button compact" onClick={onRecord}><LineChart size={15} />{isEnglish ? 'Record another measurement' : '去记录中心录入'}</button></section><section className="growth-board-card growth-history-card">{sorted.length === 0 ? <div className="growth-chart-empty"><Baby size={26} /><p>{isEnglish ? 'No growth measurements yet.' : '还没有成长测量记录。'}</p></div> : <div className="growth-history-list">{sorted.map((item) => <article key={item.id}><div className="growth-history-value"><strong>{item.value} {item.unit}</strong><span>{metricLabel(item.type, locale)}</span></div><div><strong>{formatDate(item.measuredAt, locale)}</strong><small>{growthSourceLabel(item.source, locale)}</small></div><div className={`growth-history-result ${item.evaluation?.dataQuality === 'sufficient' ? 'good' : 'limited'}`}><strong>{item.evaluation?.dataQuality === 'sufficient' ? `${standardResultLabel(item.evaluation, locale)} · ${standardResultDetail(item.evaluation, locale)}` : (isEnglish ? 'Reference unavailable' : '暂无生长标准参考')}</strong><small>{item.evaluation?.dataQuality === 'sufficient' ? `${item.evaluation.standardPackageId} · ${ageBasisLabel(item.evaluation.ageBasis, locale)} · ${growthTrajectoryLabel(item.evaluation.trajectoryStatus, locale)}` : item.evaluation?.limitations?.[0]}</small></div></article>)}</div>}</section></div>
 }

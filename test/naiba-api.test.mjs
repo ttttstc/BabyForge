@@ -47,7 +47,7 @@ test('AI chat rejects a baby outside the authenticated household', async () => {
   assert.equal(response.status, 403)
 })
 
-test('AI chat recomputes the feeding reference from authorized D1 context', async () => {
+test('AI chat does not expose a client-supplied feeding reference when the model is unavailable', async () => {
   const fixture = apiFixture()
   const response = await onRequestPost({ request: request({
     message: '今天宝宝怎么吃？',
@@ -57,8 +57,26 @@ test('AI chat recomputes the feeding reference from authorized D1 context', asyn
   assert.equal(response.status, 200)
   const body = await response.text()
   assert.match(body, /conversationId/)
-  assert.match(body, /30–60mL\/次/)
+  assert.match(body, /model_not_configured/)
   assert.doesNotMatch(body, /999 mL\/次/)
+})
+
+test('AI chat returns provider error metadata without a fabricated answer', async () => {
+  const fixture = apiFixture()
+  const response = await onRequestPost({ request: request({ message: '请分析今天的照护记录。', skillId: 'detailed_care_analysis', baby: fixture.baby }), env: fixture })
+  assert.equal(response.status, 200)
+  const body = await response.text()
+  assert.match(body, /model_not_configured/)
+  assert.doesNotMatch(body, /type":"message"/)
+})
+
+test('AI chat returns the scope boundary without calling a model for unrelated topics', async () => {
+  const fixture = apiFixture()
+  const response = await onRequestPost({ request: request({ message: '帮我写一个股票交易策略。', baby: fixture.baby }), env: fixture })
+  assert.equal(response.status, 200)
+  const body = await response.text()
+  assert.match(body, /抱歉，我只是个育儿辅助助手，请跟我讨论关于育儿相关的话题/)
+  assert.doesNotMatch(body, /model_not_configured/)
 })
 
 test('decision fact allowlist stays a superset of every published unit requirement', () => {

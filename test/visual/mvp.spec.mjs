@@ -308,6 +308,23 @@ test('settings switches the persisted interface language', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Cases', exact: true })).toBeVisible()
 })
 
+test('settings edits baby birth profile and recalculates age-based plans', async ({ page }) => {
+  await createBaby(page, 6)
+  await page.getByRole('button', { name: '设置' }).click()
+  const profile = page.locator('.settings-profile-section')
+  await expect(profile.getByRole('heading', { name: '宝宝出生基础信息' })).toBeVisible()
+  await profile.getByLabel('出生日期').fill(dateDaysAgo(40))
+  await profile.getByLabel('出生孕周').fill('32')
+  await profile.getByLabel('孕周余天').fill('3')
+  await profile.getByRole('button', { name: '保存出生信息' }).click()
+  await expect(profile.getByRole('status')).toContainText('年龄、成长阶段、疫苗和时间计划已按新信息重算')
+
+  await page.getByRole('button', { name: '完成设置' }).click()
+  await page.getByRole('button', { name: '成长', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '婴儿早期', exact: true })).toBeVisible()
+  await expect(page.locator('.growth-age-board')).toContainText('40 天')
+})
+
 test('clearing local data returns to onboarding', async ({ page }) => {
   await createBaby(page)
   await page.getByRole('button', { name: '清除本地数据' }).click()

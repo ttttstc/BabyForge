@@ -168,6 +168,12 @@ export function ageBasisLabel(basis, locale = 'zh-CN') {
 
 export function ageContextSummary(context, locale = 'zh-CN') {
   if (!context) return locale === 'en-US' ? 'Age unavailable' : '年龄信息不足'
+  if (context.ageDays < 0 && Number.isFinite(context.chronological?.days)) {
+    const daysBeforeDue = Math.abs(context.ageDays)
+    return locale === 'en-US'
+      ? `Actual ${Math.max(0, context.chronological.days)} days · corrected age is ${daysBeforeDue} days before due date`
+      : `实际 ${Math.max(0, context.chronological.days)} 天 · 矫正年龄尚未到预产期（还差 ${daysBeforeDue} 天）`
+  }
   const age = context.ageMonths === null || context.ageMonths === undefined
     ? locale === 'en-US' ? 'age unavailable' : '年龄信息不足'
     : locale === 'en-US' ? `${context.ageMonths} months` : `${context.ageMonths} 个月`

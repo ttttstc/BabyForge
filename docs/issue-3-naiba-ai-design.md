@@ -153,7 +153,7 @@ Skill 是单 Agent 内的任务协议，不是独立机器人。每个 Skill 固
 - `POST /api/ai/chat` 通过 SSE 返回流式事件。
 - `POST /api/ai/confirm-draft` 执行经确认的写入。
 - `OPENAI_API_KEY` 只存在服务端 Secret；`OPENAI_BASE_URL` 和 `OPENAI_MODEL` 支持兼容 OpenAI 协议的自有服务，未配置 Base URL 时使用默认 OpenAI endpoint。
-- 兼容服务若只提供 `/chat/completions`，设置 `OPENAI_USE_RESPONSES=false`；未设置时遵循 Agents SDK 默认 Responses 行为。
+- 模型协议通过 `OPENAI_PROTOCOL` 或账号设置页选择 `anthropic_messages`、`openai_chat_completions`、`openai_responses`；账号级选择优先于部署默认值。`OPENAI_USE_RESPONSES` 保留作为旧配置的兼容映射。
 - 图片/PDF 报告识别会把文件内容发送给上述配置的 AI 服务商；UI 每次上传前都会提示并要求明确同意，纯文本报告可在本地解析。
 - 模型调用有默认的账号/宝宝每日 30 次、全局每日 500 次和 token 预算保护；超限时只返回本地安全答案。可用 `NAIBA_DAILY_MESSAGE_LIMIT`、`NAIBA_DAILY_BABY_MESSAGE_LIMIT`、`NAIBA_GLOBAL_DAILY_MESSAGE_LIMIT`、`NAIBA_DAILY_TOKEN_BUDGET`、`NAIBA_GLOBAL_DAILY_TOKEN_BUDGET` 调整。
 - Cloudflare Pages Functions 直接运行 `@openai/agents` 的单 Agent、Function Tools、输入/输出 Guardrail 和结构化报告输出。构建通过浏览器版 Agents Core shim 排除未使用的 Node MCP 传输模块，并在 `nodejs_compat` 下验证。

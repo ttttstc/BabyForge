@@ -1,7 +1,10 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import { runNaibaAgent } from './functions/_shared/naibaAgent.js'
-import { buildNaibaLocalAnswer } from './src/domain/naibaLocalAnswer.js'
+import { Resolver } from 'node:dns/promises'
+import { Agent as HttpAgent, fetch as undiciFetch } from 'undici'
+import { describeNaibaAgentFailure, runNaibaAgent } from './functions/_shared/naibaAgent.js'
+import { resolvedLlmConfig } from './functions/_shared/llmConfig.js'
+import { isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from './src/domain/naibaScope.js'
 
 function jsonSse(value) {
   return `data: ${JSON.stringify(value)}\n\n`
@@ -13,15 +16,7 @@ async function readJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
 }
 
-function normalizeOpenAIBaseUrl(value) {
-  const baseUrl = String(value || '').trim().replace(/\/$/, '')
-  if (!baseUrl) return ''
-  const url = new URL(baseUrl)
-  if (!url.pathname || url.pathname === '/') url.pathname = '/v1'
-  return url.toString().replace(/\/$/, '')
-}
-
-async function runLocalAgentWithTimeout(input, timeoutMs = 15_000) {
+async function runLocalAgentWithTimeout(input, timeoutMs = 45_000) {
   let timer
   try {
     return await Promise.race([
@@ -35,13 +30,33 @@ async function runLocalAgentWithTimeout(input, timeoutMs = 15_000) {
 
 function localNaibaPlugin(mode) {
   const env = loadEnv(mode, process.cwd(), '')
+  let localDispatcher = null
+  function localProviderFetch() {
+    const dnsServer = String(env.OPENAI_DNS_SERVER || '').trim()
+    if (!dnsServer) return undefined
+    const resolver = new Resolver()
+    resolver.setServers(dnsServer.split(',').map((item) => item.trim()).filter(Boolean))
+    localDispatcher ||= new HttpAgent({
+      connect: {
+        lookup(hostname, options, callback) {
+          resolver.resolve4(hostname).then((addresses) => {
+            if (!addresses.length) throw new Error(`No IPv4 address found for ${hostname}`)
+            if (options.all) callback(null, addresses.map((address) => ({ address, family: 4 })))
+            else callback(null, addresses[0], 4)
+          }).catch(callback)
+        },
+      },
+    })
+    return (url, init) => undiciFetch(url, { ...init, dispatcher: localDispatcher })
+  }
   async function modelConfig() {
     if (env.OPENAI_API_KEY) {
       const customGateway = Boolean(String(env.OPENAI_BASE_URL || '').trim())
       // The supplied OpenAI-compatible gateway exposes chat completions, not
       // the Responses endpoint. Keep OPENAI_USE_RESPONSES for official OpenAI
       // deployments, but select the compatible protocol for local testing.
-      return { apiKey: env.OPENAI_API_KEY, baseURL: normalizeOpenAIBaseUrl(env.OPENAI_BASE_URL), model: env.OPENAI_MODEL || 'gpt-4o-mini', useResponses: customGateway ? 'false' : env.OPENAI_USE_RESPONSES, provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
+      const config = resolvedLlmConfig(env)
+      return { apiKey: config.apiKey, baseURL: config.baseUrl, model: config.model, protocol: config.protocol, useResponses: config.useResponses, transportFetch: localProviderFetch(), provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
     }
     return null
   }
@@ -51,23 +66,28 @@ function localNaibaPlugin(mode) {
       server.middlewares.use('/api/ai/local-status', async (_request, response) => {
         const config = await modelConfig()
         response.setHeader('content-type', 'application/json; charset=utf-8')
-        response.end(JSON.stringify({ configured: Boolean(config), provider: config?.provider || null, model: config?.model || null }))
+        response.end(JSON.stringify({ configured: Boolean(config), provider: config?.provider || null, protocol: config?.protocol || null, model: config?.model || null }))
       })
       server.middlewares.use('/api/ai/chat', async (request, response, next) => {
         if (request.method !== 'POST') return next()
-        let body = {}
         try {
           const config = await modelConfig()
-          body = await readJson(request)
+          const body = await readJson(request)
           const message = String(body.message || '')
           const locale = body.baby?.locale || 'zh-CN'
-          const recommendation = body.recommendation || null
-          if (!config) {
-            const fallback = buildNaibaLocalAnswer(message, { recommendation, locale })
+          const hasDecisionContext = body.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
+          if (!isNaibaTopicInScope(message) && !hasDecisionContext) {
             response.statusCode = 200
             response.setHeader('content-type', 'text/event-stream; charset=utf-8')
             response.setHeader('cache-control', 'no-cache')
-            response.end(jsonSse({ type: 'message', delta: fallback }) + jsonSse({ type: 'meta', fallback: true, reason: 'model_not_configured' }) + jsonSse({ type: 'done' }))
+            response.end(jsonSse({ type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }) + jsonSse({ type: 'done' }))
+            return
+          }
+          if (!config) {
+            response.statusCode = 200
+            response.setHeader('content-type', 'text/event-stream; charset=utf-8')
+            response.setHeader('cache-control', 'no-cache')
+            response.end(jsonSse({ type: 'meta', fallback: true, reason: 'model_not_configured' }) + jsonSse({ type: 'done' }))
             return
           }
           const output = await runLocalAgentWithTimeout({
@@ -86,12 +106,12 @@ function localNaibaPlugin(mode) {
           response.setHeader('cache-control', 'no-cache')
           response.end(jsonSse({ type: 'message', delta: output }) + jsonSse({ type: 'done' }))
         } catch (error) {
-          server.config.logger.error(`[Naiba AI local] ${error?.message || error}`)
-          const fallback = buildNaibaLocalAnswer(body.message, { recommendation: body.recommendation, locale: body.baby?.locale || 'zh-CN' })
+          const failure = describeNaibaAgentFailure(error)
+          server.config.logger.error(`[Naiba AI local] ${failure.reason}: ${error?.message || error}`)
           response.statusCode = 200
           response.setHeader('content-type', 'text/event-stream; charset=utf-8')
           response.setHeader('cache-control', 'no-cache')
-          response.end(jsonSse({ type: 'message', delta: fallback }) + jsonSse({ type: 'meta', fallback: true, reason: 'model_unavailable' }) + jsonSse({ type: 'done' }))
+          response.end(jsonSse({ type: 'meta', fallback: true, reason: failure.reason }) + jsonSse({ type: 'done' }))
         }
       })
     },

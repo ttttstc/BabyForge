@@ -6,8 +6,9 @@ import { createObservation } from '../src/domain/observation.js'
 import { buildDoctorSummary } from '../src/domain/doctorSummary.js'
 import { evaluateMedicalTopic } from '../src/domain/safety.js'
 import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
+import { pushWorkspace } from '../src/domain/sync.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
-import { ANATOMY_RESOURCES, getAnatomyHotspots, PEDIATRIC_DISEASES } from '../src/content/pediatricDiseases.js'
+import { ANATOMY_RESOURCES, getAnatomyHotspots } from '../src/content/pediatricDiseases.js'
 import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyHealthReminders, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
 import { VACCINE_DOSES, VACCINE_STANDARD } from '../src/content/vaccines.js'
 import { applyCareEventsToLegacy, bridgeLegacyChanges, createCareEvent, mergeCareEvents, migrateLegacyState, occurredAtErrorMessage, validateOccurredAt } from '../src/domain/careEvents.js'
@@ -25,6 +26,7 @@ import { ageContextSummary, ageBasisLabel, resolveAgeContext } from '../src/doma
 import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
 import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
 import { getGrowthStageContent } from '../src/content/growthStages.js'
+import { updateBabyProfileState, validateBasicInfoForm } from '../src/domain/babyProfile.js'
 
 test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -41,6 +43,22 @@ test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getStage(2191).id, 'child-5-6-years')
   assert.equal(getStage(2192).id, 'out-of-scope')
   assert.equal(getStages().length, 15)
+})
+
+test('baby profile updates keep time-plan inputs canonical and reject future birth dates', () => {
+  const current = {
+    ...loadState({ getItem: () => null }),
+    baby: { id: 'baby-profile', nickname: '小舟', birthDate: '2026-08-01', gestationalWeeks: 39, gestationalDays: 0, birthMultiplicity: 'singleton', sex: 'male', feedingMode: 'mixed' },
+  }
+  const next = updateBabyProfileState(current, { ...current.baby, nickname: '小舟-更新', birthDate: '2026-07-01', gestationalWeeks: 32, gestationalDays: 3, birthMultiplicity: 'multiple', sex: 'female', feedingMode: 'formula' }, { now: '2026-08-08T10:00:00.000Z' })
+  assert.equal(next.baby.birthDate, '2026-07-01')
+  assert.equal(next.baby.gestationalWeeks, 32)
+  assert.equal(next.baby.gestationalDays, 3)
+  assert.equal(next.baby.birthMultiplicity, 'multiple')
+  assert.equal(next.baby.feedingMode, 'formula')
+  assert.equal(getCalendarEvents(next.baby).find((event) => event.id === 'birth-anniversary').date, '2026-07-01')
+  assert.equal(getCalendarEvents(next.baby).find((event) => event.id === 'first-visit-plan').date, '2026-07-02')
+  assert.match(validateBasicInfoForm({ ...next.baby, birthDate: '2999-01-01' }), /不能晚于今天|future/)
 })
 
 test('experience age bands cover 0–36 months without changing care stages', () => {
@@ -205,6 +223,27 @@ test('workspace storage is isolated by account namespace', () => {
   assert.equal(loadState(storage).baby, null)
 })
 
+test('cloud workspace writes send every persisted collection immediately', async () => {
+  const state = {
+    baby: { id: 'baby-1', nickname: '小舟', birthDate: '2026-01-01' },
+    observations: [{ id: 'observation-1' }],
+    questions: ['需要复测吗？'],
+    taskLogs: [{ id: 'task-1' }],
+    adminTaskRecords: [{ id: 'admin-1' }],
+    growthMeasurements: [{ id: 'growth-1' }],
+    milestoneRecords: [{ id: 'milestone-1' }],
+  }
+  let request
+  const response = await pushWorkspace(state, async (url, options) => {
+    request = { url, options }
+    return new Response(JSON.stringify({ baby: state.baby }), { status: 200, headers: { 'content-type': 'application/json' } })
+  })
+  assert.deepEqual(response, { baby: state.baby })
+  assert.equal(request.url, '/api/sync')
+  assert.equal(request.options.method, 'POST')
+  assert.deepEqual(JSON.parse(request.options.body), state)
+})
+
 test('baby assets resolve to separate male and female files while shared assets stay shared', () => {
   assert.equal(
     resolveSexAsset(ASSET_MANIFEST.models.newborn, 'male').high,
@@ -225,26 +264,10 @@ test('baby assets resolve to separate male and female files while shared assets 
   assert.equal(resolveSexAsset(ASSET_MANIFEST.models.newborn, null), null)
 })
 
-test('pediatric condition library reuses the nine anatomy resources', () => {
-  assert.equal(PEDIATRIC_DISEASES.length, 9)
+test('pediatric anatomy library exposes the nine reusable 3D resources', () => {
   assert.equal(ANATOMY_RESOURCES.length, 9)
-  assert.ok(PEDIATRIC_DISEASES.every((item) => ANATOMY_RESOURCES.some((resource) => resource.id === item.organId)))
-  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'jaundice')?.organId, 'liver')
-  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'fever')?.modelLabel.zh, '循环参照')
-  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'cardiovascular')?.organId, 'heart')
-  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'urinary')?.organId, 'kidneys')
-  assert.equal(PEDIATRIC_DISEASES.find((item) => item.id === 'neurologic')?.organId, 'brain')
+  assert.equal(new Set(ANATOMY_RESOURCES.map((resource) => resource.id)).size, 9)
   assert.deepEqual(getAnatomyHotspots('lungs').map((item) => item.id), ['trachea', 'right-lung', 'left-lung', 'bronchus', 'base'])
-})
-
-test('every pediatric category exposes four bilingual case guides with reserved artwork paths', () => {
-  const cases = PEDIATRIC_DISEASES.flatMap((category) => category.cases)
-  assert.equal(cases.length, 36)
-  assert.equal(new Set(cases.map((item) => item.id)).size, 36)
-  assert.ok(cases.every((item) => item.title.zh && item.title.en))
-  assert.ok(cases.every((item) => item.scenario.zh && item.scenario.en))
-  assert.ok(cases.every((item) => item.treatment?.zh && item.nextSteps?.zh))
-  assert.ok(cases.every((item) => item.image === `/assets/pediatric-cases/${item.id}.webp`))
 })
 
 test('calendar exposes anniversaries, milestones, admin tasks, and completion state', () => {
@@ -384,6 +407,15 @@ test('age policy selects the purpose-specific basis and never trusts the legacy 
   assert.equal(carePlan.basis, 'chronological')
   assert.equal(ageBasisLabel(stage.basis), '矫正年龄')
   assert.match(ageContextSummary(stage), /矫正年龄/)
+})
+
+test('preterm newborns keep the chronological stage window while showing corrected-age limits', () => {
+  const baby = { birthDate: '2026-07-29', gestationalWeeks: 32, gestationalDays: 0 }
+  const context = resolveAgeContext({ baby, at: '2026-08-08', purpose: 'stage' })
+  assert.equal(context.chronological.days, 10)
+  assert.equal(context.ageDays, -46)
+  assert.equal(getStage(Math.max(0, context.chronological.days)).id, 'newborn-adaptation')
+  assert.match(ageContextSummary(context), /实际 10 天 · 矫正年龄尚未到预产期（还差 46 天）/)
 })
 
 test('calendar age uses one local calendar-day convention and birth standards fail closed without gestation', () => {
@@ -631,6 +663,30 @@ test('guest sessions cannot delete album photos and authorized parents can', asy
   const cleanupPendingResponse = await onPhotoDelete({ request: guestRequest, env: cleanupPendingEnv, params: { id: 'photo-1' } })
   assert.equal(cleanupPendingResponse.status, 202)
   assert.deepEqual(await cleanupPendingResponse.json(), { deleted: true, id: 'photo-1', storageCleanupPending: true, warning: 'R2 unavailable' })
+})
+
+test('photo viewing stays available to guests while downloads require edit permission', async () => {
+  const guest = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-baby', username: 'baby', role: 'guest', display_name: '游客' }
+  const photoRow = { id: 'photo-1', object_key: 'babies/baby-1/photos/photo-1', file_name: '第一天.jpg', content_type: 'image/jpeg', baby_status: 'active' }
+  const object = { body: 'photo-bytes', httpEtag: 'etag-1', writeHttpMetadata: (headers) => headers.set('content-type', 'image/jpeg') }
+  const guestEnv = {
+    DB: { prepare: (sql) => ({ bind: () => ({ first: async () => sql.includes('auth_sessions') ? guest : photoRow }) }) },
+    BABY_PHOTOS: { get: async () => object },
+  }
+  const guestRequest = (url) => new Request(url, { headers: { cookie: 'babyforge_session=token' } })
+  assert.equal((await onPhotoGet({ request: guestRequest('https://babyforge.test/api/photos/photo-1'), env: guestEnv, params: { id: 'photo-1' } })).status, 200)
+  assert.equal((await onPhotoGet({ request: guestRequest('https://babyforge.test/api/photos/photo-1?download=1'), env: guestEnv, params: { id: 'photo-1' } })).status, 403)
+
+  const parent = { ...guest, id: 'account-1', username: 'parent', role: 'admin', display_name: '家长' }
+  const parentEnv = {
+    ...guestEnv,
+    DB: { prepare: (sql) => ({ bind: () => ({ first: async () => sql.includes('auth_sessions') ? parent : photoRow }) }) },
+  }
+  const parentResponse = await onPhotoGet({ request: guestRequest('https://babyforge.test/api/photos/photo-1?download=1'), env: parentEnv, params: { id: 'photo-1' } })
+  assert.equal(parentResponse.status, 200)
+  assert.match(parentResponse.headers.get('content-disposition'), /attachment/)
+  assert.match(parentResponse.headers.get('content-disposition'), /%E7%AC%AC%E4%B8%80%E5%A4%A9\.jpg/)
+  assert.equal(await parentResponse.text(), 'photo-bytes')
 })
 
 test('detached baby profiles cannot read retained cloud album URLs', async () => {

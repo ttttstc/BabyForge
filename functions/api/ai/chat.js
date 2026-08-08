@@ -1,12 +1,14 @@
 import { getSession, json } from '../../_shared/auth.js'
 import { accessibleBaby, concernFromRow, eventFromRow, planFromRow } from '../../_shared/care.js'
-import { runNaibaAgent } from '../../_shared/naibaAgent.js'
+import { describeNaibaAgentFailure, runNaibaAgent } from '../../_shared/naibaAgent.js'
 import { selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
 import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
+import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
 import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
+import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 
 function sse(events, status = 200) {
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
@@ -194,6 +196,11 @@ export async function onRequestPost({ request, env }) {
   await appendMessage(env, conversation.id, 'user', message, requestedSkillId || null)
   const recommendation = calculateFeedingRecommendation({ baby: context.baby, events: context.careEvents, locale: context.baby.locale || 'zh-CN' })
   const skillId = selectSkillId(message, requestedSkillId)
+  const hasDecisionContext = body?.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
+  if (!isNaibaTopicInScope(message) && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
+    await appendMessage(env, conversation.id, 'assistant', NAIBA_OUT_OF_SCOPE_MESSAGE, skillId || null, null)
+    return sse([{ type: 'meta', conversationId: conversation.id }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }])
+  }
   const healthSensitive = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i.test(message)
   // The server, not the browser, owns the topic-to-unit mapping. This also
   // gives health-related explanatory skills the same deterministic floor.
@@ -203,16 +210,17 @@ export async function onRequestPost({ request, env }) {
   const decisionResultId = await persistDecision(env, session.accountId, context.baby.id, decision)
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
   const fallback = localAnswer(message, recommendation, decision)
-  async function respond(events, assistantText) {
-    await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
+  const llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
+  async function respond(events, assistantText = '') {
+    if (assistantText) await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
     return sse([{ type: 'meta', conversationId: conversation.id }, ...events])
   }
 
   if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([{ type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }], fallback)
-  if (!env.OPENAI_API_KEY) return respond([{ type: 'message', delta: fallback }, { type: 'done' }], fallback)
+  if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, { type: 'done' }])
 
   const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, message)
-  if (!quota.allowed) return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }], fallback)
+  if (!quota.allowed) return respond([{ type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }])
 
   try {
     const output = await runNaibaAgent({
@@ -227,15 +235,17 @@ export async function onRequestPost({ request, env }) {
       decisionResult: decision,
       conversationId: conversation.id,
       locale: context.baby.locale || 'zh-CN',
-      model: env.OPENAI_MODEL || 'gpt-4o-mini',
-      apiKey: env.OPENAI_API_KEY,
-      baseURL: env.OPENAI_BASE_URL,
-      useResponses: env.OPENAI_USE_RESPONSES,
+      model: llmConfig.model,
+      apiKey: llmConfig.apiKey,
+      baseURL: llmConfig.baseUrl,
+      protocol: llmConfig.protocol,
+      useResponses: llmConfig.useResponses,
     })
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)
     return respond([{ type: 'message', delta: output }, { type: 'done' }], output)
   } catch (error) {
-    console.error('Naiba AI agent failed; using safe fallback', error)
-    return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true }, { type: 'done' }], fallback)
+    const failure = describeNaibaAgentFailure(error)
+    console.error('Naiba AI agent failed; returning provider error', { ...failure, error })
+    return respond([{ type: 'meta', fallback: true, reason: failure.reason }, { type: 'done' }])
   }
 }

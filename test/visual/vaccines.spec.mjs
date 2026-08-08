@@ -22,6 +22,57 @@ async function createBaby(page) {
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
 }
 
+function cloudVaccineFixture() {
+  const baby = {
+    id: 'cloud-vaccine-baby',
+    nickname: '云端宝宝',
+    birthDate: dateDaysAgo(70),
+    sex: 'male',
+    gestationalWeeks: 39,
+    gestationalDays: 0,
+    growthAgeBasis: 'chronological',
+    birthMultiplicity: 'singleton',
+    feedingMode: 'mixed',
+    locale: 'zh-CN',
+  }
+  const workspace = {
+    version: 4,
+    baby,
+    observations: [],
+    questions: [],
+    taskLogs: [],
+    adminTaskRecords: [],
+    growthMeasurements: [],
+    milestoneRecords: [],
+    careEvents: [],
+    carePlanItems: [],
+    concerns: [],
+    careActors: [{ id: 'parent-mother', displayName: '妈妈' }],
+    preferences: { locale: 'zh-CN', currentRecorderId: 'parent-mother' },
+    syncMeta: { status: 'online' },
+  }
+  const session = {
+    username: 'niwa',
+    role: 'admin',
+    displayName: '管理员',
+    mode: 'cloudflare',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    babies: [baby],
+  }
+  return { baby, workspace, session }
+}
+
+async function seedCloudVaccineWorkspace(page, fixture) {
+  await page.addInitScript(({ session: initialSession, workspace: initialWorkspace }) => {
+    localStorage.setItem('babyforge:session', JSON.stringify(initialSession))
+    localStorage.setItem('babyforge:workspace:niwa', JSON.stringify(initialWorkspace))
+  }, fixture)
+  await page.evaluate(({ session: initialSession, workspace: initialWorkspace }) => {
+    localStorage.setItem('babyforge:session', JSON.stringify(initialSession))
+    localStorage.setItem('babyforge:workspace:niwa', JSON.stringify(initialWorkspace))
+  }, fixture)
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -54,4 +105,118 @@ test('vaccines tab uses the 2026 national roadmap and opens complete dose guidan
   await page.keyboard.press('Escape')
   await page.reload()
   await expect(page.locator('.vaccine-stop.current .vaccine-dose-row').filter({ hasText: '百白破疫苗' }).getByRole('button', { name: /已完成/ })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('vaccine completion survives an in-flight cloud event pull', async ({ page }) => {
+  const fixture = cloudVaccineFixture()
+  const { workspace } = fixture
+  await seedCloudVaccineWorkspace(page, fixture)
+  await page.route('**/api/sync?babyId=*', (route) => route.fulfill({ json: workspace }))
+  await page.route('**/api/events*', async (route) => {
+    if (route.request().method() === 'GET') {
+      await new Promise((resolve) => setTimeout(resolve, 900))
+      await route.fulfill({ json: { events: [], carePlanItems: [], concerns: [] } })
+      return
+    }
+    const body = JSON.parse(route.request().postData() || '{}')
+    await route.fulfill({ status: 201, json: { event: body.event } })
+  })
+  await page.route('**/api/actors?babyId=*', (route) => route.fulfill({ json: { actors: workspace.careActors } }))
+
+  const pullStarted = page.waitForRequest((request) => request.method() === 'GET' && request.url().includes('/api/events?babyId='))
+  await page.reload()
+  await pullStarted
+  await page.goto('/#/vaccines')
+  const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
+  await completionToggle.click()
+  await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
+  await page.waitForTimeout(1_100)
+  await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('vaccine completion survives an in-flight cloud actor pull', async ({ page }) => {
+  const fixture = cloudVaccineFixture()
+  const { workspace } = fixture
+  await seedCloudVaccineWorkspace(page, fixture)
+  await page.route('**/api/sync?babyId=*', (route) => route.fulfill({ json: workspace }))
+  await page.route('**/api/events*', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { events: [], carePlanItems: [], concerns: [] } })
+      return
+    }
+    const body = JSON.parse(route.request().postData() || '{}')
+    await route.fulfill({ status: 201, json: { event: body.event } })
+  })
+  await page.route('**/api/actors?babyId=*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await route.fulfill({ json: { actors: workspace.careActors } })
+  })
+
+  const pullStarted = page.waitForRequest((request) => request.method() === 'GET' && request.url().includes('/api/actors?babyId='))
+  await page.reload()
+  await pullStarted
+  await page.goto('/#/vaccines')
+  const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
+  await completionToggle.click()
+  await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
+  await page.waitForTimeout(1_100)
+  await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('vaccine completion survives the initial cloud workspace pull', async ({ page }) => {
+  const fixture = cloudVaccineFixture()
+  const { workspace } = fixture
+  await seedCloudVaccineWorkspace(page, fixture)
+  await page.route('**/api/sync?babyId=*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await route.fulfill({ json: workspace })
+  })
+  await page.route('**/api/events*', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { events: [], carePlanItems: [], concerns: [] } })
+      return
+    }
+    const body = JSON.parse(route.request().postData() || '{}')
+    await route.fulfill({ status: 201, json: { event: body.event } })
+  })
+  await page.route('**/api/actors?babyId=*', (route) => route.fulfill({ json: { actors: workspace.careActors } }))
+
+  const pullStarted = page.waitForRequest((request) => request.method() === 'GET' && request.url().includes('/api/sync?babyId='))
+  await page.reload()
+  await pullStarted
+  await page.goto('/#/vaccines')
+  const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
+  await completionToggle.click()
+  await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
+  await page.waitForTimeout(1_100)
+  await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('cloud vaccine writes show pending until the event is confirmed', async ({ page }) => {
+  const fixture = cloudVaccineFixture()
+  const { workspace } = fixture
+  await seedCloudVaccineWorkspace(page, fixture)
+  await page.route('**/api/sync?babyId=*', (route) => route.fulfill({ json: workspace }))
+  let releaseWrite
+  const writeGate = new Promise((resolve) => { releaseWrite = resolve })
+  await page.route('**/api/events*', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { events: [], carePlanItems: [], concerns: [] } })
+      return
+    }
+    const body = JSON.parse(route.request().postData() || '{}')
+    await writeGate
+    await route.fulfill({ status: 201, json: { event: body.event } })
+  })
+  await page.route('**/api/actors?babyId=*', (route) => route.fulfill({ json: { actors: workspace.careActors } }))
+
+  await page.reload()
+  await page.goto('/#/vaccines')
+  const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
+  const writeStarted = page.waitForRequest((request) => request.method() === 'POST' && request.url().endsWith('/api/events'))
+  await completionToggle.click()
+  await writeStarted
+  await expect(page.locator('.sync-status')).toHaveText('待同步')
+  releaseWrite()
+  await expect(page.locator('.sync-status')).toHaveText('已同步')
 })

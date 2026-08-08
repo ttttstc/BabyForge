@@ -58,10 +58,51 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply babyforge --remote
 
+      - name: Publish production model secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          OPENAI_USE_RESPONSES: ${{ secrets.OPENAI_USE_RESPONSES }}
+          AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
+        run: |
+          test -n "$OPENAI_API_KEY"
+          test -n "$OPENAI_BASE_URL"
+          test -n "$OPENAI_MODEL"
+          test -n "$OPENAI_USE_RESPONSES"
+          test -n "$AI_HEALTH_TOKEN"
+          printf '%s' "$OPENAI_API_KEY" | npx wrangler pages secret put OPENAI_API_KEY --project-name babyforge
+          printf '%s' "$OPENAI_BASE_URL" | npx wrangler pages secret put OPENAI_BASE_URL --project-name babyforge
+          printf '%s' "$OPENAI_MODEL" | npx wrangler pages secret put OPENAI_MODEL --project-name babyforge
+          printf '%s' "$OPENAI_USE_RESPONSES" | npx wrangler pages secret put OPENAI_USE_RESPONSES --project-name babyforge
+          printf '%s' "$AI_HEALTH_TOKEN" | npx wrangler pages secret put AI_HEALTH_TOKEN --project-name babyforge
+
       - name: Deploy Pages
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name babyforge --branch main --commit-hash ${{ github.sha }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify production model call
+        env:
+          AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          EXPECTED_DEPLOYMENT: ${{ github.sha }}
+        run: |
+          test -n "$DEPLOYMENT_URL"
+          provider_url="$(BASE_URL="$OPENAI_BASE_URL" node -e "const url=new URL(process.env.BASE_URL); if (!url.pathname || url.pathname === '/') url.pathname='/v1'; process.stdout.write(url.toString().replace(/\/+$/, '') + '/models')")"
+          provider_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 -H "Authorization: Bearer $OPENAI_API_KEY" "$provider_url")"
+          echo "Provider credential preflight status: $provider_status"
+          for attempt in {1..12}; do
+            response="$(curl --silent --show-error --max-time 70 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" https://babyforge.pages.dev/api/ai/health)"
+            if RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); process.exit(result.deployment === process.env.EXPECTED_DEPLOYMENT.slice(0, 12) ? 0 : 1)"; then break; fi
+            sleep 5
+          done
+          echo "Production model health: $response"
+          RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); if (!result.ok || result.answerLength < 10 || result.deployment !== process.env.EXPECTED_DEPLOYMENT.slice(0, 12)) process.exit(1); console.log('Production model answered:', result.answerLength, 'characters')"

@@ -1,11 +1,14 @@
 import { Agent, OpenAIProvider, Runner } from '@openai/agents'
+import OpenAI from 'openai'
 import { z } from 'zod'
 import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { sanitizeMedicalReport } from '../../src/domain/careEventDraft.js'
 import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { outputAllowed } from '../../src/domain/naibaGuardrails.js'
+import { LLM_PROTOCOLS } from './llmConfig.js'
 import { getSkillContract } from './skillRegistry.js'
 import { createNaibaTools } from './naibaTools.js'
+import { cloudflareDirectIpFetch } from './directIpFetch.js'
 
 const INPUT_LIMIT = 4_000
 
@@ -14,12 +17,84 @@ function parseOptionalBoolean(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
 }
 
-export function createNaibaModelProvider({ apiKey, baseURL = '', useResponses } = {}) {
+export async function createNaibaModelProvider({ apiKey, baseURL = '', useResponses, transportFetch } = {}) {
+  const parsedUseResponses = parseOptionalBoolean(useResponses)
+  const directIpFetch = await cloudflareDirectIpFetch(baseURL)
+  if (directIpFetch) {
+    const options = { openAIClient: new OpenAI({ apiKey, baseURL, fetch: directIpFetch, maxRetries: 0 }) }
+    if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
+    return new OpenAIProvider(options)
+  }
+  if (transportFetch) {
+    // Local DNS overrides still use a normal HTTPS provider. Keep the SDK's
+    // bounded retries so a transient 429 does not immediately become the
+    // generic local fallback shown in the chat UI.
+    const options = { openAIClient: new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch, maxRetries: 2 }) }
+    if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
+    return new OpenAIProvider(options)
+  }
   const options = { apiKey }
   if (String(baseURL || '').trim()) options.baseURL = String(baseURL).trim()
-  const parsedUseResponses = parseOptionalBoolean(useResponses)
   if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
   return new OpenAIProvider(options)
+}
+
+function chatContentText(value) {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return String(value?.text || '')
+  return value.map((part) => typeof part === 'string' ? part : String(part?.text || '')).join('')
+}
+
+async function runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch, maxRetries = 2 }) {
+  const directIpFetch = await cloudflareDirectIpFetch(baseURL)
+  const client = new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch || directIpFetch || undefined, maxRetries })
+  const result = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: instructionsFor(context) },
+      { role: 'user', content: String(message) },
+    ],
+  })
+  const output = chatContentText(result?.choices?.[0]?.message?.content || result?.choices?.[0]?.text).trim()
+  if (!output) throw new Error('openai-chat-empty-response')
+  return output
+}
+
+async function runAnthropicMessages({ message, context, model, apiKey, baseURL, transportFetch }) {
+  const directIpFetch = await cloudflareDirectIpFetch(baseURL)
+  const fetcher = transportFetch || directIpFetch || globalThis.fetch
+  const endpoint = `${String(baseURL || '').trim().replace(/\/+$/, '')}/messages`
+  const response = await fetcher(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model,
+      max_tokens: 900,
+      system: instructionsFor(context),
+      messages: [{ role: 'user', content: String(message) }],
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || `Anthropic Messages request failed (${response.status})`)
+    error.status = response.status
+    throw error
+  }
+  const output = chatContentText(payload?.content).trim()
+  if (!output) throw new Error('anthropic-messages-empty-response')
+  return output
+}
+
+export function describeNaibaAgentFailure(error) {
+  const status = Number(error?.status || error?.cause?.status || 0)
+  const name = String(error?.name || '')
+  const message = String(error?.message || error?.cause?.message || '').toLowerCase()
+  if (status === 401 || status === 403) return { reason: 'provider_auth_failed', status }
+  if (status === 404) return { reason: 'provider_endpoint_not_found', status }
+  if (status === 429) return { reason: 'provider_rate_limited', status }
+  if (name === 'AbortError' || /timeout|timed out|naiba-local-timeout/.test(message)) return { reason: 'provider_timeout', status: status || 504 }
+  if (name === 'MaxTurnsExceededError' || /max turns|empty|invalid json|unexpected token|doctype html/.test(message)) return { reason: 'model_response_invalid', status: status || 502 }
+  return { reason: 'model_unavailable', status: status || 502 }
 }
 
 function instructionsFor(context) {
@@ -46,12 +121,19 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses }) {
+export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2 }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
   const localKnowledge = searchApprovedKnowledge(message, { ageDays: babyContext.profile.ageDays, ageMonths: babyContext.profile.ageMonths })
   const context = { skillId, baby, events: careEvents, concerns, carePlanItems, questions, actor, feedingReference, decisionResult, conversationId, locale, now, babyContext, localKnowledge }
+  if (protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES || protocol === LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) {
+    const output = protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES
+      ? await runAnthropicMessages({ message, context, model, apiKey, baseURL, transportFetch })
+      : await runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch, maxRetries })
+    if (!outputAllowed(output, context)) throw new Error('naiba-output-guardrail')
+    return output
+  }
   const agent = new Agent({
     name: '奶爸AI',
     model,
@@ -59,12 +141,12 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
     // Hosted web search is a Responses-only tool. Chat-completions-compatible
     // gateways must rely on the frozen local knowledge pack instead.
     tools: createNaibaTools(skillId, { allowExternalSearch: localKnowledge.length === 0 && parseOptionalBoolean(useResponses) !== false }),
-    modelSettings: { temperature: 0 },
+    modelSettings: { temperature: 0, maxTokens: 900 },
     inputGuardrails: [{ name: 'naiba-input-boundary', runInParallel: false, execute: async ({ input }) => ({ tripwireTriggered: String(input || '').length > INPUT_LIMIT, outputInfo: { rule: 'input_length' } }) }],
     outputGuardrails: [{ name: 'naiba-output-safety', execute: async ({ agentOutput }) => ({ tripwireTriggered: !outputAllowed(String(agentOutput || ''), context), outputInfo: { rule: 'medical_and_authority_boundary' } }) }],
   })
   const runner = new Runner({
-    modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }),
+    modelProvider: await createNaibaModelProvider({ apiKey, baseURL, useResponses, transportFetch }),
     tracingDisabled: true,
     traceIncludeSensitiveData: false,
     workflowName: 'BabyForge Naiba AI',
@@ -106,7 +188,7 @@ export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby,
   if (text) content.push({ type: 'input_text', text: text.slice(0, 20_000) })
   if (dataUrl && mimeType === 'application/pdf') content.push({ type: 'input_file', file: dataUrl, filename: name })
   else if (dataUrl) content.push({ type: 'input_image', image: dataUrl, detail: 'high' })
-  const runner = new Runner({ modelProvider: createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: true, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
+  const runner = new Runner({ modelProvider: await createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: true, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
   const result = await runner.run(agent, [{ role: 'user', content }], { context, maxTurns: 3, groupId: baby?.id })
   const report = sanitizeMedicalReport(result.finalOutput || {})
   if (!report?.fields) throw new Error('naiba-report-output-invalid')
