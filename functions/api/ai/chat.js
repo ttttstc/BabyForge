@@ -188,6 +188,7 @@ export async function onRequestPost({ request, env }) {
 
   const babyId = String(body?.baby?.id || '').trim()
   if (!babyId) return json({ error: '缺少宝宝档案编号' }, 422)
+  const growthMetric = ['weight', 'length', 'headCircumference'].includes(String(body?.growthMetric || '')) ? String(body.growthMetric) : null
   const context = await loadAuthorizedContext(env, session.accountId, babyId)
   if (!context) return json({ error: '无权访问该宝宝档案' }, 403)
   const conversation = await openConversation(env, session.accountId, babyId, String(body?.conversationId || '').trim())
@@ -240,6 +241,7 @@ export async function onRequestPost({ request, env }) {
       baseURL: llmConfig.baseUrl,
       protocol: llmConfig.protocol,
       useResponses: llmConfig.useResponses,
+      growthMetric,
     })
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)
     return respond([{ type: 'message', delta: output }, { type: 'done' }], output)

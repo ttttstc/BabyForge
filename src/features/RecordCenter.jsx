@@ -20,7 +20,7 @@ const RECORD_CARDS = [
   { id: 'diaper', icon: Droplets, eyebrow: '日常事实', title: '尿布', detail: '一键记录尿、便或尿便都有', tone: 'aqua' },
   { id: 'medication', icon: Pill, eyebrow: '健康事实', title: '用药', detail: '只记录实际发生的用药', tone: 'apricot' },
   { id: 'temperature', icon: Thermometer, eyebrow: '健康事实', title: '体温', detail: '填写数值或只保存体温观察', tone: 'coral' },
-  { id: 'growth', icon: Activity, eyebrow: '成长事实', title: '成长测量', detail: '体重 kg、身长 cm，参考最近一次', tone: 'sage' },
+  { id: 'growth', icon: Activity, eyebrow: '成长事实', title: '成长测量', detail: '体重、身长/身高和头围，参考最近一次', tone: 'sage' },
 ]
 
 const MORE_CARDS = [
@@ -83,7 +83,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   const recentGrowth = useMemo(() => {
     const latest = {}
     state.careEvents
-      .filter((event) => event.status === 'active' && event.category === 'growth_measurement' && ['weight', 'length'].includes(event.payload?.type))
+      .filter((event) => event.status === 'active' && event.category === 'growth_measurement' && ['weight', 'length', 'headCircumference'].includes(event.payload?.type))
       .sort((a, b) => new Date(b.payload?.measuredAt || b.occurredAt).getTime() - new Date(a.payload?.measuredAt || a.occurredAt).getTime())
       .forEach((event) => { if (!latest[event.payload.type]) latest[event.payload.type] = event.payload })
     return latest
@@ -264,7 +264,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
           <div className="record-card-grid">{RECORD_CARDS.map((card) => <RecordCard key={card.id} card={card} active={activePanel === card.id} onClick={() => openPanel(card.id)} meta={cardMeta(card.id, state, snapshot, locale, dailySummary)} />)}</div>
         </section>
 
-        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} onSave={saveP0Record} onCancel={closePanel} />}
+        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}:${initialQuery.get('metric') || ''}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} initialGrowthType={initialQuery.get('metric')} onSave={saveP0Record} onCancel={closePanel} />}
 
         {activePanel && !P0_PANEL_TYPES.has(activePanel) && <section className="record-entry-sheet" data-testid={`record-entry-${activePanel}`}>
           <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Add a note' : '补充记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={() => setActivePanel(null)} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>

@@ -8,7 +8,6 @@ import { Header } from './Header.jsx'
 import { LeftRail } from './LeftRail.jsx'
 import { StageSurface } from './StageSurface.jsx'
 import { BabyAlbum } from './BabyAlbum.jsx'
-import { GrowthRoadmap } from './GrowthRoadmap.jsx'
 import { ContextInspector } from './ContextInspector.jsx'
 import { GrowthDashboard } from './GrowthDashboard.jsx'
 
@@ -72,7 +71,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
   }
 
   if ([ROUTES.growth, ROUTES.growthChart, ROUTES.growthStage, ROUTES.growthHistory].includes(route)) {
-    return <GrowthDashboard route={route} state={state} setState={setState} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} />
+    return <GrowthDashboard route={route} state={state} setState={setState} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} cloudMode={cloudMode} />
   }
 
   return (
@@ -82,7 +81,6 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
         <LeftRail baby={state.baby} ageDays={ageDays} healthReminders={healthReminders} onTaskUpdate={updateTask} locale={state.preferences.locale} readOnly={readOnly} />
         {route === ROUTES.today ? (
           <div className="today-middle-column">
-            <GrowthRoadmap ageDays={ageDays} stage={stage} locale={state.preferences.locale} />
             <BabyAlbum key={state.baby.id} baby={state.baby} locale={state.preferences.locale} readOnly={readOnly} remote={cloudMode} />
           </div>
         ) : (
