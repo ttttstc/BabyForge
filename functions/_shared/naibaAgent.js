@@ -5,7 +5,7 @@ import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { sanitizeMedicalReport } from '../../src/domain/careEventDraft.js'
 import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { outputAllowed } from '../../src/domain/naibaGuardrails.js'
-import { LLM_PROTOCOLS } from './llmConfig.js'
+import { LLM_PROTOCOLS, NAIBA_ANTHROPIC_THINKING_BUDGET, NAIBA_MAX_OUTPUT_TOKENS, NAIBA_REASONING_EFFORT } from './llmConfig.js'
 import { getSkillContract } from './skillRegistry.js'
 import { createNaibaTools } from './naibaTools.js'
 import { cloudflareDirectIpFetch } from './directIpFetch.js'
@@ -48,13 +48,19 @@ function chatContentText(value) {
 async function runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch, maxRetries = 2 }) {
   const directIpFetch = await cloudflareDirectIpFetch(baseURL)
   const client = new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch || directIpFetch || undefined, maxRetries })
-  const result = await client.chat.completions.create({
+  const request = {
     model,
     messages: [
       { role: 'system', content: instructionsFor(context) },
       { role: 'user', content: String(message) },
     ],
-  })
+    reasoning_effort: NAIBA_REASONING_EFFORT,
+  }
+  // DeepSeek V4 exposes its thinking switch as an OpenAI-compatible extension.
+  // Keep it scoped to that model family so official OpenAI-compatible gateways
+  // do not receive an unknown field.
+  if (/deepseek|sensenova/i.test(`${model} ${baseURL || ''}`)) request.thinking = { type: 'enabled' }
+  const result = await client.chat.completions.create(request)
   const output = chatContentText(result?.choices?.[0]?.message?.content || result?.choices?.[0]?.text).trim()
   if (!output) throw new Error('openai-chat-empty-response')
   return output
@@ -69,8 +75,10 @@ async function runAnthropicMessages({ message, context, model, apiKey, baseURL, 
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model,
-      max_tokens: 900,
+      max_tokens: NAIBA_MAX_OUTPUT_TOKENS,
       system: instructionsFor(context),
+      thinking: { type: 'enabled', budget_tokens: NAIBA_ANTHROPIC_THINKING_BUDGET },
+      output_config: { effort: NAIBA_REASONING_EFFORT },
       messages: [{ role: 'user', content: String(message) }],
     }),
   })
@@ -141,7 +149,7 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
     // Hosted web search is a Responses-only tool. Chat-completions-compatible
     // gateways must rely on the frozen local knowledge pack instead.
     tools: createNaibaTools(skillId, { allowExternalSearch: localKnowledge.length === 0 && parseOptionalBoolean(useResponses) !== false }),
-    modelSettings: { temperature: 0, maxTokens: 900 },
+    modelSettings: { temperature: 0, maxTokens: NAIBA_MAX_OUTPUT_TOKENS, reasoning: { effort: NAIBA_REASONING_EFFORT } },
     inputGuardrails: [{ name: 'naiba-input-boundary', runInParallel: false, execute: async ({ input }) => ({ tripwireTriggered: String(input || '').length > INPUT_LIMIT, outputInfo: { rule: 'input_length' } }) }],
     outputGuardrails: [{ name: 'naiba-output-safety', execute: async ({ agentOutput }) => ({ tripwireTriggered: !outputAllowed(String(agentOutput || ''), context), outputInfo: { rule: 'medical_and_authority_boundary' } }) }],
   })
@@ -181,7 +189,7 @@ export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby,
     outputType: REPORT_OUTPUT,
     instructions: `${instructionsFor(context)}\nExtract only fields visibly present in the supplied report. Keep unreadable or ambiguous text in uncertainties. Never infer a diagnosis or normalize a value. Return at most three plain questions a caregiver can ask the clinician.`,
     tools: createNaibaTools('medical_report_interpreter'),
-    modelSettings: { temperature: 0 },
+    modelSettings: { temperature: 0, maxTokens: NAIBA_MAX_OUTPUT_TOKENS, reasoning: { effort: NAIBA_REASONING_EFFORT } },
     outputGuardrails: [{ name: 'report-output-boundary', execute: async ({ agentOutput }) => ({ tripwireTriggered: !agentOutput || !Array.isArray(agentOutput.fields), outputInfo: { rule: 'structured_report_only' } }) }],
   })
   const content = [{ type: 'input_text', text: `Extract report fields from ${name}. File type: ${mimeType}. Keep uncertainty explicit.` }]
