@@ -14,6 +14,8 @@ export async function onRequestGet({ request, env, params }) {
   if (!env.BABY_PHOTOS) return json({ error: 'R2 相册存储未配置' }, 503)
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
+  const download = new URL(request.url).searchParams.get('download') === '1'
+  if (download && auth.session.role === 'guest') return json({ error: '游客账号只读，不能下载照片' }, 403)
   const photo = await accessiblePhoto(env, auth.session.accountId, params.id)
   if (!photo || photo.baby_status === 'detached') return json({ error: '照片不存在或无权访问' }, 404)
   const object = await env.BABY_PHOTOS.get(photo.object_key)
@@ -21,6 +23,10 @@ export async function onRequestGet({ request, env, params }) {
   const headers = new Headers()
   object.writeHttpMetadata(headers)
   headers.set('content-type', photo.content_type)
+  if (download) {
+    const fileName = String(photo.file_name || 'photo').replace(/[\r\n"\\]/g, '_')
+    headers.set('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+  }
   headers.set('cache-control', 'private, max-age=3600')
   headers.set('etag', object.httpEtag)
   headers.set('x-content-type-options', 'nosniff')
