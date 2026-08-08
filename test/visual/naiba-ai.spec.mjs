@@ -73,6 +73,16 @@ test('Naiba AI keeps a friendly local answer when the model endpoint is unavaila
   await expect(page.getByRole('alert')).toContainText('model unavailable')
 })
 
+test('Naiba AI shows a useful error when an SSE response falls back', async ({ page }) => {
+  await createBaby(page)
+  await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"type":"message","delta":"当前先显示本地回答。"}\n\ndata: {"type":"meta","fallback":true,"reason":"provider_endpoint_not_found"}\n\ndata: {"type":"done"}\n\n' }))
+  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('当前先显示本地回答。')).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('找不到模型接口')
+})
+
 test('today directs actual intake to the record center', async ({ page }) => {
   await createBaby(page)
   await page.getByRole('button', { name: /去记录中心录入/ }).first().click()

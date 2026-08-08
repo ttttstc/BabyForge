@@ -8,6 +8,7 @@ import { calculateFeedingRecommendation } from '../domain/feedingRecommendation.
 import { selectNaibaSkill } from '../domain/naibaSkills.js'
 import { extractDecisionFacts, parseDecisionAnswer, runDecisionUnit, selectDecisionUnit } from '../domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../domain/naibaLocalAnswer.js'
+import { naibaFallbackMessage, parseNaibaSse } from '../domain/naibaTransport.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { NaibaCapabilityCard } from './NaibaCapabilityCard.jsx'
@@ -31,7 +32,7 @@ function localAnswer(message, recommendation, locale, decision) {
 
 async function remoteAnswer(message, state, recommendation, skillId, decision, conversationId) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 20_000)
+  const timeout = setTimeout(() => controller.abort(), 60_000)
   let response
   try {
     response = await fetch('/api/ai/chat', {
@@ -49,22 +50,9 @@ async function remoteAnswer(message, state, recommendation, skillId, decision, c
     try { detail = String((await response.json())?.error || '') } catch { /* response may be plain text */ }
     throw new Error(detail || `AI 服务暂不可用（${response.status}）`)
   }
-  const raw = await response.text()
-  let fallback = false
-  const chunks = raw.split(/\r?\n\r?\n+/).map((chunk) => chunk.split(/\r?\n/).find((line) => /^data:\s*/.test(line))?.replace(/^data:\s*/, '')).filter(Boolean)
-  const output = chunks.map((chunk) => {
-    let item
-    try {
-      item = JSON.parse(chunk)
-    } catch {
-      return ''
-    }
-    if (item.error) throw new Error(item.error)
-    if (item.meta?.fallback) fallback = true
-    return item.delta || item.text || item.message || ''
-  }).join('')
-  if (!output.trim()) throw new Error('AI 返回为空，请检查模型配置或重试')
-  return { text: output, fallback }
+  const result = parseNaibaSse(await response.text())
+  if (!result.text.trim()) throw new Error('AI 返回为空，请检查模型配置或重试')
+  return result
 }
 
 export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onClear, onLogout, readOnly = false, role = 'admin' }) {
@@ -245,7 +233,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
         try {
           const remote = await remoteAnswer(message, state, recommendation, skill.id, decision ? { ...decision, facts: nextHealthFacts } : null, conversationId)
           answer = remote.text
-          if (remote.fallback) setError(isEnglish ? 'Cloud model is unavailable; a local answer is shown.' : '云端模型暂不可用，当前显示本地回答。')
+          if (remote.fallback) setError(naibaFallbackMessage(remote.meta?.reason, locale))
         } catch (cause) {
           answer = localAnswer(message, recommendation, locale, decision)
           setError(cause?.name === 'AbortError' ? (isEnglish ? 'The AI request timed out. Check the model configuration or network and retry.' : 'AI 请求超时，请检查模型配置或网络后重试。') : (cause?.message || (isEnglish ? 'The AI service is unavailable; a local answer is shown.' : 'AI 服务暂不可用，当前显示本地回答。')))

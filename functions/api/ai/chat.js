@@ -1,6 +1,6 @@
 import { getSession, json } from '../../_shared/auth.js'
 import { accessibleBaby, concernFromRow, eventFromRow, planFromRow } from '../../_shared/care.js'
-import { runNaibaAgent } from '../../_shared/naibaAgent.js'
+import { describeNaibaAgentFailure, runNaibaAgent } from '../../_shared/naibaAgent.js'
 import { selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
@@ -237,7 +237,8 @@ export async function onRequestPost({ request, env }) {
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)
     return respond([{ type: 'message', delta: output }, { type: 'done' }], output)
   } catch (error) {
-    console.error('Naiba AI agent failed; using safe fallback', error)
-    return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true }, { type: 'done' }], fallback)
+    const failure = describeNaibaAgentFailure(error)
+    console.error('Naiba AI agent failed; using safe fallback', { ...failure, error })
+    return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, reason: failure.reason }, { type: 'done' }], fallback)
   }
 }

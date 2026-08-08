@@ -22,6 +22,18 @@ export function createNaibaModelProvider({ apiKey, baseURL = '', useResponses } 
   return new OpenAIProvider(options)
 }
 
+export function describeNaibaAgentFailure(error) {
+  const status = Number(error?.status || error?.cause?.status || 0)
+  const name = String(error?.name || '')
+  const message = String(error?.message || error?.cause?.message || '').toLowerCase()
+  if (status === 401 || status === 403) return { reason: 'provider_auth_failed', status }
+  if (status === 404) return { reason: 'provider_endpoint_not_found', status }
+  if (status === 429) return { reason: 'provider_rate_limited', status }
+  if (name === 'AbortError' || /timeout|timed out|naiba-local-timeout/.test(message)) return { reason: 'provider_timeout', status: status || 504 }
+  if (name === 'MaxTurnsExceededError' || /max turns|empty|invalid json|unexpected token|doctype html/.test(message)) return { reason: 'model_response_invalid', status: status || 502 }
+  return { reason: 'model_unavailable', status: status || 502 }
+}
+
 function instructionsFor(context) {
   const skill = getSkillContract(context.skillId)
   return `You are BabyForge Naiba AI, a single-agent family parenting and pediatric preassessment assistant.
@@ -59,7 +71,7 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
     // Hosted web search is a Responses-only tool. Chat-completions-compatible
     // gateways must rely on the frozen local knowledge pack instead.
     tools: createNaibaTools(skillId, { allowExternalSearch: localKnowledge.length === 0 && parseOptionalBoolean(useResponses) !== false }),
-    modelSettings: { temperature: 0 },
+    modelSettings: { temperature: 0, maxTokens: 900 },
     inputGuardrails: [{ name: 'naiba-input-boundary', runInParallel: false, execute: async ({ input }) => ({ tripwireTriggered: String(input || '').length > INPUT_LIMIT, outputInfo: { rule: 'input_length' } }) }],
     outputGuardrails: [{ name: 'naiba-output-safety', execute: async ({ agentOutput }) => ({ tripwireTriggered: !outputAllowed(String(agentOutput || ''), context), outputInfo: { rule: 'medical_and_authority_boundary' } }) }],
   })

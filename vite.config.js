@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import { runNaibaAgent } from './functions/_shared/naibaAgent.js'
+import { describeNaibaAgentFailure, runNaibaAgent } from './functions/_shared/naibaAgent.js'
+import { resolvedLlmConfig } from './functions/_shared/llmConfig.js'
 import { buildNaibaLocalAnswer } from './src/domain/naibaLocalAnswer.js'
 
 function jsonSse(value) {
@@ -13,15 +14,7 @@ async function readJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
 }
 
-function normalizeOpenAIBaseUrl(value) {
-  const baseUrl = String(value || '').trim().replace(/\/$/, '')
-  if (!baseUrl) return ''
-  const url = new URL(baseUrl)
-  if (!url.pathname || url.pathname === '/') url.pathname = '/v1'
-  return url.toString().replace(/\/$/, '')
-}
-
-async function runLocalAgentWithTimeout(input, timeoutMs = 15_000) {
+async function runLocalAgentWithTimeout(input, timeoutMs = 45_000) {
   let timer
   try {
     return await Promise.race([
@@ -41,7 +34,8 @@ function localNaibaPlugin(mode) {
       // The supplied OpenAI-compatible gateway exposes chat completions, not
       // the Responses endpoint. Keep OPENAI_USE_RESPONSES for official OpenAI
       // deployments, but select the compatible protocol for local testing.
-      return { apiKey: env.OPENAI_API_KEY, baseURL: normalizeOpenAIBaseUrl(env.OPENAI_BASE_URL), model: env.OPENAI_MODEL || 'gpt-4o-mini', useResponses: customGateway ? 'false' : env.OPENAI_USE_RESPONSES, provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
+      const config = resolvedLlmConfig(env)
+      return { apiKey: config.apiKey, baseURL: config.baseUrl, model: config.model, useResponses: config.useResponses, provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
     }
     return null
   }
@@ -86,12 +80,13 @@ function localNaibaPlugin(mode) {
           response.setHeader('cache-control', 'no-cache')
           response.end(jsonSse({ type: 'message', delta: output }) + jsonSse({ type: 'done' }))
         } catch (error) {
-          server.config.logger.error(`[Naiba AI local] ${error?.message || error}`)
+          const failure = describeNaibaAgentFailure(error)
+          server.config.logger.error(`[Naiba AI local] ${failure.reason}: ${error?.message || error}`)
           const fallback = buildNaibaLocalAnswer(body.message, { recommendation: body.recommendation, locale: body.baby?.locale || 'zh-CN' })
           response.statusCode = 200
           response.setHeader('content-type', 'text/event-stream; charset=utf-8')
           response.setHeader('cache-control', 'no-cache')
-          response.end(jsonSse({ type: 'message', delta: fallback }) + jsonSse({ type: 'meta', fallback: true, reason: 'model_unavailable' }) + jsonSse({ type: 'done' }))
+          response.end(jsonSse({ type: 'message', delta: fallback }) + jsonSse({ type: 'meta', fallback: true, reason: failure.reason }) + jsonSse({ type: 'done' }))
         }
       })
     },

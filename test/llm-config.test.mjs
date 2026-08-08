@@ -39,9 +39,11 @@ function request(method = 'GET', body) {
 }
 
 test('custom LLM configuration takes account values before deployment defaults', () => {
-  const custom = resolvedLlmConfig({ OPENAI_API_KEY: 'default-key', OPENAI_BASE_URL: 'https://default.test/v1', OPENAI_MODEL: 'default-model' }, { apiKey: 'account-key', baseUrl: 'https://account.test/v1', model: 'account-model' })
-  assert.deepEqual(custom, { apiKey: 'account-key', baseUrl: 'https://account.test/v1', model: 'account-model', useResponses: undefined })
+  const custom = resolvedLlmConfig({ OPENAI_API_KEY: 'default-key', OPENAI_BASE_URL: 'https://default.test/v1', OPENAI_MODEL: 'default-model', OPENAI_USE_RESPONSES: 'true' }, { apiKey: 'account-key', baseUrl: 'https://account.test', model: 'account-model' })
+  assert.deepEqual(custom, { apiKey: 'account-key', baseUrl: 'https://account.test/v1', model: 'account-model', useResponses: false })
   assert.deepEqual(resolvedLlmConfig({ OPENAI_API_KEY: 'default-key' }), { apiKey: 'default-key', baseUrl: '', model: 'gpt-4o-mini', useResponses: undefined })
+  assert.deepEqual(resolvedLlmConfig({ OPENAI_API_KEY: 'default-key', OPENAI_BASE_URL: 'https://gateway.test' }), { apiKey: 'default-key', baseUrl: 'https://gateway.test/v1', model: 'gpt-4o-mini', useResponses: false })
+  assert.equal(resolvedLlmConfig({ OPENAI_API_KEY: 'default-key', OPENAI_BASE_URL: 'https://gateway.test/v1', OPENAI_USE_RESPONSES: 'true' }).useResponses, true)
 })
 
 test('LLM config API saves only the current account and never returns the raw key', async () => {
@@ -69,6 +71,8 @@ test('LLM config API saves only the current account and never returns the raw ke
 })
 
 test('LLM config API validates URLs and keeps guest accounts read-only', async () => {
+  assert.equal(normalizeLlmBaseUrl('https://provider.test'), 'https://provider.test/v1')
+  assert.equal(normalizeLlmBaseUrl('https://provider.test/openai/v1/'), 'https://provider.test/openai/v1')
   assert.throws(() => normalizeLlmBaseUrl('javascript:alert(1)'), /http 或 https/)
   const guest = fixture({ role: 'guest' })
   const response = await onRequestPut({ request: request('PUT', { baseUrl: 'https://provider.test/v1', model: 'baby-model', apiKey: 'secret' }), env: guest })

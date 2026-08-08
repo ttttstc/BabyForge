@@ -12,12 +12,23 @@ export async function loadAccountLlmConfig(env, accountId) {
   }
 }
 
+function optionalBoolean(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
+}
+
 export function resolvedLlmConfig(env, custom = null) {
+  const customConfigured = Boolean(custom?.apiKey && custom?.baseUrl && custom?.model)
+  const baseUrl = normalizeLlmBaseUrl(custom?.baseUrl || env?.OPENAI_BASE_URL || '')
+  const configuredProtocol = optionalBoolean(env?.OPENAI_USE_RESPONSES)
   return {
     apiKey: custom?.apiKey || env?.OPENAI_API_KEY || '',
-    baseUrl: custom?.baseUrl || env?.OPENAI_BASE_URL || '',
+    baseUrl,
     model: custom?.model || env?.OPENAI_MODEL || 'gpt-4o-mini',
-    useResponses: env?.OPENAI_USE_RESPONSES,
+    // Account-level custom gateways are OpenAI-compatible by contract. Chat
+    // Completions is the broadest compatible protocol and avoids accidentally
+    // calling /responses on gateways that only expose /chat/completions.
+    useResponses: customConfigured ? false : (configuredProtocol ?? (baseUrl ? false : undefined)),
   }
 }
 
@@ -34,7 +45,8 @@ export function normalizeLlmBaseUrl(value) {
   let parsed
   try { parsed = new URL(raw) } catch { throw new Error('Base URL 格式不正确') }
   if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) throw new Error('Base URL 必须使用 http 或 https')
-  return raw.replace(/\/+$/, '')
+  if (!parsed.pathname || parsed.pathname === '/') parsed.pathname = '/v1'
+  return parsed.toString().replace(/\/+$/, '')
 }
 
 export function normalizeLlmModel(value) {
