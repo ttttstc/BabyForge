@@ -141,7 +141,7 @@ export function buildGrowthInterpretation({ baby, events = [], measurements = nu
   const evaluation = latest.evaluation
   const limitations = [...new Set(evaluated.flatMap((item) => item.evaluation?.limitations || []))]
   return {
-    status: latest.conflicted ? 'limited' : evaluation?.dataQuality === 'sufficient' ? 'ready' : 'limited',
+    status: latest.conflicted ? 'conflicted' : evaluation?.dataQuality === 'sufficient' ? 'ready' : 'limited',
     summary: latest.conflicted
       ? (isEnglish ? 'Two measurements on the same day disagree; verify before reading the change.' : '同一指标同一天有不同数值，请先核对，再解读变化。')
       : evaluation?.dataQuality === 'sufficient'

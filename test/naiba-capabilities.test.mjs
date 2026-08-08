@@ -48,6 +48,7 @@ test('growth interpretation recomputes current facts and withholds conflict delt
     ],
     now,
   })
+  assert.equal(result.status, 'conflicted')
   assert.equal(result.latest.conflicted, true)
   assert.equal(result.delta, null)
   assert.deepEqual(result.measurements.map((item) => item.id), ['conflict-a', 'conflict-b', 'replacement-weight'])

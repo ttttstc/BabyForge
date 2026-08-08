@@ -437,6 +437,15 @@ test('growth chart model keeps all seven official percentile lines and the baby 
   assert.equal(growthLevelLabel(measurement.evaluation), '中')
 })
 
+test('growth chart keeps birth-standard records outside the monthly trajectory', () => {
+  const baby = { id: 'birth-chart-baby', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40, gestationalDays: 0 }
+  const birth = createEvaluatedGrowthMeasurement({ id: 'birth-weight', type: 'weight', value: '3.2', measuredAt: '2026-08-01', source: 'birth_record' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  const followUp = createEvaluatedGrowthMeasurement({ id: 'follow-up-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical' }, baby, [birth], { now: '2026-08-06T10:00:00.000Z' })
+  const model = getGrowthChartModel({ baby, measurements: [birth, followUp], type: 'weight', startMonth: 0, endMonth: 3, now: '2026-08-06T10:00:00.000Z' })
+  assert.deepEqual(model.points.map((point) => point.id), ['follow-up-weight'])
+  assert.equal(model.birthPoint?.id, 'birth-weight')
+})
+
 test('growth facts remain visible without sex while same-day conflicts stop comparisons', () => {
   const baby = { id: 'fact-only-baby', birthDate: '2026-08-01', sex: null, gestationalWeeks: 40, gestationalDays: 0 }
   const first = { id: 'fact-a', type: 'weight', value: '3.5', unit: 'kg', measuredAt: '2026-08-06' }

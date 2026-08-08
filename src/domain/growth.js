@@ -172,6 +172,7 @@ export function getGrowthMeasurementConflictIds(measurements = [], baby, options
   const conflicts = new Set()
   const byDate = new Map()
   for (const item of valid) {
+    if (!item?.measuredAt) continue
     const key = `${item.type}:${String(item.measuredAt || '').slice(0, 10)}`
     const bucket = byDate.get(key) || []
     bucket.push(item)
@@ -399,7 +400,7 @@ export function getGrowthChartModel({ baby, measurements = [], type = 'weight', 
       conflicted: conflictIds.has(item.id),
     }))
   const points = evaluations
-    .filter((item) => item.factValid && Number.isFinite(Number(item.evaluation.ageMonths)))
+    .filter((item) => item.factValid && item.source !== 'birth_record' && item.evaluation?.standardPackageId !== WS_T_800_2022.metadata.id && Number.isFinite(Number(item.evaluation.ageMonths)))
     .map((item) => ({ id: item.id, month: Number(item.evaluation.ageMonths), value: Number(item.value), unit: item.unit, measuredAt: String(item.measuredAt).slice(0, 10), source: item.source, evaluation: item.evaluation, conflicted: item.conflicted, quality: item.evaluation?.dataQuality === 'sufficient' ? 'standard' : 'fact-only' }))
     .filter((point) => point.month >= startMonth && point.month <= endMonth && Number.isFinite(point.value))
     .sort((a, b) => a.month - b.month || a.measuredAt.localeCompare(b.measuredAt))

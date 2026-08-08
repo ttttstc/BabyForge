@@ -132,13 +132,13 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, growthMetric = null, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2 }) {
+export async function runNaibaAgent({ message, skillId, baby, careEvents, growthEvents = null, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, growthMetric = null, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2 }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
   const localKnowledge = searchApprovedKnowledge(message, { ageDays: babyContext.profile.ageDays, ageMonths: babyContext.profile.ageMonths })
   const growthInterpretation = skillId === 'growth_and_development_interpreter'
-    ? buildGrowthInterpretation({ baby, events: careEvents, metric: growthMetric, locale, now })
+    ? buildGrowthInterpretation({ baby, events: Array.isArray(growthEvents) ? growthEvents : careEvents, metric: growthMetric, locale, now })
     : null
   const context = { skillId, baby, events: careEvents, metric: growthMetric, growthMetric, growthInterpretation, concerns, carePlanItems, questions, actor, feedingReference, decisionResult, conversationId, locale, now, babyContext, localKnowledge }
   if (protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES || protocol === LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) {
