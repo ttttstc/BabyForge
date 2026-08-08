@@ -95,9 +95,12 @@ export function App() {
     if (!babyId || sessionRef.current?.mode !== 'cloudflare' || syncingRef.current) return
     syncingRef.current = true
     try {
-      let current = stateRef.current
       const payload = await pullCareEvents(babyId)
-      let next = mergePulledState(current, payload)
+      // The pull can overlap with an optimistic local write (for example,
+      // marking a vaccine complete immediately after login). Read the latest
+      // state after the request resolves so an older remote snapshot cannot
+      // overwrite that local event.
+      let next = mergePulledState(stateRef.current, payload)
       next = applyCareEventsToLegacy(next, next.careEvents)
       try {
         const actors = await pullCareActors(babyId)
