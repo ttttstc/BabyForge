@@ -63,24 +63,55 @@ test('Naiba AI local mode answers a general message without waiting for a cloud 
   await expect(page.getByText('正在核对事实和依据…')).toHaveCount(0)
 })
 
-test('Naiba AI keeps a friendly local answer when the model endpoint is unavailable', async ({ page }) => {
+test('Naiba AI keeps the composer in view after a long conversation and answers the current question', async ({ page }) => {
+  await createBaby(page)
+  await page.route('**/api/ai/chat', async (route) => {
+    const request = route.request().postDataJSON()
+    const answer = `回答：${request.message}。${'请继续观察吃奶、尿便、精神状态和呼吸变化，并在需要时联系儿科医生。'.repeat(8)}`
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body: `data: ${JSON.stringify({ type: 'message', delta: answer })}\n\ndata: {"type":"done"}\n\n` })
+  })
+  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  const composer = page.getByPlaceholder('自由提问，或描述刚刚发生的事…')
+  for (let index = 0; index < 8; index += 1) {
+    const question = `第${index + 1}个问题：宝宝今天需要观察什么？`
+    await composer.fill(question)
+    await page.getByRole('button', { name: '发送' }).click()
+    await expect(page.getByText(`回答：${question}`, { exact: false })).toBeVisible()
+  }
+  await expect(composer).toBeInViewport()
+})
+
+test('Naiba AI reports an error when the model endpoint is unavailable', async ({ page }) => {
   await createBaby(page)
   await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'model unavailable' }) }))
   await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好')
   await page.getByRole('button', { name: '发送' }).click()
-  await expect(page.getByText('我在这儿。你直接告诉我现在最担心什么就好：吃、睡、排便，或者哪里和平时不一样，我们一起一步一步捋清楚。')).toBeVisible({ timeout: 1500 })
   await expect(page.getByRole('alert')).toContainText('model unavailable')
+  await expect(page.getByRole('alert')).toBeInViewport()
+  await expect(page.getByText('我在这儿。你直接告诉我现在最担心什么就好：吃、睡、排便，或者哪里和平时不一样，我们一起一步一步捋清楚。')).toHaveCount(0)
 })
 
-test('Naiba AI shows a useful error when an SSE response falls back', async ({ page }) => {
+test('Naiba AI does not fabricate a topic answer when the model endpoint is unavailable', async ({ page }) => {
+  await createBaby(page, 10, 'mixed')
+  await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'model unavailable' }) }))
+  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('10天的宝宝照顾要注意什么？')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByRole('alert')).toContainText('model unavailable')
+  await expect(page.getByRole('alert')).toBeInViewport()
+  await expect(page.getByText(/出生后 10 天.*吃奶|吃奶.*尿便/)).toHaveCount(0)
+})
+
+test('Naiba AI ignores fabricated SSE text when the server marks a fallback', async ({ page }) => {
   await createBaby(page)
   await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"type":"message","delta":"当前先显示本地回答。"}\n\ndata: {"type":"meta","fallback":true,"reason":"provider_endpoint_not_found"}\n\ndata: {"type":"done"}\n\n' }))
   await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好')
   await page.getByRole('button', { name: '发送' }).click()
-  await expect(page.getByText('当前先显示本地回答。')).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('找不到模型接口')
+  await expect(page.getByRole('alert')).toBeInViewport()
+  await expect(page.getByText('当前先显示本地回答。')).toHaveCount(0)
 })
 
 test('today directs actual intake to the record center', async ({ page }) => {

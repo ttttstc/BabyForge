@@ -1899,13 +1899,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .naiba-beta-badge { display: inline-flex; align-items: center; gap: 5px; align-self: start; padding: 8px 10px; color: #6e5d9a; border: 1px solid rgba(141, 107, 204, .22); border-radius: 999px; background: #f3eefb; font-size: .59rem; font-weight: 800; white-space: nowrap; }
 .naiba-ai-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(285px, .75fr); gap: 16px; align-items: start; }
 .naiba-conversation, .naiba-evidence-rail { min-width: 0; }
-.naiba-conversation { display: grid; gap: 13px; min-height: 610px; padding: 20px; border: 1px solid var(--line); border-radius: 25px; background: rgba(255, 251, 244, .78); box-shadow: var(--shadow); }
+.naiba-conversation { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto auto; gap: 13px; height: min(700px, calc(100vh - 190px)); min-height: 610px; overflow: hidden; padding: 20px; border: 1px solid var(--line); border-radius: 25px; background: rgba(255, 251, 244, .78); box-shadow: var(--shadow); }
 .naiba-context-strip { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 13px 14px; border: 1px solid rgba(118, 157, 116, .18); border-radius: 16px; background: #edf6ec; }
 .naiba-context-strip div { display: grid; gap: 3px; min-width: 0; }
 .naiba-context-strip strong { color: #4a6e5a; font-size: .72rem; }
 .naiba-context-strip span { color: #708575; font-size: .62rem; line-height: 1.4; }
 .naiba-context-status { display: inline-flex; align-items: center; gap: 4px; color: #56816d !important; white-space: nowrap; }
-.naiba-message-list { display: grid; align-content: start; gap: 11px; min-height: 290px; overflow: auto; padding: 2px 4px; }
+.naiba-message-list { display: grid; align-content: start; gap: 11px; min-height: 0; overflow-y: auto; padding: 2px 4px; }
 .naiba-message { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 8px; max-width: 84%; }
 .naiba-message.user { grid-template-columns: minmax(0, 1fr); justify-self: end; max-width: 74%; padding: 10px 12px; border-radius: 15px 15px 4px 15px; background: #f1eafa; }
 .naiba-message.user .naiba-message-role { display: none; }
@@ -2010,7 +2010,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .naiba-ai-hero { display: block; padding-bottom: 16px; }
   .naiba-ai-hero .naiba-beta-badge { margin-top: 11px; }
   .naiba-ai-hero h1 { font-size: 3.1rem; }
-  .naiba-conversation { min-height: calc(100vh - 228px); padding: 14px; border-radius: 19px; }
+  .naiba-conversation { height: calc(100vh - 228px); min-height: 520px; padding: 14px; border-radius: 19px; }
   .naiba-context-strip { display: grid; gap: 8px; }
   .naiba-context-status { justify-self: start; }
   .naiba-message { max-width: 94%; }

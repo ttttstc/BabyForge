@@ -14,6 +14,7 @@ test('Naiba SSE parser keeps answer text and top-level fallback metadata', () =>
   assert.equal(result.fallback, true)
   assert.equal(result.meta.reason, 'provider_auth_failed')
   assert.match(naibaFallbackMessage(result.meta.reason), /API Key/)
+  assert.doesNotMatch(naibaFallbackMessage('provider_rate_limited'), /本地回答|local answer/)
 })
 
 test('Naiba SSE parser accepts nested legacy metadata and rejects stream errors', () => {

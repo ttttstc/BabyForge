@@ -51,6 +51,7 @@ async function remoteAnswer(message, state, recommendation, skillId, decision, c
     throw new Error(detail || `AI 服务暂不可用（${response.status}）`)
   }
   const result = parseNaibaSse(await response.text())
+  if (result.fallback) return result
   if (!result.text.trim()) throw new Error('AI 返回为空，请检查模型配置或重试')
   return result
 }
@@ -232,11 +233,15 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
       else {
         try {
           const remote = await remoteAnswer(message, state, recommendation, skill.id, decision ? { ...decision, facts: nextHealthFacts } : null, conversationId)
-          answer = remote.text
-          if (remote.fallback) setError(naibaFallbackMessage(remote.meta?.reason, locale))
+          if (remote.fallback) {
+            answer = naibaFallbackMessage(remote.meta?.reason, locale)
+            setError(answer)
+          } else {
+            answer = remote.text
+          }
         } catch (cause) {
-          answer = localAnswer(message, recommendation, locale, decision)
-          setError(cause?.name === 'AbortError' ? (isEnglish ? 'The AI request timed out. Check the model configuration or network and retry.' : 'AI 请求超时，请检查模型配置或网络后重试。') : (cause?.message || (isEnglish ? 'The AI service is unavailable; a local answer is shown.' : 'AI 服务暂不可用，当前显示本地回答。')))
+          answer = cause?.name === 'AbortError' ? (isEnglish ? 'The AI request timed out. Check the model configuration or network and retry.' : 'AI 请求超时，请检查模型配置或网络后重试。') : (cause?.message || (isEnglish ? 'The AI service is unavailable. Check the model configuration and retry.' : 'AI 服务暂不可用，请检查模型配置后重试。'))
+          setError(answer)
         }
         setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer }])
       }

@@ -205,16 +205,16 @@ export async function onRequestPost({ request, env }) {
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
   const fallback = localAnswer(message, recommendation, decision)
   const llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
-  async function respond(events, assistantText) {
-    await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
+  async function respond(events, assistantText = '') {
+    if (assistantText) await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
     return sse([{ type: 'meta', conversationId: conversation.id }, ...events])
   }
 
   if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([{ type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }], fallback)
-  if (!llmConfig.apiKey) return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, reason: 'model_not_configured' }, { type: 'done' }], fallback)
+  if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, { type: 'done' }])
 
   const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, message)
-  if (!quota.allowed) return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }], fallback)
+  if (!quota.allowed) return respond([{ type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }])
 
   try {
     const output = await runNaibaAgent({
@@ -239,7 +239,7 @@ export async function onRequestPost({ request, env }) {
     return respond([{ type: 'message', delta: output }, { type: 'done' }], output)
   } catch (error) {
     const failure = describeNaibaAgentFailure(error)
-    console.error('Naiba AI agent failed; using safe fallback', { ...failure, error })
-    return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, reason: failure.reason }, { type: 'done' }], fallback)
+    console.error('Naiba AI agent failed; returning provider error', { ...failure, error })
+    return respond([{ type: 'meta', fallback: true, reason: failure.reason }, { type: 'done' }])
   }
 }
