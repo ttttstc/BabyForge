@@ -16,22 +16,6 @@ function parseOptionalBoolean(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
 }
 
-export function isSenseNovaGateway(baseURL) {
-  try {
-    const hostname = new URL(String(baseURL || '')).hostname.toLowerCase()
-    return hostname === 'token.sensenova.cn' || hostname.endsWith('.sensenova.cn')
-  } catch {
-    return false
-  }
-}
-
-function createOpenAIClient({ apiKey, baseURL = '', transportFetch, maxRetries = 2 } = {}) {
-  const options = { apiKey, maxRetries }
-  if (String(baseURL || '').trim()) options.baseURL = String(baseURL).trim()
-  if (transportFetch) options.fetch = transportFetch
-  return new OpenAI(options)
-}
-
 export async function createNaibaModelProvider({ apiKey, baseURL = '', useResponses, transportFetch } = {}) {
   const parsedUseResponses = parseOptionalBoolean(useResponses)
   const directIpFetch = await cloudflareDirectIpFetch(baseURL)
@@ -41,7 +25,10 @@ export async function createNaibaModelProvider({ apiKey, baseURL = '', useRespon
     return new OpenAIProvider(options)
   }
   if (transportFetch) {
-    const options = { openAIClient: createOpenAIClient({ apiKey, baseURL, transportFetch, maxRetries: 2 }) }
+    // Local DNS overrides still use a normal HTTPS provider. Keep the SDK's
+    // bounded retries so a transient 429 does not immediately become the
+    // generic local fallback shown in the chat UI.
+    const options = { openAIClient: new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch, maxRetries: 2 }) }
     if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
     return new OpenAIProvider(options)
   }
@@ -49,30 +36,6 @@ export async function createNaibaModelProvider({ apiKey, baseURL = '', useRespon
   if (String(baseURL || '').trim()) options.baseURL = String(baseURL).trim()
   if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
   return new OpenAIProvider(options)
-}
-
-function responseText(value) {
-  if (typeof value === 'string') return value
-  if (Array.isArray(value)) return value.map((item) => typeof item === 'string' ? item : item?.text || '').join('')
-  return String(value?.text || '')
-}
-
-async function runSenseNovaChat({ message, context, model, apiKey, baseURL, transportFetch }) {
-  const client = createOpenAIClient({ apiKey, baseURL, transportFetch, maxRetries: 2 })
-  // SenseNova's documented API is chat-completions-shaped but not a complete
-  // OpenAI Agents implementation: tool calls and max_tokens are rejected by
-  // some gateways. Keep this compatibility path deliberately text-only.
-  const result = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: instructionsFor(context) },
-      { role: 'user', content: String(message) },
-    ],
-    temperature: 0,
-  })
-  const output = responseText(result?.choices?.[0]?.message?.content || result?.choices?.[0]?.text).trim()
-  if (!output) throw new Error('sensenova-empty-response')
-  return output
 }
 
 export function describeNaibaAgentFailure(error) {
@@ -117,11 +80,6 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
   const localKnowledge = searchApprovedKnowledge(message, { ageDays: babyContext.profile.ageDays, ageMonths: babyContext.profile.ageMonths })
   const context = { skillId, baby, events: careEvents, concerns, carePlanItems, questions, actor, feedingReference, decisionResult, conversationId, locale, now, babyContext, localKnowledge }
-  if (isSenseNovaGateway(baseURL)) {
-    const output = await runSenseNovaChat({ message, context, model, apiKey, baseURL, transportFetch })
-    if (!outputAllowed(output, context)) throw new Error('naiba-output-guardrail')
-    return output
-  }
   const agent = new Agent({
     name: '奶爸AI',
     model,
