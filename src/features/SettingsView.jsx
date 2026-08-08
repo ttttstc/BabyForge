@@ -2,6 +2,8 @@ import { ArrowLeft, ClipboardPlus, Globe2, LogOut, RotateCcw, Settings2, ShieldC
 import { useEffect, useState } from 'react'
 import { getCopy, LOCALE_OPTIONS } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
+import { updateBabyProfileState } from '../domain/babyProfile.js'
+import { BasicInfoPanel } from './RecordCenter.jsx'
 
 export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false }) {
   const locale = state.preferences.locale
@@ -12,6 +14,7 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
   const [llmBusy, setLlmBusy] = useState(cloudMode)
   const [llmStatus, setLlmStatus] = useState('')
   const [llmError, setLlmError] = useState('')
+  const [profileStatus, setProfileStatus] = useState('')
 
   useEffect(() => {
     if (!cloudMode) return undefined
@@ -80,6 +83,13 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
     }
   }
 
+  async function saveBabyProfile(profile) {
+    setProfileStatus('')
+    const result = await setState((current) => updateBabyProfileState(current, profile, { locale }))
+    if (result !== false) setProfileStatus(isEnglish ? 'Baby profile saved. Time-based plans use the updated information.' : '宝宝出生信息已保存，年龄、成长阶段、疫苗和时间计划已按新信息重算。')
+    return result
+  }
+
   return (
     <main className="settings-page">
       <header className="settings-header">
@@ -103,6 +113,11 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
         <section className="settings-section settings-record-link-section">
           <div className="settings-section-heading"><ClipboardPlus size={19} /><div><h2>{locale === 'en-US' ? 'All baby facts live in Record center' : '宝宝信息统一在记录中心维护'}</h2><p>{locale === 'en-US' ? 'Profile, growth measurements, feeding, illness, medication, and care facts share one entry point.' : '基础信息、成长测量、喂奶、生病、用药和照护事实都从同一个入口录入。'}</p></div></div>
           <button className="secondary-button" type="button" onClick={() => navigate(ROUTES.records)}><ClipboardPlus size={16} />{locale === 'en-US' ? 'Open Record center' : '打开记录中心'}</button>
+        </section>
+        <section className="settings-section settings-profile-section">
+          <div className="settings-section-heading"><ClipboardPlus size={19} /><div><h2>{isEnglish ? 'Baby birth profile' : '宝宝出生基础信息'}</h2><p>{isEnglish ? 'Update the profile here. Growth stages, corrected age, vaccines, and age-based plans will recalculate from the new birth facts.' : '可直接在这里修改出生基础信息；成长阶段、矫正年龄、疫苗和按年龄生成的时间计划会根据新资料重算。'}</p></div></div>
+          <BasicInfoPanel baby={state.baby} birthMeasurements={state.growthMeasurements} locale={locale} readOnly={readOnly} saveLabel={isEnglish ? 'Save birth profile' : '保存出生信息'} onSave={saveBabyProfile} />
+          {profileStatus && <p className="settings-profile-status" role="status">{profileStatus}</p>}
         </section>
         <section className="settings-section settings-llm-section">
           <div className="settings-section-heading"><Sparkles size={19} /><div><h2>{isEnglish ? 'Custom LLM for Naiba AI' : '奶爸AI 自定义模型'}</h2><p>{isEnglish ? 'Optional. Saved to this account only. When configured, it takes priority over the default model.' : '可选配置，仅保存到当前账号；配置后优先使用自定义模型，清除后回退默认模型。API Key 不会回显。'}</p></div></div>

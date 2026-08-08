@@ -26,6 +26,7 @@ import { ageContextSummary, ageBasisLabel, resolveAgeContext } from '../src/doma
 import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
 import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
 import { getGrowthStageContent } from '../src/content/growthStages.js'
+import { updateBabyProfileState, validateBasicInfoForm } from '../src/domain/babyProfile.js'
 
 test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getAgeDays('2026-08-05', '2026-08-05'), 0)
@@ -42,6 +43,22 @@ test('age and stage boundaries cover the full 0–6 year timeline', () => {
   assert.equal(getStage(2191).id, 'child-5-6-years')
   assert.equal(getStage(2192).id, 'out-of-scope')
   assert.equal(getStages().length, 15)
+})
+
+test('baby profile updates keep time-plan inputs canonical and reject future birth dates', () => {
+  const current = {
+    ...loadState({ getItem: () => null }),
+    baby: { id: 'baby-profile', nickname: '小舟', birthDate: '2026-08-01', gestationalWeeks: 39, gestationalDays: 0, birthMultiplicity: 'singleton', sex: 'male', feedingMode: 'mixed' },
+  }
+  const next = updateBabyProfileState(current, { ...current.baby, nickname: '小舟-更新', birthDate: '2026-07-01', gestationalWeeks: 32, gestationalDays: 3, birthMultiplicity: 'multiple', sex: 'female', feedingMode: 'formula' }, { now: '2026-08-08T10:00:00.000Z' })
+  assert.equal(next.baby.birthDate, '2026-07-01')
+  assert.equal(next.baby.gestationalWeeks, 32)
+  assert.equal(next.baby.gestationalDays, 3)
+  assert.equal(next.baby.birthMultiplicity, 'multiple')
+  assert.equal(next.baby.feedingMode, 'formula')
+  assert.equal(getCalendarEvents(next.baby).find((event) => event.id === 'birth-anniversary').date, '2026-07-01')
+  assert.equal(getCalendarEvents(next.baby).find((event) => event.id === 'first-visit-plan').date, '2026-07-02')
+  assert.match(validateBasicInfoForm({ ...next.baby, birthDate: '2999-01-01' }), /不能晚于今天|future/)
 })
 
 test('experience age bands cover 0–36 months without changing care stages', () => {
