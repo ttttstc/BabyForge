@@ -1246,8 +1246,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 }
 
 @media (max-width: 820px) {
-  .app-header nav { justify-content: flex-start; gap: 4px; overscroll-behavior-inline: contain; scroll-snap-type: x proximity; }
-  .app-header nav button { min-height: 44px; flex: 0 0 auto; scroll-snap-align: center; white-space: nowrap; }
+  .app-header nav { justify-content: flex-start; gap: 4px; overscroll-behavior-inline: contain; scroll-snap-type: none; }
+  .app-header nav button { min-height: 44px; flex: 0 0 auto; white-space: nowrap; }
   .experience-page .app-header nav { padding-inline: 3px; }
   .experience-hero { align-items: stretch; flex-direction: column; padding-top: 10px; }
   .experience-hero-side { min-width: 0; text-align: left; }
