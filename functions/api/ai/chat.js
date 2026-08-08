@@ -7,6 +7,7 @@ import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecom
 import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
+import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 
 function sse(events, status = 200) {
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
@@ -203,13 +204,14 @@ export async function onRequestPost({ request, env }) {
   const decisionResultId = await persistDecision(env, session.accountId, context.baby.id, decision)
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
   const fallback = localAnswer(message, recommendation, decision)
+  const llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
   async function respond(events, assistantText) {
     await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
     return sse([{ type: 'meta', conversationId: conversation.id }, ...events])
   }
 
   if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([{ type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }], fallback)
-  if (!env.OPENAI_API_KEY) return respond([{ type: 'message', delta: fallback }, { type: 'done' }], fallback)
+  if (!llmConfig.apiKey) return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, reason: 'model_not_configured' }, { type: 'done' }], fallback)
 
   const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, message)
   if (!quota.allowed) return respond([{ type: 'message', delta: fallback }, { type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }], fallback)
@@ -227,10 +229,10 @@ export async function onRequestPost({ request, env }) {
       decisionResult: decision,
       conversationId: conversation.id,
       locale: context.baby.locale || 'zh-CN',
-      model: env.OPENAI_MODEL || 'gpt-4o-mini',
-      apiKey: env.OPENAI_API_KEY,
-      baseURL: env.OPENAI_BASE_URL,
-      useResponses: env.OPENAI_USE_RESPONSES,
+      model: llmConfig.model,
+      apiKey: llmConfig.apiKey,
+      baseURL: llmConfig.baseUrl,
+      useResponses: llmConfig.useResponses,
     })
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)
     return respond([{ type: 'message', delta: output }, { type: 'done' }], output)

@@ -1382,6 +1382,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .locale-options { display: grid; grid-template-columns: repeat(2, minmax(190px, 1fr)); gap: 10px; margin-top: 17px; }
 .settings-growth-form { display: grid; gap: 14px; margin-top: 17px; }
 .settings-growth-form .birth-measurement-fields { margin: 0; }
+.settings-llm-form { display: grid; gap: 12px; max-width: 680px; margin-top: 17px; }
+.settings-llm-form label { display: grid; gap: 5px; color: var(--muted); font-size: .66rem; }
+.settings-llm-form input { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; }
+.settings-llm-form input:focus { outline: 2px solid color-mix(in srgb, var(--coral) 35%, transparent); border-color: var(--coral); }
+.settings-llm-note, .settings-llm-masked { margin: 14px 0 0; color: var(--muted); font-size: .64rem; line-height: 1.5; }
+.settings-llm-status { margin: 10px 0 0; color: #28786c; font-size: .68rem; line-height: 1.4; }
+.settings-llm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .locale-options label { position: relative; cursor: pointer; }
 .locale-options input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .locale-options span { min-height: 64px; display: grid; align-content: center; gap: 4px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 251, 244, .48); }

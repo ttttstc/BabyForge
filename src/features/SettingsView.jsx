@@ -1,13 +1,83 @@
-import { ArrowLeft, ClipboardPlus, Globe2, LogOut, RotateCcw, Settings2, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, ClipboardPlus, Globe2, LogOut, RotateCcw, Settings2, ShieldCheck, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { getCopy, LOCALE_OPTIONS } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
 
-export function SettingsView({ state, setState, onClear, onLogout, readOnly = false }) {
+export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false }) {
   const locale = state.preferences.locale
   const copy = getCopy(locale)
+  const isEnglish = locale === 'en-US'
+  const [llmForm, setLlmForm] = useState({ baseUrl: '', model: '', apiKey: '' })
+  const [llmConfig, setLlmConfig] = useState(null)
+  const [llmBusy, setLlmBusy] = useState(cloudMode)
+  const [llmStatus, setLlmStatus] = useState('')
+  const [llmError, setLlmError] = useState('')
+
+  useEffect(() => {
+    if (!cloudMode) return undefined
+    let active = true
+    fetch('/api/ai/config', { credentials: 'include' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Custom model settings are unavailable.' : '自定义模型配置暂不可用。'))
+        if (!active) return
+        const config = payload.config || null
+        setLlmConfig(config)
+        setLlmForm({ baseUrl: config?.baseUrl || '', model: config?.model || '', apiKey: '' })
+        setLlmError('')
+      })
+      .catch((cause) => { if (active) setLlmError(cause?.message || (isEnglish ? 'Custom model settings are unavailable.' : '自定义模型配置暂不可用。')) })
+      .finally(() => { if (active) setLlmBusy(false) })
+    return () => { active = false }
+  }, [cloudMode, isEnglish])
 
   function changeLocale(value) {
     setState((current) => ({ ...current, preferences: { ...current.preferences, locale: value } }))
+  }
+
+  function changeLlmField(field, value) {
+    setLlmForm((current) => ({ ...current, [field]: value }))
+    setLlmStatus('')
+    setLlmError('')
+  }
+
+  async function saveLlmConfig(event) {
+    event.preventDefault()
+    if (readOnly || llmBusy) return
+    setLlmBusy(true)
+    setLlmStatus('')
+    setLlmError('')
+    try {
+      const response = await fetch('/api/ai/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(llmForm) })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Custom model settings could not be saved.' : '自定义模型配置保存失败。'))
+      setLlmConfig(payload.config || null)
+      setLlmForm((current) => ({ ...current, apiKey: '' }))
+      setLlmStatus(isEnglish ? 'Custom model saved for this account.' : '自定义模型已保存，仅对当前账号生效。')
+    } catch (cause) {
+      setLlmError(cause?.message || (isEnglish ? 'Custom model settings could not be saved.' : '自定义模型配置保存失败。'))
+    } finally {
+      setLlmBusy(false)
+    }
+  }
+
+  async function clearLlmConfig() {
+    if (readOnly || llmBusy) return
+    setLlmBusy(true)
+    setLlmStatus('')
+    setLlmError('')
+    try {
+      const response = await fetch('/api/ai/config', { method: 'DELETE', credentials: 'include' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Custom model settings could not be removed.' : '自定义模型配置删除失败。'))
+      setLlmConfig(null)
+      setLlmForm({ baseUrl: '', model: '', apiKey: '' })
+      setLlmStatus(isEnglish ? 'Default model fallback is active.' : '已清除自定义模型，将使用默认模型。')
+    } catch (cause) {
+      setLlmError(cause?.message || (isEnglish ? 'Custom model settings could not be removed.' : '自定义模型配置删除失败。'))
+    } finally {
+      setLlmBusy(false)
+    }
   }
 
   return (
@@ -33,6 +103,18 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
         <section className="settings-section settings-record-link-section">
           <div className="settings-section-heading"><ClipboardPlus size={19} /><div><h2>{locale === 'en-US' ? 'All baby facts live in Record center' : '宝宝信息统一在记录中心维护'}</h2><p>{locale === 'en-US' ? 'Profile, growth measurements, feeding, illness, medication, and care facts share one entry point.' : '基础信息、成长测量、喂奶、生病、用药和照护事实都从同一个入口录入。'}</p></div></div>
           <button className="secondary-button" type="button" onClick={() => navigate(ROUTES.records)}><ClipboardPlus size={16} />{locale === 'en-US' ? 'Open Record center' : '打开记录中心'}</button>
+        </section>
+        <section className="settings-section settings-llm-section">
+          <div className="settings-section-heading"><Sparkles size={19} /><div><h2>{isEnglish ? 'Custom LLM for Naiba AI' : '奶爸AI 自定义模型'}</h2><p>{isEnglish ? 'Optional. Saved to this account only. When configured, it takes priority over the default model.' : '可选配置，仅保存到当前账号；配置后优先使用自定义模型，清除后回退默认模型。API Key 不会回显。'}</p></div></div>
+          {!cloudMode ? <p className="settings-llm-note">{isEnglish ? 'Sign in with the Cloudflare account mode to configure a custom model.' : '请使用 Cloudflare 账号模式登录后配置自定义模型。'}</p> : <form className="settings-llm-form" onSubmit={saveLlmConfig}>
+            <label><span>{isEnglish ? 'Base URL' : 'Base URL'}</span><input aria-label="Base URL" value={llmForm.baseUrl} onChange={(event) => changeLlmField('baseUrl', event.target.value)} placeholder="https://api.example.com/v1" disabled={readOnly || llmBusy} required /></label>
+            <label><span>{isEnglish ? 'Model' : '模型名称'}</span><input aria-label={isEnglish ? 'Model' : '模型名称'} value={llmForm.model} onChange={(event) => changeLlmField('model', event.target.value)} placeholder="gpt-4o-mini" disabled={readOnly || llmBusy} required /></label>
+            <label><span>{isEnglish ? 'API Key' : 'API Key'}</span><input aria-label="API Key" type="password" value={llmForm.apiKey} onChange={(event) => changeLlmField('apiKey', event.target.value)} placeholder={llmConfig?.apiKeyMasked ? (isEnglish ? 'Leave blank to keep the saved key' : '留空表示保留已保存的 Key') : 'sk-…'} autoComplete="off" disabled={readOnly || llmBusy} required={!llmConfig} /></label>
+            {llmConfig?.apiKeyMasked && <p className="settings-llm-masked">{isEnglish ? `Saved key: ${llmConfig.apiKeyMasked}` : `已保存 Key：${llmConfig.apiKeyMasked}`}</p>}
+            {llmError && <p className="save-error" role="alert">{llmError}</p>}
+            {llmStatus && <p className="settings-llm-status" role="status">{llmStatus}</p>}
+            <div className="settings-llm-actions"><button className="primary-button compact" type="submit" disabled={readOnly || llmBusy}>{isEnglish ? 'Save custom model' : '保存自定义模型'}</button>{llmConfig && <button className="secondary-button compact" type="button" onClick={() => void clearLlmConfig()} disabled={readOnly || llmBusy}>{isEnglish ? 'Use default model' : '清除并使用默认模型'}</button>}</div>
+          </form>}
         </section>
         <section className="settings-boundary"><ShieldCheck size={20} /><div><strong>{locale === 'en-US' ? 'Cloud-synced shared records' : '云端即时保存的共享记录'}</strong><p>{copy.noDiagnosis} {locale === 'en-US' ? 'Changes are sent to the shared family workspace immediately. The local cache keeps the screen responsive while the header shows Pending or Synced.' : '每次修改都会立即写入家庭共享工作台；本地缓存只用于保持界面响应，顶部会显示“待同步”或“已同步”。清除本地数据不会删除云端记录。'}</p></div></section>
         <button className="secondary-button settings-done" onClick={() => navigate(ROUTES.today)}>{locale === 'en-US' ? 'Done' : '完成设置'}</button>

@@ -27,7 +27,7 @@ function ageLabel(context, locale) {
   if (context.ageDays < 0) {
     const chronologicalDays = Math.max(0, context.chronological?.days ?? 0)
     const daysBeforeDue = Math.abs(context.ageDays)
-    return locale === 'en-US' ? `${chronologicalDays} days · ${daysBeforeDue} days before due` : `实际 ${chronologicalDays} 天 · 预产期前 ${daysBeforeDue} 天`
+    return locale === 'en-US' ? `Actual ${chronologicalDays} days · corrected age is ${daysBeforeDue} days before due` : `实际 ${chronologicalDays} 天 · 矫正年龄尚未到预产期（还差 ${daysBeforeDue} 天）`
   }
   const days = Math.max(0, context.ageDays)
   if (days < 60) return locale === 'en-US' ? `${days} days` : `${days} 天`

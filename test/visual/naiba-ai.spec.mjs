@@ -70,6 +70,7 @@ test('Naiba AI keeps a friendly local answer when the model endpoint is unavaila
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好')
   await page.getByRole('button', { name: '发送' }).click()
   await expect(page.getByText('我在这儿。你直接告诉我现在最担心什么就好：吃、睡、排便，或者哪里和平时不一样，我们一起一步一步捋清楚。')).toBeVisible({ timeout: 1500 })
+  await expect(page.getByRole('alert')).toContainText('model unavailable')
 })
 
 test('today directs actual intake to the record center', async ({ page }) => {

@@ -370,7 +370,7 @@ export function App() {
   }
 
   if (route === ROUTES.settings) {
-    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} />
+    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} />
   }
 
   if (route === ROUTES.records) {

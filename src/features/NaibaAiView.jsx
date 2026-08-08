@@ -44,19 +44,27 @@ async function remoteAnswer(message, state, recommendation, skillId, decision, c
   } finally {
     clearTimeout(timeout)
   }
-  if (!response.ok) throw new Error('AI endpoint unavailable')
+  if (!response.ok) {
+    let detail = ''
+    try { detail = String((await response.json())?.error || '') } catch { /* response may be plain text */ }
+    throw new Error(detail || `AI 服务暂不可用（${response.status}）`)
+  }
   const raw = await response.text()
-  const chunks = raw.split(/\n\n+/).map((chunk) => chunk.match(/^data:\s*(.+)$/m)?.[1]).filter(Boolean)
+  let fallback = false
+  const chunks = raw.split(/\r?\n\r?\n+/).map((chunk) => chunk.split(/\r?\n/).find((line) => /^data:\s*/.test(line))?.replace(/^data:\s*/, '')).filter(Boolean)
   const output = chunks.map((chunk) => {
+    let item
     try {
-      const item = JSON.parse(chunk)
-      return item.delta || item.text || item.message || ''
+      item = JSON.parse(chunk)
     } catch {
       return ''
     }
+    if (item.error) throw new Error(item.error)
+    if (item.meta?.fallback) fallback = true
+    return item.delta || item.text || item.message || ''
   }).join('')
-  if (!output.trim()) throw new Error('Empty AI response')
-  return output
+  if (!output.trim()) throw new Error('AI 返回为空，请检查模型配置或重试')
+  return { text: output, fallback }
 }
 
 export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onClear, onLogout, readOnly = false, role = 'admin' }) {
@@ -234,7 +242,14 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
         setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer, ...(parsedDraft?.status === 'draft_ready' ? { draft: parsedDraft } : {}) }])
       }
       else {
-        try { answer = await remoteAnswer(message, state, recommendation, skill.id, decision ? { ...decision, facts: nextHealthFacts } : null, conversationId) } catch { answer = localAnswer(message, recommendation, locale, decision) }
+        try {
+          const remote = await remoteAnswer(message, state, recommendation, skill.id, decision ? { ...decision, facts: nextHealthFacts } : null, conversationId)
+          answer = remote.text
+          if (remote.fallback) setError(isEnglish ? 'Cloud model is unavailable; a local answer is shown.' : '云端模型暂不可用，当前显示本地回答。')
+        } catch (cause) {
+          answer = localAnswer(message, recommendation, locale, decision)
+          setError(cause?.name === 'AbortError' ? (isEnglish ? 'The AI request timed out. Check the model configuration or network and retry.' : 'AI 请求超时，请检查模型配置或网络后重试。') : (cause?.message || (isEnglish ? 'The AI service is unavailable; a local answer is shown.' : 'AI 服务暂不可用，当前显示本地回答。')))
+        }
         setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer }])
       }
     } catch (cause) {
@@ -244,7 +259,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
     }
   }
 
-  return <main className="naiba-ai-page">
+  return <main className="naiba-ai-page app-shell">
     <Header route={ROUTES.naibaAi} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
     <div className="naiba-ai-shell">
       <header className="naiba-ai-hero"><button type="button" className="naiba-ai-back" onClick={onBack}><ArrowLeft size={15} />{isEnglish ? 'Back to today' : '返回今日'}</button><div><p className="eyebrow">{isEnglish ? 'A calm second pair of hands' : '新手爸妈的陪伴助手'}</p><h1>{isEnglish ? 'Naiba AI' : '奶爸AI'}</h1><p>{isEnglish ? 'Ask in your own words. I’ll help you make sense of what is happening.' : '不用组织得很专业，想到什么就说什么，我陪你把情况说清楚。'}</p></div><span className="naiba-beta-badge"><ShieldCheck size={14} />{isEnglish ? 'Restricted beta' : '内部受限 Beta'}</span></header>

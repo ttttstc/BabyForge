@@ -1,6 +1,7 @@
 import { getSession, json } from '../../_shared/auth.js'
 import { accessibleBaby, eventFromRow } from '../../_shared/care.js'
 import { runNaibaReportAgent } from '../../_shared/naibaAgent.js'
+import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 import { parseMedicalReportText } from '../../../src/domain/naibaCapabilities.js'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain'])
@@ -26,9 +27,10 @@ export async function onRequestPost({ request, env }) {
   const rows = await env.DB.prepare('SELECT * FROM care_events WHERE baby_id = ? AND status != \'voided\' ORDER BY occurred_at DESC LIMIT 30').bind(baby.id).all()
   const careEvents = (rows.results || []).map(eventFromRow).filter(Boolean).reverse()
   if (mimeType === 'text/plain') return json({ report: parseMedicalReportText(text, { name }) })
-  if (!env.OPENAI_API_KEY) return json({ error: '当前环境未配置报告识别模型；可改用纯文本粘贴。' }, 503)
+  const llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
+  if (!llmConfig.apiKey) return json({ error: '当前账号未配置报告识别模型；可改用纯文本粘贴或在设置中配置自定义模型。' }, 503)
   try {
-    const report = await runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents, locale: baby.locale || 'zh-CN', model: env.OPENAI_MODEL || 'gpt-4o-mini', apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL, useResponses: env.OPENAI_USE_RESPONSES })
+    const report = await runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents, locale: baby.locale || 'zh-CN', model: llmConfig.model, apiKey: llmConfig.apiKey, baseURL: llmConfig.baseUrl, useResponses: llmConfig.useResponses })
     return json({ report })
   } catch (error) {
     console.error('Naiba AI report parsing failed', error)

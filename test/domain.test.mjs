@@ -398,7 +398,7 @@ test('preterm newborns keep the chronological stage window while showing correct
   assert.equal(context.chronological.days, 10)
   assert.equal(context.ageDays, -46)
   assert.equal(getStage(Math.max(0, context.chronological.days)).id, 'newborn-adaptation')
-  assert.match(ageContextSummary(context), /实际 10 天 · 距预产期 46 天/)
+  assert.match(ageContextSummary(context), /实际 10 天 · 矫正年龄尚未到预产期（还差 46 天）/)
 })
 
 test('calendar age uses one local calendar-day convention and birth standards fail closed without gestation', () => {
