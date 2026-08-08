@@ -64,6 +64,7 @@ test('Naiba AI local mode answers a general message without waiting for a cloud 
 })
 
 test('Naiba AI keeps the composer in view after a long conversation and answers the current question', async ({ page }) => {
+  await page.setViewportSize({ width: 1322, height: 798 })
   await createBaby(page)
   await page.route('**/api/ai/chat', async (route) => {
     const request = route.request().postDataJSON()
@@ -72,6 +73,8 @@ test('Naiba AI keeps the composer in view after a long conversation and answers 
   })
   await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
   const composer = page.getByPlaceholder('自由提问，或描述刚刚发生的事…')
+  await expect(composer).toBeInViewport()
+  await expect(page.getByRole('button', { name: '发送' })).toBeInViewport()
   for (let index = 0; index < 8; index += 1) {
     const question = `第${index + 1}个问题：宝宝今天需要观察什么？`
     await composer.fill(question)
@@ -79,6 +82,7 @@ test('Naiba AI keeps the composer in view after a long conversation and answers 
     await expect(page.getByText(`回答：${question}`, { exact: false })).toBeVisible()
   }
   await expect(composer).toBeInViewport()
+  await expect(page.getByRole('button', { name: '发送' })).toBeInViewport()
 })
 
 test('Naiba AI reports an error when the model endpoint is unavailable', async ({ page }) => {
