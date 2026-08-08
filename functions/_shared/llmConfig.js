@@ -4,6 +4,10 @@ export const LLM_PROTOCOLS = Object.freeze({
   OPENAI_RESPONSES: 'openai_responses',
 })
 
+export const NAIBA_REASONING_EFFORT = 'high'
+export const NAIBA_MAX_OUTPUT_TOKENS = 4_096
+export const NAIBA_ANTHROPIC_THINKING_BUDGET = 2_048
+
 export const LLM_PROTOCOL_OPTIONS = Object.freeze([
   { value: LLM_PROTOCOLS.ANTHROPIC_MESSAGES, label: 'Anthropic Messages（原生）' },
   { value: LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS, label: 'OpenAI Chat Completions（需开启路由）' },
