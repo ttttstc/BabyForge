@@ -232,6 +232,7 @@ export async function onRequestPost({ request, env }) {
       model: llmConfig.model,
       apiKey: llmConfig.apiKey,
       baseURL: llmConfig.baseUrl,
+      protocol: llmConfig.protocol,
       useResponses: llmConfig.useResponses,
     })
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)

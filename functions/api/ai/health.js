@@ -28,6 +28,7 @@ export async function onRequestPost({ request, env }) {
       model: config.model,
       apiKey: config.apiKey,
       baseURL: config.baseUrl,
+      protocol: config.protocol,
       useResponses: config.useResponses,
     })
     return json({ ok: true, answerLength: answer.length, deployment: String(env.CF_PAGES_COMMIT_SHA || '').slice(0, 12) })

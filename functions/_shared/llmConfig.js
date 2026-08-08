@@ -1,9 +1,21 @@
+export const LLM_PROTOCOLS = Object.freeze({
+  ANTHROPIC_MESSAGES: 'anthropic_messages',
+  OPENAI_CHAT_COMPLETIONS: 'openai_chat_completions',
+  OPENAI_RESPONSES: 'openai_responses',
+})
+
+export const LLM_PROTOCOL_OPTIONS = Object.freeze([
+  { value: LLM_PROTOCOLS.ANTHROPIC_MESSAGES, label: 'Anthropic Messages（原生）' },
+  { value: LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS, label: 'OpenAI Chat Completions（需开启路由）' },
+  { value: LLM_PROTOCOLS.OPENAI_RESPONSES, label: 'OpenAI Responses API（需开启路由）' },
+])
+
 export async function loadAccountLlmConfig(env, accountId) {
   if (!env?.DB || !accountId) return null
   try {
-    const row = await env.DB.prepare('SELECT base_url, model, api_key FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
+    const row = await env.DB.prepare('SELECT base_url, model, api_key, protocol FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
     if (!row?.api_key || !row?.model || !row?.base_url) return null
-    return { baseUrl: row.base_url, model: row.model, apiKey: row.api_key }
+    return { baseUrl: row.base_url, model: row.model, apiKey: row.api_key, protocol: normalizeLlmProtocol(row.protocol) }
   } catch (error) {
     // Keep AI available on deployments that have not applied the optional
     // account configuration migration yet.
@@ -17,18 +29,24 @@ function optionalBoolean(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
 }
 
+export function normalizeLlmProtocol(value, fallback = LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) {
+  const protocol = String(value || '').trim()
+  if (!protocol) return fallback
+  if (!Object.values(LLM_PROTOCOLS).includes(protocol)) throw new Error('API 格式不受支持')
+  return protocol
+}
+
 export function resolvedLlmConfig(env, custom = null) {
   const customConfigured = Boolean(custom?.apiKey && custom?.baseUrl && custom?.model)
   const baseUrl = normalizeLlmBaseUrl(custom?.baseUrl || env?.OPENAI_BASE_URL || '')
   const configuredProtocol = optionalBoolean(env?.OPENAI_USE_RESPONSES)
+  const protocol = normalizeLlmProtocol(custom?.protocol || (customConfigured ? LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS : env?.OPENAI_PROTOCOL || (baseUrl ? (configuredProtocol ? LLM_PROTOCOLS.OPENAI_RESPONSES : LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) : LLM_PROTOCOLS.OPENAI_RESPONSES)))
   return {
     apiKey: custom?.apiKey || env?.OPENAI_API_KEY || '',
     baseUrl,
     model: custom?.model || env?.OPENAI_MODEL || 'gpt-4o-mini',
-    // Account-level custom gateways are OpenAI-compatible by contract. Chat
-    // Completions is the broadest compatible protocol and avoids accidentally
-    // calling /responses on gateways that only expose /chat/completions.
-    useResponses: customConfigured ? false : (configuredProtocol ?? (baseUrl ? false : undefined)),
+    protocol,
+    useResponses: protocol === LLM_PROTOCOLS.OPENAI_RESPONSES ? true : protocol === LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS ? false : undefined,
   }
 }
 

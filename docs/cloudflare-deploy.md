@@ -68,7 +68,7 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 
 本地 Vite 开发环境使用演示账号，相册照片保存在浏览器 IndexedDB，不需要 D1 或 R2；生产构建不会把演示密码编译进前端。要在本地联调 Pages Functions，可使用 Wrangler 的 Pages 本地开发，它会为配置中的 D1 与 R2 binding 使用本地持久化数据。
 
-奶爸 AI 在 Vite 开发环境读取未提交的 `.env.local` 中的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` 和 `OPENAI_USE_RESPONSES`。可访问 `/api/ai/local-status` 检查当前实际使用的 provider 和 model；该接口不会返回密钥。没有显式配置时不会自动连接本机或其他模型服务。
+奶爸 AI 在 Vite 开发环境读取未提交的 `.env.local` 中的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` 和 `OPENAI_USE_RESPONSES`。可访问 `/api/ai/local-status` 检查当前实际使用的 provider、protocol 和 model；该接口不会返回密钥。没有显式配置时不会自动连接本机或其他模型服务。
 
 ## 上线前检查
 
@@ -87,12 +87,13 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 - `OPENAI_BASE_URL`：可选，自有或兼容 OpenAI 协议服务的 Base URL。
 - `OPENAI_MODEL`：可选，模型 ID；默认 `gpt-4o-mini`。
 - `OPENAI_USE_RESPONSES`：可选。兼容服务只支持 `/chat/completions` 时设为 `false`；未设置时使用 Agents SDK 默认 Responses 行为。
+- `OPENAI_PROTOCOL`：可选，默认部署协议，可设为 `anthropic_messages`、`openai_chat_completions` 或 `openai_responses`。账号在设置页保存自定义模型后，账号协议选择优先于部署默认值；旧的 `OPENAI_USE_RESPONSES` 仍兼容并映射到 Chat/Responses。
 
-GitHub Actions 发布会从同名 Repository Secrets 同步这四项到 Cloudflare Pages，并在任何一项缺失时停止发布，避免生产环境静默退回固定本地回答。更新模型配置时应修改 GitHub Repository Secrets，再运行发布工作流；不要只修改本地 `.env.local`。
+GitHub Actions 发布会从同名 Repository Secrets 同步模型配置到 Cloudflare Pages，并在必填项缺失时停止发布，避免生产环境静默退回固定本地回答。更新模型配置时应修改 GitHub Repository Secrets，再运行发布工作流；不要只修改本地 `.env.local`。
 
 发布环境还需要独立的 `AI_HEALTH_TOKEN` Repository Secret。部署完成后，工作流使用该 Secret 调用受保护的 `/api/ai/health`，只有生产 Pages Function 真正取得模型回答后发布任务才会通过；健康检查不读取或写入家庭数据。
 
-Windows 环境可运行 `powershell -File scripts/sync-model-secrets.ps1 -EnvFile .env.local`，从本地文件安全更新这四项 Repository Secrets；脚本只输出变量名，不输出值。
+Windows 环境可运行 `powershell -File scripts/sync-model-secrets.ps1 -EnvFile .env.local`，从本地文件安全更新模型 Repository Secrets；脚本只输出变量名，不输出值。
 
 本地 Pages Functions 联调可在 `wrangler.jsonc` 同目录创建未提交的 `.dev.vars`：
 
@@ -101,6 +102,7 @@ OPENAI_API_KEY="replace-me"
 OPENAI_BASE_URL="https://your-provider.example/v1"
 OPENAI_MODEL="your-model-id"
 OPENAI_USE_RESPONSES="false"
+# 可选：也可以直接使用 OPENAI_PROTOCOL=anthropic_messages|openai_chat_completions|openai_responses
 ```
 
 然后运行 `npx wrangler pages dev dist`。不要把 `.dev.vars` 或 API Key 提交到 Git。

@@ -5,6 +5,7 @@ import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { sanitizeMedicalReport } from '../../src/domain/careEventDraft.js'
 import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { outputAllowed } from '../../src/domain/naibaGuardrails.js'
+import { LLM_PROTOCOLS } from './llmConfig.js'
 import { getSkillContract } from './skillRegistry.js'
 import { createNaibaTools } from './naibaTools.js'
 import { cloudflareDirectIpFetch } from './directIpFetch.js'
@@ -36,6 +37,52 @@ export async function createNaibaModelProvider({ apiKey, baseURL = '', useRespon
   if (String(baseURL || '').trim()) options.baseURL = String(baseURL).trim()
   if (parsedUseResponses !== undefined) options.useResponses = parsedUseResponses
   return new OpenAIProvider(options)
+}
+
+function chatContentText(value) {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return String(value?.text || '')
+  return value.map((part) => typeof part === 'string' ? part : String(part?.text || '')).join('')
+}
+
+async function runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch }) {
+  const directIpFetch = await cloudflareDirectIpFetch(baseURL)
+  const client = new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch || directIpFetch || undefined, maxRetries: 2 })
+  const result = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: instructionsFor(context) },
+      { role: 'user', content: String(message) },
+    ],
+  })
+  const output = chatContentText(result?.choices?.[0]?.message?.content || result?.choices?.[0]?.text).trim()
+  if (!output) throw new Error('openai-chat-empty-response')
+  return output
+}
+
+async function runAnthropicMessages({ message, context, model, apiKey, baseURL, transportFetch }) {
+  const directIpFetch = await cloudflareDirectIpFetch(baseURL)
+  const fetcher = transportFetch || directIpFetch || globalThis.fetch
+  const endpoint = `${String(baseURL || '').trim().replace(/\/+$/, '')}/messages`
+  const response = await fetcher(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model,
+      max_tokens: 900,
+      system: instructionsFor(context),
+      messages: [{ role: 'user', content: String(message) }],
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || `Anthropic Messages request failed (${response.status})`)
+    error.status = response.status
+    throw error
+  }
+  const output = chatContentText(payload?.content).trim()
+  if (!output) throw new Error('anthropic-messages-empty-response')
+  return output
 }
 
 export function describeNaibaAgentFailure(error) {
@@ -74,12 +121,19 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses, transportFetch }) {
+export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
   const localKnowledge = searchApprovedKnowledge(message, { ageDays: babyContext.profile.ageDays, ageMonths: babyContext.profile.ageMonths })
   const context = { skillId, baby, events: careEvents, concerns, carePlanItems, questions, actor, feedingReference, decisionResult, conversationId, locale, now, babyContext, localKnowledge }
+  if (protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES || protocol === LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) {
+    const output = protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES
+      ? await runAnthropicMessages({ message, context, model, apiKey, baseURL, transportFetch })
+      : await runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch })
+    if (!outputAllowed(output, context)) throw new Error('naiba-output-guardrail')
+    return output
+  }
   const agent = new Agent({
     name: '奶爸AI',
     model,

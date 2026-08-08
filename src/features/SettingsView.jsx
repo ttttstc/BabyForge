@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react'
 import { getCopy, LOCALE_OPTIONS } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { updateBabyProfileState } from '../domain/babyProfile.js'
+import { LLM_PROTOCOL_OPTIONS } from '../../functions/_shared/llmConfig.js'
 import { BasicInfoPanel } from './RecordCenter.jsx'
 
 export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false }) {
   const locale = state.preferences.locale
   const copy = getCopy(locale)
   const isEnglish = locale === 'en-US'
-  const [llmForm, setLlmForm] = useState({ baseUrl: '', model: '', apiKey: '' })
+  const [llmForm, setLlmForm] = useState({ baseUrl: '', model: '', apiKey: '', protocol: LLM_PROTOCOL_OPTIONS[1].value })
   const [llmConfig, setLlmConfig] = useState(null)
   const [llmBusy, setLlmBusy] = useState(cloudMode)
   const [llmStatus, setLlmStatus] = useState('')
@@ -26,7 +27,7 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
         if (!active) return
         const config = payload.config || null
         setLlmConfig(config)
-        setLlmForm({ baseUrl: config?.baseUrl || '', model: config?.model || '', apiKey: '' })
+        setLlmForm({ baseUrl: config?.baseUrl || '', model: config?.model || '', apiKey: '', protocol: config?.protocol || LLM_PROTOCOL_OPTIONS[1].value })
         setLlmError('')
       })
       .catch((cause) => { if (active) setLlmError(cause?.message || (isEnglish ? 'Custom model settings are unavailable.' : '自定义模型配置暂不可用。')) })
@@ -74,7 +75,7 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Custom model settings could not be removed.' : '自定义模型配置删除失败。'))
       setLlmConfig(null)
-      setLlmForm({ baseUrl: '', model: '', apiKey: '' })
+      setLlmForm({ baseUrl: '', model: '', apiKey: '', protocol: LLM_PROTOCOL_OPTIONS[1].value })
       setLlmStatus(isEnglish ? 'Default model fallback is active.' : '已清除自定义模型，将使用默认模型。')
     } catch (cause) {
       setLlmError(cause?.message || (isEnglish ? 'Custom model settings could not be removed.' : '自定义模型配置删除失败。'))
@@ -122,6 +123,7 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
         <section className="settings-section settings-llm-section">
           <div className="settings-section-heading"><Sparkles size={19} /><div><h2>{isEnglish ? 'Custom LLM for Naiba AI' : '奶爸AI 自定义模型'}</h2><p>{isEnglish ? 'Optional. Saved to this account only. When configured, it takes priority over the default model.' : '可选配置，仅保存到当前账号；配置后优先使用自定义模型，清除后回退默认模型。API Key 不会回显。'}</p></div></div>
           {!cloudMode ? <p className="settings-llm-note">{isEnglish ? 'Sign in with the Cloudflare account mode to configure a custom model.' : '请使用 Cloudflare 账号模式登录后配置自定义模型。'}</p> : <form className="settings-llm-form" onSubmit={saveLlmConfig}>
+            <label><span>{isEnglish ? 'API format' : 'API 格式'}</span><select aria-label="API 格式" value={llmForm.protocol} onChange={(event) => changeLlmField('protocol', event.target.value)} disabled={readOnly || llmBusy}>{LLM_PROTOCOL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label><span>{isEnglish ? 'Base URL' : 'Base URL'}</span><input aria-label="Base URL" value={llmForm.baseUrl} onChange={(event) => changeLlmField('baseUrl', event.target.value)} placeholder="https://api.example.com/v1" disabled={readOnly || llmBusy} required /></label>
             <label><span>{isEnglish ? 'Model' : '模型名称'}</span><input aria-label={isEnglish ? 'Model' : '模型名称'} value={llmForm.model} onChange={(event) => changeLlmField('model', event.target.value)} placeholder="gpt-4o-mini" disabled={readOnly || llmBusy} required /></label>
             <label><span>{isEnglish ? 'API Key' : 'API Key'}</span><input aria-label="API Key" type="password" value={llmForm.apiKey} onChange={(event) => changeLlmField('apiKey', event.target.value)} placeholder={llmConfig?.apiKeyMasked ? (isEnglish ? 'Leave blank to keep the saved key' : '留空表示保留已保存的 Key') : 'sk-…'} autoComplete="off" disabled={readOnly || llmBusy} required={!llmConfig} /></label>

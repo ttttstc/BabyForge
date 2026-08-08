@@ -1,5 +1,5 @@
 import { json, requireSession } from '../../_shared/auth.js'
-import { maskLlmApiKey, normalizeLlmApiKey, normalizeLlmBaseUrl, normalizeLlmModel } from '../../_shared/llmConfig.js'
+import { maskLlmApiKey, normalizeLlmApiKey, normalizeLlmBaseUrl, normalizeLlmModel, normalizeLlmProtocol } from '../../_shared/llmConfig.js'
 
 function publicConfig(row) {
   if (!row) return null
@@ -7,13 +7,14 @@ function publicConfig(row) {
     configured: true,
     baseUrl: row.base_url,
     model: row.model,
+    protocol: normalizeLlmProtocol(row.protocol),
     apiKeyMasked: maskLlmApiKey(row.api_key),
     updatedAt: row.updated_at,
   }
 }
 
 async function loadConfig(env, accountId) {
-  const row = await env.DB.prepare('SELECT base_url, model, api_key, updated_at FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
+  const row = await env.DB.prepare('SELECT base_url, model, api_key, protocol, updated_at FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
   return publicConfig(row)
 }
 
@@ -40,10 +41,12 @@ export async function onRequestPut({ request, env }) {
 
   let baseUrl
   let model
+  let protocol
   try {
     baseUrl = normalizeLlmBaseUrl(body?.baseUrl)
     if (!baseUrl) throw new Error('Base URL 不能为空')
     model = normalizeLlmModel(body?.model)
+    protocol = normalizeLlmProtocol(body?.protocol)
   } catch (error) {
     return json({ error: error.message }, 422)
   }
@@ -61,10 +64,10 @@ export async function onRequestPut({ request, env }) {
   const now = new Date().toISOString()
   try {
     await env.DB.prepare(`
-      INSERT INTO account_llm_configs (account_id, base_url, model, api_key, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(account_id) DO UPDATE SET base_url = excluded.base_url, model = excluded.model, api_key = excluded.api_key, updated_at = excluded.updated_at
-    `).bind(auth.session.accountId, baseUrl, model, apiKey, now).run()
+      INSERT INTO account_llm_configs (account_id, base_url, model, api_key, protocol, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account_id) DO UPDATE SET base_url = excluded.base_url, model = excluded.model, api_key = excluded.api_key, protocol = excluded.protocol, updated_at = excluded.updated_at
+    `).bind(auth.session.accountId, baseUrl, model, apiKey, protocol, now).run()
     return json({ config: await loadConfig(env, auth.session.accountId) })
   } catch (error) {
     console.error('LLM config write failed', error)

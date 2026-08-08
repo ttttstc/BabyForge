@@ -56,7 +56,7 @@ function localNaibaPlugin(mode) {
       // the Responses endpoint. Keep OPENAI_USE_RESPONSES for official OpenAI
       // deployments, but select the compatible protocol for local testing.
       const config = resolvedLlmConfig(env)
-      return { apiKey: config.apiKey, baseURL: config.baseUrl, model: config.model, useResponses: config.useResponses, transportFetch: localProviderFetch(), provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
+      return { apiKey: config.apiKey, baseURL: config.baseUrl, model: config.model, protocol: config.protocol, useResponses: config.useResponses, transportFetch: localProviderFetch(), provider: customGateway ? 'OpenAI-compatible (chat)' : 'OpenAI' }
     }
     return null
   }
@@ -66,7 +66,7 @@ function localNaibaPlugin(mode) {
       server.middlewares.use('/api/ai/local-status', async (_request, response) => {
         const config = await modelConfig()
         response.setHeader('content-type', 'application/json; charset=utf-8')
-        response.end(JSON.stringify({ configured: Boolean(config), provider: config?.provider || null, model: config?.model || null }))
+        response.end(JSON.stringify({ configured: Boolean(config), provider: config?.provider || null, protocol: config?.protocol || null, model: config?.model || null }))
       })
       server.middlewares.use('/api/ai/chat', async (request, response, next) => {
         if (request.method !== 'POST') return next()
