@@ -4,6 +4,7 @@ import { Resolver } from 'node:dns/promises'
 import { Agent as HttpAgent, fetch as undiciFetch } from 'undici'
 import { describeNaibaAgentFailure, runNaibaAgent } from './functions/_shared/naibaAgent.js'
 import { resolvedLlmConfig } from './functions/_shared/llmConfig.js'
+import { isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from './src/domain/naibaScope.js'
 
 function jsonSse(value) {
   return `data: ${JSON.stringify(value)}\n\n`
@@ -74,6 +75,14 @@ function localNaibaPlugin(mode) {
           const body = await readJson(request)
           const message = String(body.message || '')
           const locale = body.baby?.locale || 'zh-CN'
+          const hasDecisionContext = body.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
+          if (!isNaibaTopicInScope(message) && !hasDecisionContext) {
+            response.statusCode = 200
+            response.setHeader('content-type', 'text/event-stream; charset=utf-8')
+            response.setHeader('cache-control', 'no-cache')
+            response.end(jsonSse({ type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }) + jsonSse({ type: 'done' }))
+            return
+          }
           if (!config) {
             response.statusCode = 200
             response.setHeader('content-type', 'text/event-stream; charset=utf-8')

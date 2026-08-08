@@ -29,6 +29,8 @@ test('OpenAI Chat Completions protocol uses standard chat request', async () => 
   assert.match(answer, /吃奶/)
   assert.equal(requestBody.messages[0].role, 'system')
   assert.equal(requestBody.model, 'test-model')
+  assert.equal('reasoning_effort' in requestBody, false)
+  assert.equal('thinking' in requestBody, false)
 })
 
 test('Anthropic Messages protocol maps native headers and content blocks', async () => {
@@ -52,4 +54,5 @@ test('Anthropic Messages protocol maps native headers and content blocks', async
   assert.equal(requestHeaders.get('anthropic-version'), '2023-06-01')
   assert.equal(requestBody.system.includes('BabyForge Naiba AI'), true)
   assert.equal(requestBody.max_tokens, 900)
+  assert.equal('thinking' in requestBody, false)
 })

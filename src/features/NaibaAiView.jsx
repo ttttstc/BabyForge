@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react'
-import { AlertTriangle, ArrowLeft, BookOpenCheck, CheckCircle2, ChevronDown, ChevronUp, FileUp, Info, Send, ShieldCheck, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, ArrowDown, ArrowLeft, BookOpenCheck, CheckCircle2, ChevronDown, ChevronUp, CircleStop, FileUp, Info, Send, ShieldCheck, Sparkles } from 'lucide-react'
 import { getAgeDays } from '../domain/baby.js'
 import { createCareEvent } from '../domain/careEvents.js'
 import { draftText, isCareEventDraftIntent, parseCareEventDraft, validateCareEventDraft } from '../domain/careEventDraft.js'
-import { createReportFactDraft, executeNaibaSkill, parseMedicalReportText } from '../domain/naibaCapabilities.js'
+import { createReportFactDraft, parseMedicalReportText } from '../domain/naibaCapabilities.js'
 import { calculateFeedingRecommendation } from '../domain/feedingRecommendation.js'
 import { selectNaibaSkill } from '../domain/naibaSkills.js'
 import { extractDecisionFacts, parseDecisionAnswer, runDecisionUnit, selectDecisionUnit } from '../domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../domain/naibaLocalAnswer.js'
+import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../domain/naibaScope.js'
 import { naibaFallbackMessage, parseNaibaSse } from '../domain/naibaTransport.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
@@ -30,8 +31,7 @@ function localAnswer(message, recommendation, locale, decision) {
   return buildNaibaLocalAnswer(message, { recommendation, locale, decision })
 }
 
-async function remoteAnswer(message, state, recommendation, skillId, decision, conversationId) {
-  const controller = new AbortController()
+async function remoteAnswer(message, state, recommendation, skillId, decision, conversationId, controller) {
   const timeout = setTimeout(() => controller.abort(), 60_000)
   let response
   try {
@@ -69,11 +69,38 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
   const [factsOpen, setFactsOpen] = useState(true)
   const [evidenceOpen, setEvidenceOpen] = useState(true)
   const [error, setError] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [healthActive, setHealthActive] = useState(false)
   const [healthUnitId, setHealthUnitId] = useState('general_health_preassessment')
   const [healthFacts, setHealthFacts] = useState({})
   const [recordContext, setRecordContext] = useState(null)
+  const activeRequestRef = useRef(null)
+  const messageListRef = useRef(null)
   const actor = state.careActors?.find((item) => item.id === state.preferences?.currentRecorderId) || state.careActors?.[0]
+
+  function scrollMessagesToBottom(behavior = 'smooth') {
+    const element = messageListRef.current
+    if (!element) return
+    element.scrollTo({ top: element.scrollHeight, behavior })
+  }
+
+  function handleMessageScroll(event) {
+    const element = event.currentTarget
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight
+    const shouldShow = distanceFromBottom > 72
+    setShowScrollToBottom((current) => current === shouldShow ? current : shouldShow)
+  }
+
+  function stopGeneration() {
+    const controller = activeRequestRef.current
+    if (controller && !controller.signal.aborted) controller.abort('user')
+  }
+
+  useEffect(() => {
+    const element = messageListRef.current
+    if (!showScrollToBottom && element) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' })
+  }, [messages.length, busy, showScrollToBottom])
 
   function replaceDraft(messageId, nextDraft) {
     setMessages((current) => current.map((item) => item.id === messageId ? { ...item, draft: nextDraft } : item))
@@ -95,27 +122,6 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
 
   function addArtifact(skillId, data, text, draft = null) {
     setMessages((current) => [...current, { id: `artifact-${skillId}-${Date.now()}`, role: 'assistant', text, artifact: { skillId, data }, ...(draft ? { draft } : {}) }])
-  }
-
-  async function runCapability(skillId) {
-    if (busy) return
-    setError('')
-    setBusy(true)
-    try {
-      const data = executeNaibaSkill(skillId, {}, { baby: state.baby, events: state.careEvents, concerns: state.concerns, carePlanItems: state.carePlanItems, questions: state.questions, actor, locale, now: new Date() })
-      const labels = {
-        daily_care_analysis: isEnglish ? 'Here is today’s fact-based summary.' : '这是基于已记录事实生成的今日分析。',
-        detailed_care_analysis: isEnglish ? 'Here is the detailed analysis with data limits.' : '这是详细分析，并保留数据不足边界。',
-        daily_growth_plan_builder: isEnglish ? 'Here are up to three actions for today.' : '这是今天最多三项成长计划。',
-        visit_brief_generator: isEnglish ? 'Here is a fact-only visit brief.' : '这是只基于已确认事实的就医摘要。',
-        caregiver_handoff_builder: isEnglish ? 'Here is the caregiver handoff.' : '这是照护交接，事实、安排和系统说明已分开。',
-      }
-      addArtifact(skillId, data, labels[skillId] || (isEnglish ? 'The result is ready.' : '结果已生成。'))
-    } catch (cause) {
-      setError(cause?.message || (isEnglish ? 'The result could not be generated.' : '暂时无法生成结果。'))
-    } finally {
-      setBusy(false)
-    }
   }
 
   async function handleReportFile(file) {
@@ -187,6 +193,11 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
     setInput('')
     setError('')
     setMessages((current) => [...current, { id: `user-${Date.now()}`, role: 'user', text: message }])
+    const contextualFollowUp = (recordContext || healthActive) && isNaibaContextualFollowUp(message)
+    if (!isNaibaTopicInScope(message) && !contextualFollowUp) {
+      setMessages((current) => [...current, { id: `assistant-${conversationId}-${Date.now()}`, role: 'assistant', text: NAIBA_OUT_OF_SCOPE_MESSAGE }])
+      return
+    }
     setBusy(true)
     try {
       const recordRequested = Boolean(recordContext) || isCareEventDraftIntent(message)
@@ -231,8 +242,12 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
         setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer, ...(parsedDraft?.status === 'draft_ready' ? { draft: parsedDraft } : {}) }])
       }
       else {
+        const requestController = new AbortController()
+        activeRequestRef.current = requestController
+        setGenerating(true)
+        let stopped = false
         try {
-          const remote = await remoteAnswer(message, state, recommendation, skill.id, decision ? { ...decision, facts: nextHealthFacts } : null, conversationId)
+          const remote = await remoteAnswer(message, state, recommendation, skill.id, decision ? { ...decision, facts: nextHealthFacts } : null, conversationId, requestController)
           if (remote.fallback) {
             answer = naibaFallbackMessage(remote.meta?.reason, locale)
             setError(answer)
@@ -240,10 +255,18 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
             answer = remote.text
           }
         } catch (cause) {
-          answer = cause?.name === 'AbortError' ? (isEnglish ? 'The AI request timed out. Check the model configuration or network and retry.' : 'AI 请求超时，请检查模型配置或网络后重试。') : (cause?.message || (isEnglish ? 'The AI service is unavailable. Check the model configuration and retry.' : 'AI 服务暂不可用，请检查模型配置后重试。'))
+          stopped = requestController.signal.reason === 'user'
+          if (stopped) {
+            setError(isEnglish ? 'Generation stopped.' : '已停止生成。')
+            return
+          }
+          answer = cause?.name === 'AbortError' || requestController.signal.aborted ? (isEnglish ? 'The AI request timed out. Check the model configuration or network and retry.' : 'AI 请求超时，请检查模型配置或网络后重试。') : (cause?.message || (isEnglish ? 'The AI service is unavailable. Check the model configuration and retry.' : 'AI 服务暂不可用，请检查模型配置后重试。'))
           setError(answer)
+        } finally {
+          if (activeRequestRef.current === requestController) activeRequestRef.current = null
+          setGenerating(false)
         }
-        setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer }])
+        if (!stopped) setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer }])
       }
     } catch (cause) {
       setError(cause?.message || (isEnglish ? 'The answer could not be generated.' : '暂时无法生成回答。'))
@@ -255,14 +278,13 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
   return <main className="naiba-ai-page app-shell">
     <Header route={ROUTES.naibaAi} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
     <div className="naiba-ai-shell">
-      <header className="naiba-ai-hero"><button type="button" className="naiba-ai-back" onClick={onBack}><ArrowLeft size={15} />{isEnglish ? 'Back to today' : '返回今日'}</button><div><p className="eyebrow">{isEnglish ? 'A calm second pair of hands' : '新手爸妈的陪伴助手'}</p><h1>{isEnglish ? 'Naiba AI' : '奶爸AI'}</h1><p>{isEnglish ? 'Ask in your own words. I’ll help you make sense of what is happening.' : '不用组织得很专业，想到什么就说什么，我陪你把情况说清楚。'}</p></div><span className="naiba-beta-badge"><ShieldCheck size={14} />{isEnglish ? 'Restricted beta' : '内部受限 Beta'}</span></header>
+      <header className="naiba-ai-hero"><button type="button" className="naiba-ai-back" onClick={onBack}><ArrowLeft size={15} />{isEnglish ? 'Back to today' : '返回今日'}</button><div><p className="eyebrow">{isEnglish ? 'A calm second pair of hands' : '新手爸妈的陪伴助手'}</p><h1>{isEnglish ? 'Naiba AI' : '奶爸AI'}</h1><p>{isEnglish ? 'I help you sort baby facts, notice safety signals, and keep care records clear.' : '围绕宝宝的吃睡排便、发育和健康观察，帮你理清事实、识别风险、做好照护记录。'}</p></div><span className="naiba-beta-badge"><ShieldCheck size={14} />{isEnglish ? 'Restricted beta' : '内部受限 Beta'}</span></header>
       <div className="naiba-ai-layout">
         <section className="naiba-conversation" aria-label={isEnglish ? 'Naiba AI conversation' : '奶爸AI对话'}>
           <div className="naiba-context-strip"><div><strong>{isEnglish ? 'I know this baby' : '我已了解这个宝宝'}</strong><span>{state.baby.nickname} · {isEnglish ? `${ageDays} days old` : `出生后 ${ageDays} 天`} · {recommendation.feedingModeLabel || (isEnglish ? 'Feeding mode unknown' : '喂养方式待补充')}</span></div><span className="naiba-context-status"><CheckCircle2 size={14} />{isEnglish ? 'Facts stay separate from guesses' : '事实与推断分开'}</span></div>
-          <div className="naiba-message-list">{messages.map((message) => <article key={message.id} className={`naiba-message ${message.role}`}><span className="naiba-message-role">{message.role === 'assistant' ? <Sparkles size={14} /> : (isEnglish ? 'You' : '你')}</span><div><p>{message.text}</p>{message.artifact && <NaibaCapabilityCard artifact={message.artifact} locale={locale} />}{message.draft && <DraftConfirmationCard draft={message.draft} locale={locale} readOnly={readOnly} busy={busy} onConfirm={(event) => confirmDraft(message.id, event, message.draft?.draftId)} onDismiss={() => void dismissDraft(message.id, message.draft?.draftId)} />}</div></article>)}{busy && <article className="naiba-message assistant"><span className="naiba-message-role"><Sparkles size={14} /></span><p className="naiba-thinking">{isEnglish ? 'Checking facts and evidence…' : '正在核对事实和依据…'}</p></article>}</div>
-          <div className="naiba-capability-row"><button type="button" onClick={() => void runCapability('detailed_care_analysis')} disabled={busy}>{isEnglish ? 'Detailed analysis' : '详细分析'}</button><button type="button" onClick={() => void runCapability('daily_growth_plan_builder')} disabled={busy}>{isEnglish ? 'Growth plan' : '成长计划'}</button><button type="button" onClick={() => void runCapability('visit_brief_generator')} disabled={busy}>{isEnglish ? 'Visit brief' : '就医摘要'}</button><button type="button" onClick={() => void runCapability('caregiver_handoff_builder')} disabled={busy}>{isEnglish ? 'Handoff' : '照护交接'}</button></div>
+          <div className="naiba-message-viewport"><div ref={messageListRef} className="naiba-message-list" onScroll={handleMessageScroll}>{messages.map((message) => <article key={message.id} className={`naiba-message ${message.role}`}><span className="naiba-message-role">{message.role === 'assistant' ? <Sparkles size={14} /> : (isEnglish ? 'You' : '你')}</span><div><p>{message.text}</p>{message.artifact && <NaibaCapabilityCard artifact={message.artifact} locale={locale} />}{message.draft && <DraftConfirmationCard draft={message.draft} locale={locale} readOnly={readOnly} busy={busy} onConfirm={(event) => confirmDraft(message.id, event, message.draft?.draftId)} onDismiss={() => void dismissDraft(message.id, message.draft?.draftId)} />}</div></article>)}{busy && <article className="naiba-message assistant"><span className="naiba-message-role"><Sparkles size={14} /></span><p className="naiba-thinking">{isEnglish ? 'Checking facts and evidence…' : '正在核对事实和依据…'}</p></article>}</div>{showScrollToBottom && <button type="button" className="naiba-scroll-bottom" onClick={() => scrollMessagesToBottom()} aria-label={isEnglish ? 'Back to bottom' : '回到底部'} title={isEnglish ? 'Back to bottom' : '回到底部'}><ArrowDown size={15} /></button>}</div>
           <div className="naiba-suggestion-row">{[(isEnglish ? 'What should my baby eat today?' : '今天宝宝怎么吃？'), (isEnglish ? 'Why this quantity?' : '为什么推荐这个量？'), (isEnglish ? 'Help me record a feed' : '帮我记录刚才的喂养')].map((suggestion) => <button key={suggestion} type="button" onClick={() => sendMessage(suggestion)}>{suggestion}</button>)}</div>
-          <form className="naiba-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage() }}><textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder={isEnglish ? 'Ask anything about this baby…' : '自由提问，或描述刚刚发生的事…'} rows="2" disabled={busy} /><div className="naiba-composer-actions"><label className={`naiba-attach ${busy ? 'disabled' : ''}`}><FileUp size={15} />{isEnglish ? 'Report / image' : '报告 / 图片'}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" disabled={busy} onChange={(change) => { const file = change.target.files?.[0]; change.target.value = ''; void handleReportFile(file) }} /></label><button type="submit" className="naiba-send" disabled={busy || !input.trim()}><Send size={15} />{isEnglish ? 'Send' : '发送'}</button></div></form>
+          <form className="naiba-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage() }}><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !(event.nativeEvent?.isComposing || event.keyCode === 229)) { event.preventDefault(); void sendMessage() } }} placeholder={isEnglish ? 'Ask anything about this baby…' : '自由提问，或描述刚刚发生的事…'} rows="2" disabled={busy} /><div className="naiba-composer-actions"><label className={`naiba-attach ${busy ? 'disabled' : ''}`}><FileUp size={15} />{isEnglish ? 'Report / image' : '报告 / 图片'}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" disabled={busy} onChange={(change) => { const file = change.target.files?.[0]; change.target.value = ''; void handleReportFile(file) }} /></label>{generating ? <button type="button" className="naiba-send naiba-stop" onClick={stopGeneration} aria-label={isEnglish ? 'Stop generation' : '停止生成'}><CircleStop size={15} />{isEnglish ? 'Stop' : '停止生成'}</button> : <button type="submit" className="naiba-send" disabled={busy || !input.trim()}><Send size={15} />{isEnglish ? 'Send' : '发送'}</button>}</div></form>
           {error && <p className="save-error" role="alert">{error}</p>}
         </section>
         <aside className="naiba-evidence-rail">

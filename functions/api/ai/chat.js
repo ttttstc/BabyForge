@@ -6,6 +6,7 @@ import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
 import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
+import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
 import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
 import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 
@@ -195,6 +196,11 @@ export async function onRequestPost({ request, env }) {
   await appendMessage(env, conversation.id, 'user', message, requestedSkillId || null)
   const recommendation = calculateFeedingRecommendation({ baby: context.baby, events: context.careEvents, locale: context.baby.locale || 'zh-CN' })
   const skillId = selectSkillId(message, requestedSkillId)
+  const hasDecisionContext = body?.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
+  if (!isNaibaTopicInScope(message) && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
+    await appendMessage(env, conversation.id, 'assistant', NAIBA_OUT_OF_SCOPE_MESSAGE, skillId || null, null)
+    return sse([{ type: 'meta', conversationId: conversation.id }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }])
+  }
   const healthSensitive = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i.test(message)
   // The server, not the browser, owns the topic-to-unit mapping. This also
   // gives health-related explanatory skills the same deterministic floor.

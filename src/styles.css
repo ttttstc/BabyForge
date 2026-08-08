@@ -1899,13 +1899,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .naiba-beta-badge { display: inline-flex; align-items: center; gap: 5px; align-self: start; padding: 8px 10px; color: #6e5d9a; border: 1px solid rgba(141, 107, 204, .22); border-radius: 999px; background: #f3eefb; font-size: .59rem; font-weight: 800; white-space: nowrap; }
 .naiba-ai-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(285px, .75fr); gap: 16px; align-items: start; }
 .naiba-conversation, .naiba-evidence-rail { min-width: 0; }
-.naiba-conversation { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto auto; gap: 13px; height: min(700px, max(390px, calc(100vh - 315px))); min-height: 0; overflow: hidden; padding: 20px; border: 1px solid var(--line); border-radius: 25px; background: rgba(255, 251, 244, .78); box-shadow: var(--shadow); }
+.naiba-conversation { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; gap: 13px; height: min(700px, max(390px, calc(100vh - 315px))); min-height: 0; overflow: hidden; padding: 20px; border: 1px solid var(--line); border-radius: 25px; background: rgba(255, 251, 244, .78); box-shadow: var(--shadow); }
 .naiba-context-strip { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 13px 14px; border: 1px solid rgba(118, 157, 116, .18); border-radius: 16px; background: #edf6ec; }
 .naiba-context-strip div { display: grid; gap: 3px; min-width: 0; }
 .naiba-context-strip strong { color: #4a6e5a; font-size: .72rem; }
 .naiba-context-strip span { color: #708575; font-size: .62rem; line-height: 1.4; }
 .naiba-context-status { display: inline-flex; align-items: center; gap: 4px; color: #56816d !important; white-space: nowrap; }
-.naiba-message-list { display: grid; align-content: start; gap: 11px; min-height: 0; overflow-y: auto; padding: 2px 4px; }
+.naiba-message-viewport { position: relative; min-height: 0; overflow: hidden; }
+.naiba-message-list { height: 100%; display: grid; align-content: start; gap: 11px; min-height: 0; overflow-y: auto; padding: 2px 4px; }
+.naiba-scroll-bottom { position: absolute; right: 12px; bottom: 12px; width: 32px; height: 32px; display: grid; place-items: center; color: #fffaf4; border: 0; border-radius: 50%; background: var(--coral); box-shadow: 0 8px 18px rgba(157, 88, 71, .22); cursor: pointer; }
+.naiba-scroll-bottom:hover { background: #d96d5c; transform: translateY(-1px); }
 .naiba-message { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 8px; max-width: 84%; }
 .naiba-message.user { grid-template-columns: minmax(0, 1fr); justify-self: end; max-width: 74%; padding: 10px 12px; border-radius: 15px 15px 4px 15px; background: #f1eafa; }
 .naiba-message.user .naiba-message-role { display: none; }
@@ -1967,10 +1970,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .naiba-draft-actions button:disabled { cursor: not-allowed; opacity: .45; }
 .naiba-draft-dismiss { color: #806f67; background: #f2e8de; }
 .naiba-draft-confirm { color: #fffaf4; background: var(--coral); }
-.naiba-capability-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.naiba-capability-row button { min-height: 30px; padding: 0 10px; color: #355f55; border: 1px solid rgba(50, 87, 79, .18); border-radius: 999px; background: #f4f8f5; cursor: pointer; font-size: .57rem; font-weight: 800; }
-.naiba-capability-row button:hover { background: #eaf3ed; }
-.naiba-capability-row button:disabled { cursor: not-allowed; opacity: .5; }
 .naiba-attach { cursor: pointer; }
 .naiba-attach.disabled { cursor: not-allowed; opacity: .5; }
 .naiba-attach input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -2019,8 +2018,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .naiba-boundary-note, .naiba-help-note { grid-column: auto; }
   .today-feeding-context { align-items: flex-start; flex-direction: column; }
   .naiba-draft-field-grid { grid-template-columns: 1fr; }
-  .naiba-capability-row { flex-wrap: nowrap; overflow-x: auto; }
-  .naiba-capability-row button { flex: 0 0 auto; }
   .naiba-report-fields > section { grid-template-columns: 1fr; }
   .naiba-report-fields small { grid-column: auto; }
 }

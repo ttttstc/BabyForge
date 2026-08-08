@@ -70,6 +70,15 @@ test('AI chat returns provider error metadata without a fabricated answer', asyn
   assert.doesNotMatch(body, /type":"message"/)
 })
 
+test('AI chat returns the scope boundary without calling a model for unrelated topics', async () => {
+  const fixture = apiFixture()
+  const response = await onRequestPost({ request: request({ message: '帮我写一个股票交易策略。', baby: fixture.baby }), env: fixture })
+  assert.equal(response.status, 200)
+  const body = await response.text()
+  assert.match(body, /抱歉，我只是个育儿辅助助手，请跟我讨论关于育儿相关的话题/)
+  assert.doesNotMatch(body, /model_not_configured/)
+})
+
 test('decision fact allowlist stays a superset of every published unit requirement', () => {
   for (const key of DECISION_REQUIRED_FACT_KEYS) assert.ok(SAFE_DECISION_FACT_KEYS.includes(key), key)
   assert.deepEqual(safeDecisionFacts({ temperatureC: 38.2, unknown: 'discard', tooLong: 'x'.repeat(81) }), { temperatureC: 38.2 })
