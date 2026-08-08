@@ -34,7 +34,7 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
           <div className="settings-section-heading"><ClipboardPlus size={19} /><div><h2>{locale === 'en-US' ? 'All baby facts live in Record center' : '宝宝信息统一在记录中心维护'}</h2><p>{locale === 'en-US' ? 'Profile, growth measurements, feeding, illness, medication, and care facts share one entry point.' : '基础信息、成长测量、喂奶、生病、用药和照护事实都从同一个入口录入。'}</p></div></div>
           <button className="secondary-button" type="button" onClick={() => navigate(ROUTES.records)}><ClipboardPlus size={16} />{locale === 'en-US' ? 'Open Record center' : '打开记录中心'}</button>
         </section>
-        <section className="settings-boundary"><ShieldCheck size={20} /><div><strong>{locale === 'en-US' ? 'Local-first shared records' : '本地优先的共享记录'}</strong><p>{copy.noDiagnosis} {locale === 'en-US' ? 'Records save locally first and sync to the shared family workspace when online.' : '记录先保存在当前设备，联网后同步到家庭共享工作台。清除本地数据不会删除云端记录。'}</p></div></section>
+        <section className="settings-boundary"><ShieldCheck size={20} /><div><strong>{locale === 'en-US' ? 'Cloud-synced shared records' : '云端即时保存的共享记录'}</strong><p>{copy.noDiagnosis} {locale === 'en-US' ? 'Changes are sent to the shared family workspace immediately. The local cache keeps the screen responsive while the header shows Pending or Synced.' : '每次修改都会立即写入家庭共享工作台；本地缓存只用于保持界面响应，顶部会显示“待同步”或“已同步”。清除本地数据不会删除云端记录。'}</p></div></section>
         <button className="secondary-button settings-done" onClick={() => navigate(ROUTES.today)}>{locale === 'en-US' ? 'Done' : '完成设置'}</button>
       </section>
     </main>

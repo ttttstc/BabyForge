@@ -6,6 +6,7 @@ import { createObservation } from '../src/domain/observation.js'
 import { buildDoctorSummary } from '../src/domain/doctorSummary.js'
 import { evaluateMedicalTopic } from '../src/domain/safety.js'
 import { STORAGE_KEY, loadState, saveState } from '../src/domain/storage.js'
+import { pushWorkspace } from '../src/domain/sync.js'
 import { ASSET_MANIFEST, resolveSexAsset } from '../src/content/assets.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots } from '../src/content/pediatricDiseases.js'
 import { createGrowthMeasurement, getAdminTasks, getCalendarEvents, getDailyHealthReminders, getDailyTasks, getStageMilestones, updateTaskLog, upsertAdminTaskRecord, upsertMilestoneRecord } from '../src/domain/carePlan.js'
@@ -203,6 +204,27 @@ test('workspace storage is isolated by account namespace', () => {
   assert.equal(loadState(storage, 'niwa').baby.nickname, '泥蛙')
   assert.equal(loadState(storage, 'baby').baby.nickname, '只读宝宝')
   assert.equal(loadState(storage).baby, null)
+})
+
+test('cloud workspace writes send every persisted collection immediately', async () => {
+  const state = {
+    baby: { id: 'baby-1', nickname: '小舟', birthDate: '2026-01-01' },
+    observations: [{ id: 'observation-1' }],
+    questions: ['需要复测吗？'],
+    taskLogs: [{ id: 'task-1' }],
+    adminTaskRecords: [{ id: 'admin-1' }],
+    growthMeasurements: [{ id: 'growth-1' }],
+    milestoneRecords: [{ id: 'milestone-1' }],
+  }
+  let request
+  const response = await pushWorkspace(state, async (url, options) => {
+    request = { url, options }
+    return new Response(JSON.stringify({ baby: state.baby }), { status: 200, headers: { 'content-type': 'application/json' } })
+  })
+  assert.deepEqual(response, { baby: state.baby })
+  assert.equal(request.url, '/api/sync')
+  assert.equal(request.options.method, 'POST')
+  assert.deepEqual(JSON.parse(request.options.body), state)
 })
 
 test('baby assets resolve to separate male and female files while shared assets stay shared', () => {
