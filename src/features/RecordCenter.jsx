@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Activity, ArrowLeft, Baby, Check, ChevronRight, CircleHelp, ClipboardList, Clock3, Droplets, FileText, HeartPulse, Moon, Pill, Plus, Save, ShieldCheck, Thermometer, Utensils, X } from 'lucide-react'
+import { Activity, ArrowLeft, Baby, Check, ChevronRight, CircleHelp, ClipboardList, Clock3, Droplets, FileText, HeartPulse, Info, Moon, Pill, Plus, Save, ShieldCheck, Thermometer, Utensils, X } from 'lucide-react'
 import { getAgeDays, getStage, getStageLabel, getStageRangeLabel } from '../domain/baby.js'
 import { assertCareRecordInput, createCareEvent, createConcern as createConcernRecord, correctCareEvent, voidCareEvent } from '../domain/careEvents.js'
 import { getDailyCareSummary, localDayKey } from '../domain/careSummary.js'
@@ -317,7 +317,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   }
 
   return (
-    <main className="record-center-page app-shell">
+    <main className="record-center-page">
       <Header route={ROUTES.records} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => commitState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="record-center-shell">
         <header className="record-center-hero">
@@ -366,6 +366,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
 
         <section className="record-card-section record-more-section" aria-labelledby="record-more-heading">
           <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More to add' : '还可以记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Other moments worth keeping' : '其他想留下的宝宝情况'}</h2></div><span>{isEnglish ? 'Keep related moments together' : '把相关情况放在一起，更方便回看'}</span></div>
+          <div className="record-more-purpose" role="note"><Info size={17} /><p><strong>{isEnglish ? 'What is this for?' : '它有什么用？'}</strong>{isEnglish ? 'Use it for facts that do not fit the six quick cards but may matter later, such as symptom changes, a clinician’s conclusion, an open concern, or a question for the next visit. It keeps the record traceable without changing the health assessment by itself.' : '用来保存不属于六个快捷记录、但之后可能影响照护或就医沟通的事实，例如症状变化、医生结论、待跟进事项或下次想问的问题。它只保留事实，不会自动改变健康判断。'}</p></div>
           <div className="record-more-grid">{MORE_CARDS.map((card) => { const Icon = card.icon; return <button key={card.id} className={`record-more-card ${activePanel === card.id ? 'active' : ''}`} type="button" onClick={() => openPanel(card.id)}><span className="record-more-icon"><Icon size={17} /></span><span><strong>{isEnglish ? moreTitle(card.id) : card.title}</strong><small>{isEnglish ? moreDetail(card.id) : card.detail}</small></span><ChevronRight size={16} /></button> })}</div>
         </section>
 

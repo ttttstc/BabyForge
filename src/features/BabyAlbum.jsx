@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Baby, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, Clock3, ImagePlus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { Baby, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, Clock3, Download, ImagePlus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import {
   MAX_PHOTO_BYTES,
   dateTimeInputToIso,
@@ -40,6 +40,9 @@ function strings(locale) {
     manual: 'Time set by you',
     delete: 'Delete photo',
     deleting: 'Deleting',
+    download: 'Download photo',
+    downloading: 'Downloading',
+    downloadError: 'Could not download this photo. Try again later.',
     deleteConfirm: 'Delete this photo?',
     cancel: 'Cancel',
     save: 'Save photos',
@@ -74,6 +77,9 @@ function strings(locale) {
     manual: '已手动设置时间',
     delete: '删除照片',
     deleting: '正在删除',
+    download: '下载照片',
+    downloading: '正在下载',
+    downloadError: '照片下载失败，请稍后重试。',
     deleteConfirm: '确定删除这张照片吗？删除后无法恢复。',
     cancel: '取消',
     save: '保存照片',
@@ -142,6 +148,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
   const [preparing, setPreparing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [saveProgress, setSaveProgress] = useState(0)
   const [error, setError] = useState('')
   const [pickerMode, setPickerMode] = useState('upload')
@@ -291,6 +298,35 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     }
   }
 
+  async function downloadSelectedPhoto() {
+    if (!selected || readOnly || downloading) return
+    setDownloading(true)
+    setError('')
+    try {
+      let blob = selected.blob
+      if (!blob && remote) {
+        const source = selected.contentUrl || selected.url
+        const response = await fetch(`${source}${source.includes('?') ? '&' : '?'}download=1`, { credentials: 'include' })
+        if (!response.ok) throw new Error(copy.downloadError)
+        blob = await response.blob()
+      }
+      if (!blob) throw new Error(copy.downloadError)
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = selected.fileName || 'baby-photo'
+      link.rel = 'noopener'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+    } catch (nextError) {
+      setError(nextError?.message || copy.downloadError)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const selectedDate = useMemo(() => selected ? displayTime(selected.takenAt, locale) : '', [selected, locale])
   const photosByDay = useMemo(() => photos.reduce((groups, photo) => {
     const key = calendarDayKey(photo.takenAt)
@@ -347,7 +383,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
               <img className="album-feature-image" src={selected.url} alt={`${baby.nickname} · ${selectedDate}`} />
               <span className="album-photo-corner" aria-hidden="true"><Sparkles size={14} /></span>
             </div>
-            <figcaption><span><Clock3 size={14} />{selectedDate}</span><small>{selected.fileName}</small><button className="album-delete-button" type="button" disabled={readOnly || deleting} onClick={deleteSelectedPhoto} aria-label={copy.delete} title={copy.delete}>{deleting ? <Clock3 size={14} /> : <Trash2 size={14} />}{deleting ? copy.deleting : copy.delete}</button></figcaption>
+            <figcaption><span><Clock3 size={14} />{selectedDate}</span><small>{selected.fileName}</small><div className="album-photo-actions">{!readOnly && <button className="album-download-button" type="button" disabled={downloading || deleting} onClick={downloadSelectedPhoto} aria-label={copy.download} title={copy.download}>{downloading ? <Clock3 size={14} /> : <Download size={14} />}{downloading ? copy.downloading : copy.download}</button>}{!readOnly && <button className="album-delete-button" type="button" disabled={deleting || downloading} onClick={deleteSelectedPhoto} aria-label={copy.delete} title={copy.delete}>{deleting ? <Clock3 size={14} /> : <Trash2 size={14} />}{deleting ? copy.deleting : copy.delete}</button>}</div></figcaption>
           </figure>
         ) : (
           <div className="album-empty-stage" data-testid="album-empty">
