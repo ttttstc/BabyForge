@@ -30,6 +30,7 @@ export async function onRequestPost({ request, env }) {
       baseURL: config.baseUrl,
       protocol: config.protocol,
       useResponses: config.useResponses,
+      maxRetries: 0,
     })
     return json({ ok: true, answerLength: answer.length, deployment: String(env.CF_PAGES_COMMIT_SHA || '').slice(0, 12) })
   } catch (error) {

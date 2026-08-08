@@ -45,9 +45,9 @@ function chatContentText(value) {
   return value.map((part) => typeof part === 'string' ? part : String(part?.text || '')).join('')
 }
 
-async function runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch }) {
+async function runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch, maxRetries = 2 }) {
   const directIpFetch = await cloudflareDirectIpFetch(baseURL)
-  const client = new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch || directIpFetch || undefined, maxRetries: 2 })
+  const client = new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch || directIpFetch || undefined, maxRetries })
   const result = await client.chat.completions.create({
     model,
     messages: [
@@ -121,7 +121,7 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch }) {
+export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2 }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
@@ -130,7 +130,7 @@ export async function runNaibaAgent({ message, skillId, baby, careEvents, concer
   if (protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES || protocol === LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) {
     const output = protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES
       ? await runAnthropicMessages({ message, context, model, apiKey, baseURL, transportFetch })
-      : await runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch })
+      : await runOpenAiChat({ message, context, model, apiKey, baseURL, transportFetch, maxRetries })
     if (!outputAllowed(output, context)) throw new Error('naiba-output-guardrail')
     return output
   }
