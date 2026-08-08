@@ -14,3 +14,9 @@ test('Cloudflare deployment publishes the default LLM configuration before Pages
   assert.match(workflow, /steps\.deploy\.outputs\.deployment-url/)
   assert.ok(workflow.indexOf('pages deploy dist') < workflow.indexOf('$DEPLOYMENT_URL/api/ai/health'), 'the exact deployed artifact must be verified after deployment')
 })
+
+test('local secret sync preserves exact values without PowerShell pipeline newlines', async () => {
+  const script = await readFile(new URL('../scripts/sync-model-secrets.ps1', import.meta.url), 'utf8')
+  assert.match(script, /gh secret set \$secretName .* --body \$secretValue/)
+  assert.doesNotMatch(script, /\$secretValue\s*\|\s*gh secret set/)
+})

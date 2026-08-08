@@ -16,7 +16,10 @@ foreach ($secretName in $requiredNames) {
     $secretValue = $secretValue.Substring(1, $secretValue.Length - 2)
   }
   if (-not $secretValue) { throw "$secretName is empty in $EnvFile" }
-  $secretValue | gh secret set $secretName --repo $Repository
+  # PowerShell's pipeline appends CRLF to text. Passing the value through
+  # stdin therefore stores a trailing newline in GitHub Secrets, which breaks
+  # URLs and API-key authentication. --body preserves the parsed value exactly.
+  gh secret set $secretName --repo $Repository --body $secretValue
   if ($LASTEXITCODE -ne 0) { throw "Failed to set $secretName" }
   Write-Output "Updated $secretName"
 }
