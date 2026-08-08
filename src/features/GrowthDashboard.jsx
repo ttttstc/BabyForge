@@ -38,24 +38,6 @@ function recordRoute(panel, returnTo = ROUTES.growth) {
   return `${ROUTES.records}?panel=${panel}&returnTo=${encodeURIComponent(returnTo)}`
 }
 
-function ageLabel(context, locale) {
-  if (!context || context.ageDays === null || context.ageDays === undefined) return locale === 'en-US' ? 'Age unavailable' : '年龄信息不足'
-  if (context.ageDays < 0) {
-    const chronologicalDays = Math.max(0, context.chronological?.days ?? 0)
-    const daysBeforeDue = Math.abs(context.ageDays)
-    return locale === 'en-US' ? `Actual ${chronologicalDays} days · corrected age starts in ${daysBeforeDue} days` : `实际 ${chronologicalDays} 天 · 矫正年龄还差 ${daysBeforeDue} 天开始`
-  }
-  const days = Math.max(0, context.ageDays)
-  if (days < 60) return locale === 'en-US' ? `${days} days` : `${days} 天`
-  const months = context.ageMonths ?? Math.floor(days / 30.4375)
-  return locale === 'en-US' ? `${months} months` : `${months} 个月`
-}
-
-function growthAgeLimitation(context, locale) {
-  if (context?.correctionActive) return locale === 'en-US' ? 'Development references use corrected age; the stage window uses days since birth.' : '发展参考年龄按矫正年龄；阶段范围按出生后的实际天数显示。'
-  return context?.limitations?.[0] || ''
-}
-
 function standardResultLabel(evaluation, locale) {
   const isEnglish = locale === 'en-US'
   if (evaluation?.standardPackageId !== 'ws-t-800-2022') return growthLevelLabel(evaluation, locale)
@@ -142,7 +124,7 @@ export function GrowthDashboard({ route = ROUTES.growth, state, setState, onClea
         <GrowthHero locale={locale} baby={state.baby} stage={stage} ageContext={ageContext} onRecord={() => openRecord('growth')} />
         <GrowthRoadmap ageDays={chronologicalDays} stage={stage} locale={locale} />
         {route !== ROUTES.growth && <button type="button" className="growth-detail-back" onClick={() => navigate(ROUTES.growth)}><ArrowLeft size={15} />{locale === 'en-US' ? 'Back to growth dashboard' : '返回成长看板'}</button>}
-        {chartRoute ? <GrowthChartPage locale={locale} baby={state.baby} measurements={state.growthMeasurements} metric={activeMetric} visibleMetrics={visibleMetrics} onMetricChange={setMetric} /> : stageRoute ? <GrowthStagePage locale={locale} stage={stage} ageContext={ageContext} content={content} parentActions={parentActions} onOpenRecord={() => openRecord('care')} /> : historyRoute ? <GrowthHistoryPage locale={locale} evaluations={evaluations} onRecord={() => openRecord('growth')} /> : <GrowthOverview locale={locale} stage={stage} ageContext={ageContext} content={content} metricCards={metricCards} activeMetric={activeMetric} measurements={state.growthMeasurements} baby={state.baby} summary={deterministicSummary} parentActions={parentActions} onOpenRecord={() => openRecord('care')} onRecord={() => openRecord('growth')} onOpenChart={openChart} onOpenStage={() => navigate(ROUTES.growthStage)} onOpenHistory={() => navigate(ROUTES.growthHistory)} onOpenAi={() => setAiOpen(true)} />}
+        {chartRoute ? <GrowthChartPage locale={locale} baby={state.baby} measurements={state.growthMeasurements} metric={activeMetric} visibleMetrics={visibleMetrics} onMetricChange={setMetric} /> : stageRoute ? <GrowthStagePage locale={locale} stage={stage} ageContext={ageContext} content={content} parentActions={parentActions} onOpenRecord={() => openRecord('care')} /> : historyRoute ? <GrowthHistoryPage locale={locale} evaluations={evaluations} onRecord={() => openRecord('growth')} /> : <GrowthOverview locale={locale} metricCards={metricCards} activeMetric={activeMetric} measurements={state.growthMeasurements} baby={state.baby} summary={deterministicSummary} parentActions={parentActions} onOpenRecord={() => openRecord('care')} onRecord={() => openRecord('growth')} onOpenChart={openChart} onOpenStage={() => navigate(ROUTES.growthStage)} onOpenHistory={() => navigate(ROUTES.growthHistory)} onOpenAi={() => setAiOpen(true)} />}
       </div>
       {aiOpen && <GrowthInterpretationDialog state={state} metric={activeMetric} summary={deterministicSummary} cloudMode={cloudMode} onClose={() => setAiOpen(false)} />}
     </main>
@@ -156,10 +138,9 @@ function GrowthHero({ locale, baby, stage, ageContext, onRecord }) {
   return <section className="growth-hero"><div><p className="eyebrow">{isEnglish ? 'Growth · birth to 6 years' : '成长 · 出生至 6 岁'}</p><h1>{isEnglish ? `${baby.nickname} is in ${stage.labelEn}` : `${baby.nickname} 现在处于${stage.label}`}</h1><p>{isEnglish ? `${stage.rangeLabelEn} · ${ageContextSummary(ageContext, locale)}` : `${stage.rangeLabel} · ${ageContextSummary(ageContext, locale)}`}</p><div className="growth-basic-facts"><span>{isEnglish ? 'Birth' : '出生'} · {birthDate}</span><span>{isEnglish ? 'Gestation' : '出生孕周'} · {gestation}</span>{ageContext.correctionActive && <span className="growth-corrected-badge">{isEnglish ? 'Corrected-age reference active' : '当前使用矫正年龄参考'}</span>}</div>{ageContext.correctionActive && ageContext.corrected?.days < 0 && <small className="growth-age-note">{isEnglish ? 'The corrected-age reference starts at the due date.' : '矫正年龄从预产期开始计算。'}</small>}{ageContext.correctionActive && <small className="growth-age-note">{isEnglish ? `Chronological age ${ageContext.chronological.months} months · corrected age ${ageContext.corrected.months} months` : `实际年龄 ${ageContext.chronological.months} 个月 · 矫正年龄 ${ageContext.corrected.months} 个月`}</small>}</div><button type="button" className="primary-button growth-hero-record" onClick={onRecord}><LineChart size={16} />{isEnglish ? 'Record a measurement' : '去记录中心录入成长测量'}</button></section>
 }
 
-function GrowthOverview({ locale, stage, ageContext, content, metricCards, activeMetric, baby, measurements, summary, parentActions, onOpenRecord, onRecord, onOpenChart, onOpenStage, onOpenHistory, onOpenAi }) {
+function GrowthOverview({ locale, metricCards, activeMetric, baby, measurements, summary, parentActions, onOpenRecord, onRecord, onOpenChart, onOpenStage, onOpenHistory, onOpenAi }) {
   const isEnglish = locale === 'en-US'
   return <div className="growth-overview growth-dashboard-order">
-    <section className="growth-board-card growth-age-board"><header className="growth-card-heading"><div><p className="eyebrow">{isEnglish ? 'Current stage' : '当前阶段'}</p><h2>{isEnglish ? stage.labelEn : stage.label}</h2></div><Baby size={20} /></header><div className="growth-age-grid"><div><span>{isEnglish ? 'Age today' : '今天的年龄'}</span><strong>{ageLabel({ ...ageContext, basis: 'chronological', ageDays: ageContext.chronological?.days, ageMonths: ageContext.chronological?.months }, locale)}</strong></div><div><span>{isEnglish ? 'Reference age' : '发展参考年龄'}</span><strong>{ageLabel(ageContext, locale)}</strong></div><div><span>{isEnglish ? 'Stage window' : '阶段范围'}</span><strong>{isEnglish ? stage.rangeLabelEn : stage.rangeLabel}</strong></div></div><p className="growth-card-note">{isEnglish ? content.introEn : content.intro}</p>{(ageContext.limitations?.length > 0 || ageContext.ageDays < 0) && <p className="growth-age-limit"><Info size={14} />{growthAgeLimitation(ageContext, locale)}</p>}</section>
     <section className="growth-board-card growth-measurement-board"><header className="growth-card-heading"><div><p className="eyebrow">{isEnglish ? 'Growth measurements' : '成长数据'}</p><h2>{isEnglish ? 'Record and view three measurements' : '记录和查看三项测量'}</h2></div><button type="button" className="text-button" onClick={onRecord}>{isEnglish ? 'Record a measurement' : '录入测量'}<ArrowRight size={15} /></button></header><p className="growth-card-note">{isEnglish ? 'Record weight, length/height, and head circumference. Open a card to view the latest value and its reference.' : '记录体重、身长/身高和头围；打开指标卡查看最近测量和对应参考。'}</p><div className="growth-metric-grid">{metricCards.map((item) => <MetricCard key={item.id} item={item} locale={locale} onOpen={() => onOpenChart(item.id)} />)}</div></section>
     <GrowthTrendPanel locale={locale} baby={baby} measurements={measurements} metric={activeMetric} definitions={metricCards} onMetricChange={onOpenChart} onOpenAi={onOpenAi} compact referencePercentiles={HOME_REFERENCE_PERCENTILES} summary={summary} />
     <ParentActionsCard locale={locale} parentActions={parentActions} onOpenRecord={onOpenRecord} onOpenStage={onOpenStage} />

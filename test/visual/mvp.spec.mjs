@@ -54,7 +54,7 @@ test('parent creates a profile and sees the newborn workspace', async ({ page })
   await expect(page.getByTestId('baby-album')).toBeVisible()
   await expect(page.getByTestId('album-empty')).toBeVisible()
   await page.getByRole('button', { name: '成长', exact: true }).click()
-  await expect(page.locator('.growth-age-board')).toBeVisible()
+  await expect(page.getByTestId('growth-roadmap')).toBeVisible()
 })
 
 test('parent uploads, switches, and reloads album photos', async ({ page }) => {
@@ -319,7 +319,7 @@ test('settings edits baby birth profile and recalculates age-based plans', async
   await page.getByRole('button', { name: '完成设置' }).click()
   await page.getByRole('button', { name: '成长', exact: true }).click()
   await expect(page.getByRole('heading', { name: '婴儿早期', exact: true })).toBeVisible()
-  await expect(page.locator('.growth-age-board')).toContainText('40 天')
+  await expect(page.getByTestId('growth-roadmap')).toContainText('婴儿早期')
 })
 
 test('clearing local data returns to onboarding', async ({ page }) => {
