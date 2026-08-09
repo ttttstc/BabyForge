@@ -20,10 +20,22 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. Local development includes demo login accounts and does not require D1, R2, or a model provider:
+Open the local URL printed by Vite. Local development includes a read-only demo login and does not require D1, R2, or a model provider:
 
-- Administrator: `niwa` / `niwaniwa`
-- Read-only guest: `baby` / `0729`
+- Username: `guest`
+- Password: `123`
+- Permission: read-only, for product showcase only; it cannot create, edit, or delete family records.
+
+## Demo use-case data
+
+After signing in with `guest / 123`, use this fictional profile to browse the product. It is for interface showcase only, not medical advice, and contains no real family information:
+
+- Baby profile: 泥蛙; example length `50 cm` and weight `3 kg`; mixed feeding; review the birth profile, growth age, and recorder details.
+- Today: review daily summaries for breastfeeding, bottle feeding, sleep, diapers, and temperature, then open the matching record from a summary card.
+- Records: browse the `CareEvent` fact timeline by date and type, including fact details, source, and version history.
+- Growth: review measurements such as length `50 cm` and weight `3 kg`, personal changes, percentile references, and the equivalent data table.
+- Health: open the birth-to-six vaccine roadmap, pediatric topics, educational cases, and organ teaching; the view falls back to 2D when 3D is unavailable.
+- Experience and Naiba AI: browse age-appropriate content, visit/caregiver handoff briefs, and AI boundaries; features that require server secrets follow the deployment configuration.
 
 ## Current capabilities
 
