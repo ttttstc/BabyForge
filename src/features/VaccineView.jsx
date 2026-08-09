@@ -6,6 +6,7 @@ import { VACCINE_DOSES, VACCINE_GUIDANCE, VACCINE_STANDARD } from '../content/va
 import { createCareEvent, voidCareEvent } from '../domain/careEvents.js'
 import { ROUTES } from '../app/router.js'
 import { Header } from './Header.jsx'
+import { HealthTabs } from './HealthTabs.jsx'
 
 function addCalendarPeriod(dateText, ageSpec = {}) {
   const [year, month, day] = String(dateText).slice(0, 10).split('-').map(Number)
@@ -86,7 +87,8 @@ export function VaccineView({ state, setState, onClear, onLogout, readOnly = fal
   }
 
   return <main className="app-shell vaccine-page">
-    <Header route={ROUTES.vaccines} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
+    <Header route={ROUTES.healthVaccines} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => setState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
+    <HealthTabs active="vaccines" locale={locale} />
     <div className="vaccine-shell">
       <header className="vaccine-intro">
         <div>

@@ -2,7 +2,7 @@ import { Baby, BookOpen, ChevronRight, CircleAlert, HeartPulse, ShieldCheck } fr
 import { getSexLabel } from '../domain/baby.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { getCopy } from '../domain/i18n.js'
-import { DailyHealthReminders } from './DailyHealthReminders.jsx'
+import { TodayCareSummary } from './TodayCareSummary.jsx'
 
 const FEEDING_LABELS = {
   breastfeeding: '母乳喂养',
@@ -11,7 +11,7 @@ const FEEDING_LABELS = {
   other: '其他 / 待确定',
 }
 
-export function LeftRail({ baby, ageDays, healthReminders, onTaskUpdate, locale = 'zh-CN', readOnly = false }) {
+export function LeftRail({ baby, ageDays, careEvents = [], locale = 'zh-CN', readOnly = false }) {
   const copy = getCopy(locale)
   return (
     <aside className="left-rail">
@@ -24,7 +24,7 @@ export function LeftRail({ baby, ageDays, healthReminders, onTaskUpdate, locale 
         <div className="baby-facts"><span>{getSexLabel(baby.sex)}</span><span>{baby.gestationalWeeks} 周出生</span><span>{FEEDING_LABELS[baby.feedingMode]}</span></div>
       </section>
 
-      <DailyHealthReminders reminders={healthReminders} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} />
+      <TodayCareSummary careEvents={careEvents} locale={locale} readOnly={readOnly} />
 
       <section className="rail-card new-parent-guide">
         <div className="section-heading"><span>{locale === 'en-US' ? 'New parent guide' : '新手父母关注'}</span><HeartPulse size={16} /></div>

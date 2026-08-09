@@ -17,7 +17,7 @@ import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, ro
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
-import { navigate, ROUTES, useHashRoute } from './router.js'
+import { navigate, resolveNaibaReturnTo, ROUTES, useHashLocation } from './router.js'
 
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
 
@@ -26,7 +26,8 @@ function sameValue(left, right) {
 }
 
 export function App() {
-  const route = useHashRoute()
+  const location = useHashLocation()
+  const route = location.route
   const [session, setSession] = useState(() => loadSession())
   const initialOwnerRef = useRef(session?.username)
   const sessionRef = useRef(session)
@@ -377,8 +378,8 @@ export function App() {
     return <RecordCenter state={state} commitState={commitState} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
-  if (route === ROUTES.pediatric) {
-    return <PediatricDiseasesView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+  if ([ROUTES.healthDiseases, ROUTES.healthOrgans].includes(route)) {
+    return <PediatricDiseasesView key={route} route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.summary) {
@@ -390,10 +391,11 @@ export function App() {
   }
 
   if (route === ROUTES.naibaAi) {
-    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    const returnTo = resolveNaibaReturnTo(location.params.get('returnTo')) || ROUTES.today
+    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
-  if (route === ROUTES.vaccines) {
+  if (route === ROUTES.healthVaccines) {
     return <VaccineView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 

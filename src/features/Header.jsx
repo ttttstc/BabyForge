@@ -1,18 +1,22 @@
-import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, Settings, Sparkles, Stethoscope, Syringe } from 'lucide-react'
+import { Baby, BookOpen, CalendarRange, ClipboardPlus, HeartPulse, House, Languages, LogOut, Settings } from 'lucide-react'
 import { useLayoutEffect, useRef } from 'react'
-import { navigate, ROUTES } from '../app/router.js'
+import { HEALTH_ROUTES, navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy } from '../domain/i18n.js'
+import { GlobalAiEntry } from './GlobalAiEntry.jsx'
 
 const PRIMARY_NAV_ITEMS = [
   { route: ROUTES.today, copyKey: 'today', icon: House },
   { route: ROUTES.records, copyKey: 'records', icon: ClipboardPlus },
   { route: ROUTES.growth, copyKey: 'growth', icon: CalendarRange },
-  { route: ROUTES.vaccines, copyKey: 'vaccines', icon: Syringe },
-  { route: ROUTES.pediatric, copyKey: 'pediatric', icon: Stethoscope },
+  { route: ROUTES.healthVaccines, copyKey: 'health', icon: HeartPulse },
   { route: ROUTES.experience, copyKey: 'experience', icon: BookOpen },
-  { route: ROUTES.naibaAi, copyKey: 'naibaAi', icon: Sparkles },
 ]
+
+function isActiveRoute(route, target) {
+  if (target === ROUTES.healthVaccines) return HEALTH_ROUTES.includes(route)
+  return route === target
+}
 
 export function Header({ route, baby, ageDays, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
   const copy = getCopy(locale)
@@ -50,12 +54,13 @@ export function Header({ route, baby, ageDays, onLogout, readOnly = false, role 
       </div>
       <nav ref={primaryNavRef} aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
         {PRIMARY_NAV_ITEMS.map(({ route: target, copyKey, icon: Icon }) => (
-          <button key={target} type="button" className={route === target ? 'active' : ''} aria-current={route === target ? 'page' : undefined} onClick={() => navigate(target)}>
+          <button key={target} type="button" className={isActiveRoute(route, target) ? 'active' : ''} aria-current={isActiveRoute(route, target) ? 'page' : undefined} onClick={() => navigate(target)}>
             <Icon size={17} />{copy.nav[copyKey]}
           </button>
         ))}
       </nav>
       <div className="header-actions">
+        <GlobalAiEntry locale={locale} active={route === ROUTES.naibaAi} />
         <label className="recorder-picker">
           <span>{locale === 'en-US' ? 'Current role' : '当前角色'}</span>
           <select value={currentRecorderId} onChange={(event) => onRecorderChange?.(event.target.value)} disabled={readOnly || !onRecorderChange} aria-label={locale === 'en-US' ? 'Current role' : '当前角色'}>

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { getAgeDays, getStage } from '../domain/baby.js'
-import { getDailyHealthReminders, getDailyTasks, localDateKey } from '../domain/carePlan.js'
+import { getAgeDays } from '../domain/baby.js'
+import { getDailyHealthReminders, localDateKey } from '../domain/carePlan.js'
 import { createCareEvent, createConcern as createConcernRecord, occurredAtErrorMessage, validateOccurredAt, voidCareEvent } from '../domain/careEvents.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { ROUTES } from '../app/router.js'
@@ -13,9 +13,7 @@ import { GrowthDashboard } from './GrowthDashboard.jsx'
 
 export function Workspace({ route, state, setState, onClear, onLogout, readOnly = false, role = 'admin', cloudMode = false }) {
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
-  const stage = useMemo(() => getStage(ageDays), [ageDays])
   const topicMode = route === ROUTES.jaundice
-  const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs, undefined, stage.id), [state.taskLogs, stage.id])
   const healthReminders = useMemo(() => getDailyHealthReminders(state.taskLogs, ageDays), [state.taskLogs, ageDays])
 
   function updatePreference(key, value) {
@@ -77,8 +75,8 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
   return (
     <main className="app-shell">
       <Header route={route} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => updatePreference('currentRecorderId', value)} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
-      <div className="workspace-grid">
-        <LeftRail baby={state.baby} ageDays={ageDays} healthReminders={healthReminders} onTaskUpdate={updateTask} locale={state.preferences.locale} readOnly={readOnly} />
+      <div className={`workspace-grid ${route === ROUTES.today ? 'today-workspace' : ''}`}>
+        <LeftRail baby={state.baby} ageDays={ageDays} careEvents={state.careEvents} locale={state.preferences.locale} readOnly={readOnly} />
         {route === ROUTES.today ? (
           <div className="today-middle-column">
             <BabyAlbum key={state.baby.id} baby={state.baby} locale={state.preferences.locale} readOnly={readOnly} remote={cloudMode} />
@@ -98,7 +96,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
         <ContextInspector
           baby={state.baby}
           topicMode={topicMode}
-          tasks={dailyTasks}
+          healthReminders={healthReminders}
           onTaskUpdate={updateTask}
           careEvents={state.careEvents}
           carePlanItems={state.carePlanItems}
