@@ -74,7 +74,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
 
   return (
     <main className="app-shell">
-      <Header route={route} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => updatePreference('currentRecorderId', value)} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
+      <Header route={route} baby={state.baby} ageDays={ageDays} onLogout={onLogout} readOnly={readOnly} role={role} locale={state.preferences.locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => updatePreference('currentRecorderId', value)} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className={`workspace-grid ${route === ROUTES.today ? 'today-workspace' : ''}`}>
         <LeftRail baby={state.baby} ageDays={ageDays} careEvents={state.careEvents} locale={state.preferences.locale} readOnly={readOnly} />
         {route === ROUTES.today ? (

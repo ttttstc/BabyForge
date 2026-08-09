@@ -1,5 +1,4 @@
 import { Baby, BookOpen, CalendarRange, ClipboardPlus, HeartPulse, House, Languages, LogOut, Settings } from 'lucide-react'
-import { useLayoutEffect, useRef } from 'react'
 import { HEALTH_ROUTES, navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy } from '../domain/i18n.js'
@@ -20,27 +19,6 @@ function isActiveRoute(route, target) {
 
 export function Header({ route, baby, ageDays, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
   const copy = getCopy(locale)
-  const primaryNavRef = useRef(null)
-
-  useLayoutEffect(() => {
-    const isMobile = typeof window.matchMedia !== 'function' || window.matchMedia('(max-width: 820px)').matches
-    if (!isMobile) return
-    const nav = primaryNavRef.current
-    const active = nav?.querySelector('[aria-current="page"]')
-    if (!nav || !active) return
-    const keepActiveVisible = () => {
-      const navBounds = nav.getBoundingClientRect()
-      const activeBounds = active.getBoundingClientRect()
-      if (activeBounds.left < navBounds.left) {
-        nav.scrollLeft += activeBounds.left - navBounds.left
-      } else if (activeBounds.right > navBounds.right) {
-        nav.scrollLeft += activeBounds.right - navBounds.right
-      }
-    }
-    keepActiveVisible()
-    const frame = window.requestAnimationFrame(keepActiveVisible)
-    return () => window.cancelAnimationFrame(frame)
-  }, [route])
 
   return (
     <header className="app-header">
@@ -52,7 +30,7 @@ export function Header({ route, baby, ageDays, onLogout, readOnly = false, role 
         <span className="baby-avatar">{baby.nickname.slice(0, 1)}</span>
         <span><strong>{baby.nickname}</strong><small>{copy.profile(getSexLabel(baby.sex, locale), ageDays)}</small></span>
       </div>
-      <nav ref={primaryNavRef} aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
+      <nav aria-label={locale === 'en-US' ? 'Primary navigation' : '主导航'}>
         {PRIMARY_NAV_ITEMS.map(({ route: target, copyKey, icon: Icon }) => (
           <button key={target} type="button" className={isActiveRoute(route, target) ? 'active' : ''} aria-current={isActiveRoute(route, target) ? 'page' : undefined} onClick={() => navigate(target)}>
             <Icon size={17} />{copy.nav[copyKey]}
