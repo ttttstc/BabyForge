@@ -28,7 +28,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await createBaby(page)
-  await page.getByRole('button', { name: '儿科病', exact: true }).click()
+  await page.getByRole('button', { name: '健康', exact: true }).click()
+  await page.getByRole('tab', { name: '常见儿科病' }).click()
 })
 
 test('condition finder covers the five issue 14 acceptance paths', async ({ page }) => {
@@ -36,7 +37,7 @@ test('condition finder covers the five issue 14 acceptance paths', async ({ page
   await finder.fill('毛细支气管炎')
   await page.locator('.disease-topic-card').filter({ has: page.getByRole('heading', { name: '毛细支气管炎', exact: true }) }).click()
   await expect(page.locator('.disease-selected')).toContainText('末端细支气管')
-  await expect(page.locator('.disease-selected')).toContainText('3D 教学模型正在完善')
+  await expect(page.locator('.disease-unit-canvas canvas')).toHaveCount(1)
   await expect(page.locator('.disease-selected')).toContainText('一般治疗与家庭护理')
 
   await finder.fill('手足口')
@@ -53,7 +54,7 @@ test('condition finder covers the five issue 14 acceptance paths', async ({ page
   await page.locator('.disease-topic-card').filter({ has: page.getByRole('heading', { name: '急性中耳炎', exact: true }) }).click()
   await expect(page.locator('.disease-selected')).toContainText('鼓膜后方的中耳腔')
 
-  await page.getByRole('tab', { name: /器官模型与学习/ }).click()
+  await page.getByRole('tab', { name: '器官教学' }).click()
   await page.locator('.organ-topic-grid button').filter({ hasText: '肺' }).first().click()
   await expect(page.locator('.organ-related')).toContainText('肺炎')
   await page.locator('.organ-related button').filter({ hasText: '肺炎' }).click()

@@ -248,7 +248,8 @@ test('today album does not depend on WebGL', async ({ page }) => {
 
 test('common pediatric education advances through anatomy steps and records raw facts', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '儿科病', exact: true }).click()
+  await page.getByRole('button', { name: '健康', exact: true }).click()
+  await page.getByRole('tab', { name: '常见儿科病', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: '快速查疾病，看懂发生在哪里，知道该观察什么', exact: true })).toBeVisible()
   await page.getByRole('button', { name: /普通感冒/ }).first().click()
@@ -271,14 +272,14 @@ test('common pediatric education advances through anatomy steps and records raw 
 
 test('pediatric library exposes all anatomy models and opens a concrete case guide', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '儿科病', exact: true }).click()
+  await page.getByRole('button', { name: '健康', exact: true }).click()
 
-  await page.getByRole('tab', { name: /器官模型/ }).click()
-  await expect(page.locator('.pediatric-organ-list .pediatric-disease-item')).toHaveCount(9)
+  await page.getByRole('tab', { name: '器官教学', exact: true }).click()
+  await expect(page.locator('.pediatric-organ-list .pediatric-disease-item')).toHaveCount(16)
   await page.getByRole('button', { name: /大脑.*神经系统/ }).click()
   await expect(page.getByLabel('大脑 3D viewer')).toBeVisible()
 
-  await page.getByRole('tab', { name: /疾病分类/ }).click()
+  await page.getByRole('tab', { name: '常见儿科病', exact: true }).click()
   await expect(page.locator('.disease-selected').getByRole('heading', { name: '新生儿黄疸', exact: true })).toBeVisible()
   await page.getByRole('button', { name: /呼吸系统/ }).first().click()
   await page.getByRole('button', { name: /普通感冒/ }).first().click()

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 // Each organ creates a WebGL scene; keep enough time for the full sequential
 // sweep so the assertion measures model stability instead of test-runner time.
-test.setTimeout(120000)
+test.setTimeout(240000)
 
 function dateDaysAgo(days) {
   const date = new Date()
@@ -31,15 +31,15 @@ test('all anatomy models load without entering the 2D fallback', async ({ page }
   const errors = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   await createBaby(page)
-  await page.getByRole('button', { name: '病例', exact: true }).click()
-  await page.getByRole('tab', { name: /器官模型/ }).click()
-  const organs = ['心脏', '大脑', '肺', '肝脏', '肾脏', '眼睛', '肠道', '胰腺', '皮肤']
+  await page.getByRole('button', { name: '健康', exact: true }).click()
+  await page.getByRole('tab', { name: '器官教学' }).click()
+  const organs = ['心脏', '大脑', '肺', '肝脏', '肾脏', '眼睛', '肠道', '胰腺', '皮肤', '耳与中耳', '鼻腔与鼻窦', '咽喉', '1 岁乳牙与牙龈', '胃与食管', '膀胱与下尿路', '儿童长骨']
   for (const organ of organs) {
-    const button = page.getByRole('button', { name: new RegExp(`${organ}.*系统`) })
+    const button = page.locator('.pediatric-organ-list .pediatric-disease-item').filter({ hasText: organ }).first()
     await button.click()
-    await expect(page.getByRole('heading', { name: organ, exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: `${organ} 3D viewer` }).getByRole('heading', { name: organ, exact: true, level: 1 })).toBeVisible()
     await expect(page.locator('.pediatric-model-fallback')).toHaveCount(0)
-    await expect(page.locator('.pediatric-loading')).toHaveCount(0, { timeout: 10000 })
+    await expect(page.locator('.pediatric-loading')).toHaveCount(0, { timeout: 30000 })
     await expect(page.locator('.pediatric-viewer-frame canvas')).toBeVisible()
     // Wait past the previous StrictMode remount window; the canvas must stay
     // mounted and the viewer must not switch to its 2D fallback.

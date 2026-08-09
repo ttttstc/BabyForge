@@ -186,11 +186,134 @@ function modelLeaderLines(input, resource, { unitId = `${input.id}-overview`, lo
   ]
 }
 
+const preciseAnatomy = Object.freeze({
+  'infant-reflux': {
+    resourceId: 'stomach',
+    viewType: 'PATHWAY',
+    title: t('胃食管连接与反流路径', 'Gastroesophageal junction and reflux path'),
+    lines: [
+      ['cardia', t('胃食管连接处', 'Gastroesophageal junction'), t('婴儿下食管括约肌仍在成熟，胃内容物较容易短暂向上移动。', 'The infant lower esophageal sphincter is still maturing, allowing brief upward movement of stomach contents.')],
+      ['esophagus', t('食管', 'Esophagus'), t('反流内容物沿食管上移，可表现为溢奶或吐奶。', 'Refluxed contents move upward through the esophagus and may appear as spit-up.')],
+    ],
+  },
+  croup: {
+    resourceId: 'throat',
+    viewType: 'AIRWAY_FOCUS',
+    title: t('喉与声门下气道', 'Larynx and subglottic airway'),
+    lines: [
+      ['subglottis', t('声门下区', 'Subglottis'), t('黏膜水肿会使儿童本就较窄的声门下气道进一步变窄。', 'Mucosal swelling further narrows the already small pediatric subglottic airway.')],
+      ['larynx', t('喉', 'Larynx'), t('喉部炎症与犬吠样咳嗽、声音嘶哑有关。', 'Laryngeal inflammation contributes to barking cough and hoarseness.')],
+    ],
+  },
+  'allergic-rhinitis': {
+    resourceId: 'nose',
+    viewType: 'MUCOSAL_FOCUS',
+    title: t('鼻腔黏膜与鼻甲', 'Nasal mucosa and turbinates'),
+    lines: [
+      ['nasal-cavity', t('鼻腔黏膜', 'Nasal mucosa'), t('过敏反应使黏膜充血、水肿并增加清水样分泌物。', 'Allergic inflammation congests and swells the mucosa and increases watery secretions.')],
+      ['nasal-turbinates', t('鼻甲', 'Nasal turbinates'), t('鼻甲肿胀会减少通气空间并加重鼻塞。', 'Swollen turbinates reduce airflow space and worsen congestion.')],
+      ['nasal-nerves-vessels', t('感觉神经与血管', 'Sensory nerves and vessels'), t('神经刺激与血管扩张参与喷嚏、鼻痒和充血。', 'Nerve stimulation and vascular dilation contribute to sneezing, itch and congestion.')],
+    ],
+  },
+  herpangina: {
+    resourceId: 'throat',
+    viewType: 'MUCOSAL_FOCUS',
+    title: t('咽后部黏膜', 'Posterior pharyngeal mucosa'),
+    lines: [
+      ['pharynx', t('咽后部', 'Posterior pharynx'), t('小疱和溃疡常集中在软腭后方及咽部，而非牙龈或牙齿。', 'Vesicles and ulcers usually involve the posterior oral and pharyngeal region, not the gingiva or teeth.')],
+    ],
+  },
+  'acute-otitis-media': {
+    resourceId: 'ear',
+    viewType: 'CAVITY_FOCUS',
+    title: t('鼓膜后的中耳腔', 'Middle-ear cavity behind the eardrum'),
+    lines: [
+      ['middle-ear', t('中耳腔', 'Middle-ear cavity'), t('感染和积液发生在鼓膜后方，可引起疼痛和听力暂时下降。', 'Infection and fluid collect behind the eardrum, causing pain and temporary hearing reduction.')],
+      ['tympanic-membrane', t('鼓膜', 'Tympanic membrane'), t('中耳压力可使鼓膜充血、膨隆并降低活动度。', 'Middle-ear pressure can make the eardrum red, bulging and less mobile.')],
+      ['eustachian-tube', t('咽鼓管', 'Eustachian tube'), t('儿童咽鼓管较短且更水平，鼻咽炎症更容易影响中耳通气。', 'The shorter, more horizontal pediatric tube makes middle-ear ventilation more vulnerable to nasopharyngeal inflammation.')],
+    ],
+  },
+  'otitis-externa': {
+    resourceId: 'ear',
+    viewType: 'CANAL_FOCUS',
+    title: t('外耳道皮肤', 'External ear-canal skin'),
+    lines: [
+      ['ear-canal', t('外耳道', 'External ear canal'), t('潮湿或微小损伤可使外耳道皮肤发炎、肿胀和疼痛。', 'Moisture or small injuries can inflame, swell and hurt the ear-canal skin.')],
+      ['tympanic-membrane', t('鼓膜边界', 'Eardrum boundary'), t('外耳道炎位于鼓膜外侧，需要与中耳感染区分。', 'Otitis externa lies outside the eardrum and must be distinguished from middle-ear infection.')],
+    ],
+  },
+  pharyngotonsillitis: {
+    resourceId: 'throat',
+    viewType: 'MUCOSAL_FOCUS',
+    title: t('咽部与扁桃体区域', 'Pharynx and tonsillar region'),
+    lines: [
+      ['pharynx', t('咽部与扁桃体区域', 'Pharynx and tonsillar region'), t('感染使咽部和扁桃体区域充血、肿胀并造成吞咽疼痛。', 'Infection reddens and swells the pharyngeal and tonsillar region, making swallowing painful.')],
+      ['laryngeal-nerves-vessels', t('局部神经与血管', 'Local nerves and vessels'), t('炎症刺激感觉神经并增加局部血流，形成疼痛和红肿。', 'Inflammation stimulates sensory nerves and increases local blood flow, producing pain and redness.')],
+    ],
+  },
+  sinusitis: {
+    resourceId: 'nose',
+    viewType: 'SINUS_FOCUS',
+    title: t('鼻腔与鼻窦引流通路', 'Nasal cavity and sinus drainage pathways'),
+    lines: [
+      ['maxillary-sinus', t('上颌窦', 'Maxillary sinus'), t('黏膜炎症和引流受阻可造成分泌物潴留与面部不适。', 'Mucosal inflammation and blocked drainage can retain secretions and cause facial discomfort.')],
+      ['frontal-sinus', t('额窦', 'Frontal sinus'), t('额窦随儿童年龄逐步发育，表现需结合年龄判断。', 'The frontal sinus develops progressively with age, so findings must be interpreted by age.')],
+      ['nasal-cavity', t('鼻腔', 'Nasal cavity'), t('鼻腔黏膜肿胀会影响鼻窦开口通气和引流。', 'Swollen nasal mucosa interferes with sinus ventilation and drainage.')],
+    ],
+  },
+  'vitamin-d-deficiency-rickets': {
+    resourceId: 'bone',
+    viewType: 'GROWTH_PLATE_FOCUS',
+    title: t('儿童长骨生长板与矿化', 'Pediatric growth plates and mineralization'),
+    lines: [
+      ['proximal-growth-plate', t('近端生长板', 'Proximal growth plate'), t('快速生长区域矿化不足时可出现增宽和形态改变。', 'Insufficient mineralization in a rapidly growing region can cause widening and shape change.')],
+      ['distal-growth-plate', t('远端生长板', 'Distal growth plate'), t('佝偻病改变常在生长活跃的干骺端更明显。', 'Rickets changes are often most visible near actively growing metaphyses.')],
+      ['cortex', t('骨皮质', 'Bone cortex'), t('长期矿化不足会降低骨骼硬度和承重能力。', 'Prolonged poor mineralization reduces bone hardness and load-bearing strength.')],
+    ],
+  },
+})
+
+const diseasesWithoutMatchingModel = new Set(['mumps', 'stomatitis'])
+
+function displayUnitForRule(input, rule, index = 0) {
+  const resource = ANATOMY_RESOURCES.find((item) => item.id === rule.resourceId)
+  const available = Boolean(resource?.model)
+  const unitId = `${input.id}-${rule.resourceId}-${index + 1}`
+  const hotspotById = new Map(getAnatomyHotspots(rule.resourceId).map((hotspot) => [hotspot.id, hotspot]))
+  const lines = rule.lines
+    .map(([anchorId, label, effect]) => ({ anchorId, label, effect, color: hotspotById.get(anchorId)?.color }))
+    .filter((line) => hotspotById.has(line.anchorId))
+  const impact = lines[0]
+  const signAnchor = lines[1] || impact
+  const signs = items(input.symptoms[0], input.symptoms[1])
+  const sign = t(
+    signs.slice(0, 2).map((item) => item.zh).filter(Boolean).join('；'),
+    signs.slice(0, 2).map((item) => item.en).filter(Boolean).join('; '),
+  )
+  const leaderLines = available && impact ? [
+    { id: `${unitId}-impact`, kind: 'impact', anchorId: impact.anchorId, label: impact.label, effect: impact.effect, color: impact.color },
+    { id: `${unitId}-sign`, kind: 'sign', anchorId: signAnchor.anchorId, label: t('快速对照现象', 'Quick-match signs'), effect: sign, color: signAnchor.color },
+  ] : []
+  return {
+    id: unitId,
+    title: rule.title || input.location,
+    anchorIds: lines.map((line) => line.anchorId),
+    viewType: rule.viewType || input.viewType || 'OVERVIEW',
+    description: rule.description || input.mechanism,
+    displayOrder: index + 1,
+    modelRef: available ? resource.model : null,
+    modelAvailability: available ? 'AVAILABLE' : 'PLANNED',
+    leaderLines,
+  }
+}
+
 function defaultDisplayUnit(input) {
   const preciseSkinTopics = new Set(['atopic-dermatitis', 'diaper-dermatitis', 'contact-dermatitis', 'heat-rash', 'impetigo', 'fungal-skin-infection'])
   const skinResource = ANATOMY_RESOURCES.find((resource) => resource.id === 'skin')
   const resourceIds = new Set(ANATOMY_RESOURCES.map((resource) => resource.id))
-  const organId = input.tags?.find((tag) => resourceIds.has(tag))
+  const rule = preciseAnatomy[input.id]
+  if (rule) return displayUnitForRule(input, rule)
+  const organId = diseasesWithoutMatchingModel.has(input.id) ? null : input.tags?.find((tag) => resourceIds.has(tag))
   const organResource = ANATOMY_RESOURCES.find((resource) => resource.id === organId)
   const hasSkinModel = preciseSkinTopics.has(input.id) && skinResource?.model
   const modelResource = hasSkinModel ? skinResource : organResource
@@ -212,6 +335,46 @@ function defaultDisplayUnit(input) {
 function specialDisplayUnits(input) {
   const skinResource = ANATOMY_RESOURCES.find((resource) => resource.id === 'skin')
   const liverResource = ANATOMY_RESOURCES.find((resource) => resource.id === 'liver')
+  if (input.id === 'common-cold') return [
+    {
+      resourceId: 'nose',
+      viewType: 'MUCOSAL_FOCUS',
+      title: t('鼻腔黏膜', 'Nasal mucosa'),
+      lines: [
+        ['nasal-cavity', t('鼻腔黏膜', 'Nasal mucosa'), t('病毒使鼻黏膜发炎并增加分泌物，形成鼻塞和流涕。', 'Viral inflammation increases nasal secretions, causing congestion and runny nose.')],
+        ['nasal-turbinates', t('鼻甲', 'Nasal turbinates'), t('鼻甲黏膜肿胀会减少婴幼儿狭窄鼻腔内的通气空间。', 'Swollen turbinate mucosa further reduces airflow in a young child’s narrow nasal cavity.')],
+      ],
+    },
+    {
+      resourceId: 'throat',
+      viewType: 'UPPER_AIRWAY',
+      title: t('咽喉与上气道', 'Throat and upper airway'),
+      lines: [
+        ['pharynx', t('咽部', 'Pharynx'), t('鼻咽分泌物和黏膜炎症可引起咽部不适与咳嗽。', 'Nasopharyngeal secretions and mucosal inflammation can cause throat discomfort and cough.')],
+      ],
+    },
+  ].map((rule, index) => displayUnitForRule(input, rule, index))
+  if (input.id === 'urinary-tract-infection') return [
+    {
+      resourceId: 'bladder',
+      viewType: 'ASCENDING_PATHWAY',
+      title: t('尿道与膀胱', 'Urethra and bladder'),
+      lines: [
+        ['urethra', t('尿道', 'Urethra'), t('肠道细菌最常经尿道向上进入尿路。', 'Bowel bacteria most often enter the urinary tract by ascending through the urethra.')],
+        ['bladder-wall', t('膀胱黏膜', 'Bladder lining'), t('细菌在膀胱黏膜繁殖可引起尿频、尿急或排尿痛。', 'Bacterial growth in the bladder lining can cause frequency, urgency or painful urination.')],
+        ['trigone', t('膀胱三角', 'Bladder trigone'), t('膀胱出口与输尿管开口集中于此区域。', 'The bladder outlet and ureteric openings meet in this region.')],
+      ],
+    },
+    {
+      resourceId: 'kidneys',
+      viewType: 'UPPER_URINARY_TRACT',
+      title: t('输尿管与肾脏', 'Ureters and kidneys'),
+      lines: [
+        ['ureter', t('输尿管', 'Ureter'), t('感染上行时可沿输尿管影响肾盂与肾组织。', 'An ascending infection can travel along the ureter to affect the renal pelvis and kidney.')],
+        ['medulla', t('肾髓质', 'Renal medulla'), t('发热性尿路感染需要评估是否累及上尿路。', 'Febrile urinary infection requires assessment for upper-tract involvement.')],
+      ],
+    },
+  ].map((rule, index) => displayUnitForRule(input, rule, index))
   if (input.id === 'hand-foot-mouth') return [
     ['mouth', t('口腔黏膜', 'Oral mucosa')],
     ['palm', t('手掌', 'Palms')],
@@ -326,7 +489,7 @@ export const DISEASE_TOPICS = [
   D({ id: 'chickenpox', name: t('水痘', 'Chickenpox'), aliases: ['水痘-带状疱疹病毒感染', 'Varicella'], age: age.all, profile: 'infectious', tags: ['infectious', 'skin'], location: t('全身皮肤表面', 'Skin surfaces across the body'), definition: t('水痘-带状疱疹病毒引起的传染病，出现分批、不同阶段的瘙痒性疱疹。', 'A varicella-zoster virus illness with itchy crops of lesions at different stages.'), cause: t('水痘-带状疱疹病毒初次感染。', 'Primary varicella-zoster virus infection.'), mechanism: t('病毒经呼吸道进入后扩散至皮肤，形成红斑、丘疹、水疱和结痂。', 'After respiratory entry, virus spreads to skin, forming spots, bumps, blisters and crusts.'), symptoms: ['发热和不适|分批出现瘙痒性水疱|头皮和躯干常较多', 'Fever and malaise|Itchy crops of blisters|Often prominent on scalp and trunk'], course: t('新疹可持续数日，全部结痂后逐步恢复；抓破后可能继发感染。', 'New lesions may appear for days and recovery follows crusting; scratching can cause secondary infection.'), department: t('儿科或儿童感染科', 'Pediatrics or pediatric infectious disease'), transmission: t('经空气、呼吸道分泌物和疱疹液传播。', 'Through air, respiratory secretions and blister fluid.'), sourceIds: ['cdcVaccines'] }),
   D({ id: 'scarlet-fever', name: t('猩红热', 'Scarlet fever'), aliases: ['A组链球菌猩红热', 'Group A strep scarlet fever'], age: age.toddler, profile: 'infectious', tags: ['infectious', 'skin', 'throat'], location: t('咽喉与全身皮肤', 'Throat and widespread skin'), definition: t('产毒素的 A 组链球菌感染引起咽炎和细砂纸样皮疹。', 'Toxin-producing group A streptococcal infection causing pharyngitis and a sandpaper-like rash.'), cause: t('产红疹毒素的 A 组链球菌感染。', 'Toxigenic group A streptococcal infection.'), mechanism: t('咽部细菌感染释放毒素，引起弥漫性皮肤红疹。', 'Throat infection releases toxin that causes a diffuse red rash.'), symptoms: ['发热和咽痛|细砂纸样红疹|草莓舌或颈部淋巴结肿大', 'Fever and sore throat|Fine sandpaper rash|Strawberry tongue or swollen neck nodes'], course: t('规范抗感染治疗后通常改善，需要完成专业人员制定的疗程。', 'Usually improves with prescribed antimicrobial treatment, which must be completed as directed.'), department: t('儿科或儿童感染科', 'Pediatrics or pediatric infectious disease'), transmission: t('主要经呼吸道飞沫和密切接触传播。', 'Mainly through respiratory droplets and close contact.'), sourceIds: ['nhsChildren'] }),
   D({ id: 'measles', name: t('麻疹', 'Measles'), aliases: ['麻疹病毒感染', 'Rubeola'], age: age.all, profile: 'infectious', tags: ['infectious', 'skin', 'respiratory'], location: t('呼吸道、全身和皮肤', 'Respiratory tract, systemic tissues and skin'), definition: t('麻疹病毒引起的高度传染性疾病，表现为发热、咳嗽、眼红和扩散性皮疹。', 'A highly contagious measles virus illness with fever, cough, red eyes and a spreading rash.'), cause: t('麻疹病毒感染。', 'Measles virus infection.'), mechanism: t('病毒由呼吸道进入并全身扩散，免疫反应形成典型皮疹。', 'Virus enters through the respiratory tract and spreads systemically; immune response creates the rash.'), symptoms: ['高热、咳嗽和流涕|眼红或畏光|从头面向下扩展的皮疹', 'High fever, cough and coryza|Red or light-sensitive eyes|Rash spreading downward from face'], course: t('可出现肺炎等并发症，疑似病例应先电话联系医疗机构并避免候诊区暴露。', 'Complications such as pneumonia can occur; suspected cases should call ahead and avoid exposing waiting rooms.'), department: t('儿科或儿童感染科', 'Pediatrics or pediatric infectious disease'), transmission: t('通过空气传播，传染性很强。', 'Airborne and highly contagious.'), sourceIds: ['cdcVaccines'] }),
-  D({ id: 'mumps', name: t('腮腺炎', 'Mumps'), aliases: ['流行性腮腺炎', 'Epidemic parotitis'], age: age.all, profile: 'infectious', tags: ['infectious', 'mouth'], location: t('耳下腮腺及唾液腺', 'Parotid and other salivary glands'), definition: t('腮腺炎病毒引起的传染病，常见耳下或下颌部肿痛。', 'A mumps virus illness commonly causing painful swelling below the ear or jaw.'), cause: t('腮腺炎病毒感染。', 'Mumps virus infection.'), mechanism: t('病毒感染唾液腺并引起腮腺炎症肿胀。', 'Virus infects salivary glands and inflames the parotid.'), symptoms: ['耳下或下颌肿痛|发热和乏力|咀嚼或吞咽不适', 'Painful swelling below ear or jaw|Fever and fatigue|Discomfort chewing or swallowing'], course: t('多数逐步恢复，但出现剧烈头痛、颈强或其他部位疼痛需评估并发症。', 'Most recover gradually; severe headache, stiff neck or pain elsewhere needs complication assessment.'), department: t('儿科或儿童感染科', 'Pediatrics or pediatric infectious disease'), transmission: t('经唾液、飞沫和密切接触传播。', 'Through saliva, droplets and close contact.'), sourceIds: ['cdcVaccines'] }),
+  D({ id: 'mumps', name: t('腮腺炎', 'Mumps'), aliases: ['流行性腮腺炎', 'Epidemic parotitis'], age: age.all, profile: 'infectious', tags: ['infectious', 'ent'], location: t('耳下腮腺及唾液腺', 'Parotid and other salivary glands'), definition: t('腮腺炎病毒引起的传染病，常见耳下或下颌部肿痛。', 'A mumps virus illness commonly causing painful swelling below the ear or jaw.'), cause: t('腮腺炎病毒感染。', 'Mumps virus infection.'), mechanism: t('病毒感染唾液腺并引起腮腺炎症肿胀。', 'Virus infects salivary glands and inflames the parotid.'), symptoms: ['耳下或下颌肿痛|发热和乏力|咀嚼或吞咽不适', 'Painful swelling below ear or jaw|Fever and fatigue|Discomfort chewing or swallowing'], course: t('多数逐步恢复，但出现剧烈头痛、颈强或其他部位疼痛需评估并发症。', 'Most recover gradually; severe headache, stiff neck or pain elsewhere needs complication assessment.'), department: t('儿科或儿童感染科', 'Pediatrics or pediatric infectious disease'), transmission: t('经唾液、飞沫和密切接触传播。', 'Through saliva, droplets and close contact.'), sourceIds: ['cdcVaccines'] }),
   D({ id: 'herpangina', name: t('疱疹性咽峡炎', 'Herpangina'), aliases: ['咽峡炎', 'Enteroviral pharyngitis'], age: age.toddler, profile: 'infectious', tags: ['infectious', 'throat', 'mouth'], location: t('口咽后部和软腭', 'Back of mouth, soft palate and pharynx'), definition: t('肠道病毒引起的发热性咽部感染，口咽后部出现小疱疹或溃疡。', 'A febrile enterovirus throat infection with small blisters or ulcers at the back of the mouth.'), cause: t('柯萨奇病毒等肠道病毒。', 'Coxsackieviruses and other enteroviruses.'), mechanism: t('病毒在口咽黏膜形成局部疱疹和溃疡，引起吞咽疼痛。', 'Virus causes local blisters and ulcers in oropharyngeal mucosa, making swallowing painful.'), symptoms: ['突然发热|咽痛和吞咽不适|软腭或咽峡小疱疹', 'Sudden fever|Sore throat and painful swallowing|Small blisters on soft palate or pharynx'], course: t('多在一周左右逐步改善，疼痛期间需重点保持液体摄入。', 'Usually improves over about a week; fluids are important while swallowing hurts.'), department: t('儿科', 'Pediatrics'), transmission: t('经粪口、呼吸道分泌物和污染表面传播。', 'Through fecal-oral spread, respiratory secretions and contaminated surfaces.'), sourceIds: ['cdcHfmd'] }),
   D({ id: 'adenovirus-infection', name: t('腺病毒感染', 'Adenovirus infection'), aliases: ['腺病毒', 'Adenovirus'], age: age.all, profile: 'infectious', tags: ['infectious', 'respiratory', 'eye', 'digestive'], location: t('呼吸道、结膜或胃肠道', 'Respiratory tract, conjunctiva or gastrointestinal tract'), definition: t('腺病毒引起的一组感染，可表现为呼吸道、眼部或胃肠道症状。', 'A group of adenovirus illnesses that may affect the respiratory tract, eyes or gut.'), cause: t('不同型别腺病毒感染。', 'Infection with different adenovirus types.'), mechanism: t('病毒感染不同部位的上皮细胞，因此表现随受累系统而变化。', 'Virus infects epithelial cells at different sites, so symptoms vary by system.'), symptoms: ['发热和咽痛或咳嗽|眼红和分泌物|可伴腹泻或呕吐', 'Fever with sore throat or cough|Red eyes and discharge|Possible diarrhea or vomiting'], course: t('多数为自限性，但高热持续、脱水或呼吸变化需要复诊。', 'Most are self-limited; persistent high fever, dehydration or breathing change needs review.'), department: t('儿科或儿童感染科', 'Pediatrics or pediatric infectious disease'), transmission: t('经呼吸道、接触、粪口和受污染水体传播。', 'Through respiratory, contact, fecal-oral routes and contaminated water.'), sourceIds: ['cdcRespiratory'] }),
   D({ id: 'acute-otitis-media', name: t('急性中耳炎', 'Acute otitis media'), aliases: ['中耳炎', 'Middle ear infection'], age: age.all, profile: 'ent', tags: ['ent', 'ear'], location: t('鼓膜后方的中耳腔', 'Middle-ear space behind the eardrum'), definition: t('中耳腔急性炎症或感染，婴幼儿常在上呼吸道感染后发生。', 'Acute inflammation or infection behind the eardrum, often after an upper respiratory illness in young children.'), cause: t('病毒或细菌在咽鼓管通气受影响后进入中耳。', 'Viruses or bacteria reach the middle ear after eustachian-tube ventilation is impaired.'), mechanism: t('中耳黏膜发炎和积液使鼓膜后压力改变，引起疼痛并可暂时影响听力。', 'Inflammation and fluid change pressure behind the eardrum, causing pain and temporary hearing effects.'), symptoms: ['耳痛、抓耳或婴儿哭闹|发热或睡眠差|听力反应下降或耳流液', 'Ear pain, pulling or infant irritability|Fever or poor sleep|Reduced hearing response or ear discharge'], course: t('不少病例数日内改善；持续疼痛、流液或听力变化需复诊。', 'Many improve over days; persistent pain, discharge or hearing change needs review.'), department: t('儿科或儿童耳鼻喉科', 'Pediatrics or pediatric ENT'), sourceIds: ['aapCommon', 'nhsChildren'] }),
@@ -356,15 +519,7 @@ export const DISEASE_TOPICS = [
   D({ id: 'vitamin-d-deficiency-rickets', name: t('维生素 D 缺乏或佝偻病', 'Vitamin D deficiency or rickets'), aliases: ['佝偻病|维D缺乏', 'Rickets|Vitamin D deficiency'], age: age.all, profile: 'nutrition', tags: ['nutrition', 'bone'], location: t('骨骼生长板与钙磷矿化', 'Growth plates and calcium-phosphate mineralization'), definition: t('维生素 D、钙或磷不足导致骨矿化受影响；出现骨骼改变时称佝偻病。', 'Impaired bone mineralization from vitamin D, calcium or phosphate problems; skeletal changes are called rickets.'), cause: t('摄入或日照不足、吸收不良，或肝肾和遗传性代谢问题。', 'Low intake or sunlight, malabsorption, or liver, kidney and inherited metabolic problems.'), mechanism: t('钙磷供应或调节不足使快速生长的骨骼和生长板不能正常矿化。', 'Inadequate calcium-phosphate supply or regulation prevents normal mineralization of growing bone and growth plates.'), symptoms: ['早期可能无明显症状|骨骼变形或肌力下降|生长和出牙变化需综合评估', 'Early disease may have no obvious symptoms|Bone deformity or reduced muscle strength|Growth and tooth changes need full assessment'], course: t('按原因补充并复查后可改善；不能仅凭外观判断或自行使用大剂量。', 'Improves with cause-specific supplementation and follow-up; appearance alone is not diagnostic and high doses should not be self-used.'), department: t('儿科、儿童保健科或儿童内分泌科', 'Pediatrics, child health or pediatric endocrinology'), sourceIds: ['whoChild'] }),
 ]
 
-const PLANNED_ORGANS = [
-  { id: 'ear', name: t('耳与中耳', 'Ear & middle ear'), system: t('耳鼻喉系统', 'ENT system') },
-  { id: 'nose', name: t('鼻腔与鼻窦', 'Nose & sinuses'), system: t('呼吸系统', 'Respiratory system') },
-  { id: 'throat', name: t('咽喉', 'Throat & larynx'), system: t('呼吸与吞咽', 'Breathing & swallowing') },
-  { id: 'mouth', name: t('口腔', 'Mouth'), system: t('口腔与消化入口', 'Oral & digestive entry') },
-  { id: 'stomach', name: t('胃与食管', 'Stomach & esophagus'), system: t('消化系统', 'Digestive system') },
-  { id: 'bladder', name: t('膀胱与下尿路', 'Bladder & lower urinary tract'), system: t('泌尿系统', 'Urinary system') },
-  { id: 'bone', name: t('骨骼', 'Bones'), system: t('骨骼系统', 'Skeletal system') },
-]
+const PLANNED_ORGANS = []
 
 const ORGAN_COPY = Object.freeze({
   heart: { function: t('通过有节律的收缩把血液泵向全身，输送氧和营养。', 'Rhythmic contractions pump blood through the body, carrying oxygen and nutrients.'), child: t('婴儿心率通常较快，心脏结构和循环仍在发育。', 'Infant heart rates are often faster while cardiac structure and circulation continue to develop.') },
@@ -379,7 +534,7 @@ const ORGAN_COPY = Object.freeze({
   ear: { function: t('接收声音并参与平衡，外耳、中耳和内耳共同工作。', 'The outer, middle, and inner ear receive sound and support balance.'), child: t('儿童耳道和听觉通路仍在发育，感冒后耳部变化值得记录。', 'The ear canal and hearing pathways are still developing; note changes after colds.') },
   nose: { function: t('过滤、加温和湿润吸入空气，也参与嗅觉。', 'The nose filters, warms, and humidifies air and supports smell.'), child: t('婴幼儿鼻腔较窄，鼻塞对吃奶和睡眠的影响更明显。', 'Infants have narrow nasal passages, so congestion can affect feeding and sleep more.') },
   throat: { function: t('连接呼吸和吞咽通路，参与发声并保护气道。', 'The throat connects breathing and swallowing pathways, supports voice, and protects the airway.'), child: t('婴幼儿吞咽与呼吸协调仍在成熟，喂养时要观察是否呛咳。', 'Breathing and swallowing coordination is still maturing; watch for coughing during feeds.') },
-  mouth: { function: t('承担吸吮、咀嚼、吞咽和口腔屏障功能。', 'The mouth supports sucking, chewing, swallowing, and an oral barrier.'), child: t('口腔黏膜和牙齿处于发育阶段，喂养与清洁方式需按年龄调整。', 'Oral tissues and teeth are developing, so feeding and cleaning should fit the age.') },
+  mouth: { function: t('乳切牙参与切咬，牙龈包绕并支持正在萌出的乳牙。', 'Primary incisors cut food while gingiva surrounds and supports the erupting teeth.'), child: t('一岁儿童出牙数量差异很大；模型中的 8 颗乳切牙是发育教学示例，不是达标标准。', 'Tooth count varies widely at age one; the eight primary incisors shown are a teaching example, not a developmental threshold.') },
   stomach: { function: t('暂存并搅拌食物，开始消化并将内容物送入肠道。', 'The stomach stores and mixes food, starts digestion, and passes contents to the intestine.'), child: t('婴儿胃容量小、食管括约肌仍在成熟，喂后表现要结合进食量观察。', 'Infant stomachs are small and the esophageal valve is maturing; interpret post-feed signs with intake.') },
   bladder: { function: t('储存尿液，并与尿道协同完成排尿。', 'The bladder stores urine and works with the urethra for emptying.'), child: t('幼儿排尿控制逐步建立，次数、颜色和疼痛等变化要结合年龄看。', 'Toilet control develops gradually; interpret frequency, color, and pain by age.') },
   bone: { function: t('支撑身体并保护器官，骨骼和生长板也是运动基础。', 'Bones support the body, protect organs, and provide the basis for movement and growth.'), child: t('儿童骨骼和生长板仍在发育，外观不能替代专业评估。', 'Children’s bones and growth plates are developing; appearance cannot replace assessment.') },
@@ -396,7 +551,7 @@ export const ORGAN_TOPICS = Object.freeze([
     anatomyAnchors: [],
     modelAvailability: resource.model ? 'AVAILABLE' : 'PLANNED',
     modelRef: resource.model || null,
-    relatedDiseaseIds: DISEASE_TOPICS.filter((topic) => topic.categoryTags.includes(resource.id)).map((topic) => topic.id),
+    relatedDiseaseIds: DISEASE_TOPICS.filter((topic) => topic.anatomyBinding.displayUnits.some((unit) => unit.modelRef === resource.model) || topic.categoryTags.includes(resource.id)).map((topic) => topic.id),
   })),
   ...PLANNED_ORGANS.map((organ) => ({
     ...organ,

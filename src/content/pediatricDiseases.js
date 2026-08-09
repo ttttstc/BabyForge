@@ -10,6 +10,13 @@ export const ANATOMY_RESOURCES = [
   { id: 'intestine', title: { zh: '肠道', en: 'Intestine' }, system: { zh: '消化系统', en: 'Digestive system' }, model: modelPath('intestine'), accent: '#d78b77', icon: '§' },
   { id: 'pancreas', title: { zh: '胰腺', en: 'Pancreas' }, system: { zh: '内分泌系统', en: 'Endocrine system' }, model: modelPath('pancreas'), accent: '#c69a5e', icon: '◈' },
   { id: 'skin', title: { zh: '皮肤', en: 'Skin' }, system: { zh: '皮肤系统', en: 'Integumentary system' }, model: modelPath('skin'), accent: '#c99277', icon: '▦' },
+  { id: 'ear', title: { zh: '耳与中耳', en: 'Ear & middle ear' }, system: { zh: '耳鼻喉系统', en: 'ENT system' }, model: modelPath('ear'), accent: '#d59a79', icon: '◔' },
+  { id: 'nose', title: { zh: '鼻腔与鼻窦', en: 'Nose & sinuses' }, system: { zh: '呼吸系统', en: 'Respiratory system' }, model: modelPath('nose'), accent: '#e2836f', icon: '⌒' },
+  { id: 'throat', title: { zh: '咽喉', en: 'Throat & larynx' }, system: { zh: '呼吸与吞咽', en: 'Breathing & swallowing' }, model: modelPath('throat'), accent: '#d06f72', icon: '◇' },
+  { id: 'mouth', title: { zh: '1 岁乳牙与牙龈', en: 'Age-1 primary incisors & gingiva' }, system: { zh: '口腔发育', en: 'Oral development' }, model: modelPath('mouth'), accent: '#e77e76', icon: '◡' },
+  { id: 'stomach', title: { zh: '胃与食管', en: 'Stomach & esophagus' }, system: { zh: '消化系统', en: 'Digestive system' }, model: modelPath('stomach'), accent: '#cf6f62', icon: '◒' },
+  { id: 'bladder', title: { zh: '膀胱与下尿路', en: 'Bladder & lower urinary tract' }, system: { zh: '泌尿系统', en: 'Urinary system' }, model: modelPath('bladder'), accent: '#d66f76', icon: '▽' },
+  { id: 'bone', title: { zh: '儿童长骨', en: 'Pediatric long bone' }, system: { zh: '骨骼系统', en: 'Skeletal system' }, model: modelPath('bone'), accent: '#d4ad77', icon: '│' },
 ]
 
 const hotspots = {
@@ -71,6 +78,56 @@ const hotspots = {
     { id: 'body', position: [0.05, 0.25, 0.45], color: '#f2a33b', label: { zh: '胰体', en: 'Body' }, detail: { zh: '横跨脊柱', en: 'Crosses the spine' } },
     { id: 'tail', position: [1.55, 0.3, 0.35], color: '#6393d8', label: { zh: '胰尾', en: 'Tail' }, detail: { zh: '延伸至脾脏', en: 'Reaches the spleen' } },
     { id: 'duct', position: [-0.61, 0.39, 0.5], color: '#d89bc4', label: { zh: '胰管', en: 'Pancreatic duct' }, detail: { zh: '把消化酶排入肠道', en: 'Drains enzymes to the gut' } },
+  ],
+  ear: [
+    { id: 'ear-canal', position: [-0.45, 0.02, 0.82], color: '#ee7c6a', label: { zh: '外耳道', en: 'External ear canal' }, detail: { zh: '把声波引向鼓膜', en: 'Carries sound toward the eardrum' } },
+    { id: 'tympanic-membrane', position: [0.35, 0.08, 0.92], color: '#f2a33b', label: { zh: '鼓膜', en: 'Tympanic membrane' }, detail: { zh: '分隔外耳与中耳并随声音振动', en: 'Separates outer and middle ear and vibrates with sound' } },
+    { id: 'middle-ear', position: [0.25, 0.22, 0.88], color: '#6393d8', label: { zh: '中耳腔', en: 'Middle-ear cavity' }, detail: { zh: '容纳听小骨并传递振动', en: 'Houses the ossicles and transmits vibration' } },
+    { id: 'cochlea', position: [1.05, -0.25, 0.72], color: '#d89bc4', label: { zh: '耳蜗', en: 'Cochlea' }, detail: { zh: '把机械振动转换为听觉信号', en: 'Converts vibration into auditory signals' } },
+    { id: 'eustachian-tube', position: [0.48, -0.82, 0.66], color: '#7fa88a', label: { zh: '咽鼓管', en: 'Eustachian tube' }, detail: { zh: '连接中耳与鼻咽并帮助平衡压力', en: 'Connects middle ear to nasopharynx and balances pressure' } },
+  ],
+  nose: [
+    { id: 'frontal-sinus', position: [0, 1.08, 0.76], color: '#6393d8', label: { zh: '额窦', en: 'Frontal sinus' }, detail: { zh: '鼻窦之一，开口通向鼻腔', en: 'A paranasal sinus draining toward the nasal cavity' } },
+    { id: 'maxillary-sinus', position: [-0.92, 0.08, 0.82], color: '#f2a33b', label: { zh: '上颌窦', en: 'Maxillary sinus' }, detail: { zh: '位于鼻腔外侧的成对鼻窦', en: 'Paired sinuses beside the nasal cavity' } },
+    { id: 'nasal-cavity', position: [0, -0.08, 1.02], color: '#ee7c6a', label: { zh: '鼻腔', en: 'Nasal cavity' }, detail: { zh: '过滤、加温并湿润吸入空气', en: 'Filters, warms and humidifies inhaled air' } },
+    { id: 'nasal-turbinates', position: [0.14, -0.36, 1.12], color: '#7fa88a', label: { zh: '鼻甲', en: 'Nasal turbinates' }, detail: { zh: '增加黏膜表面积并调节气流', en: 'Increase mucosal surface area and shape airflow' } },
+    { id: 'nasal-nerves-vessels', position: [0.76, 0.5, 0.9], color: '#d89bc4', label: { zh: '鼻部神经与血管', en: 'Nasal nerves and vessels' }, detail: { zh: '承担感觉并供应鼻黏膜', en: 'Provide sensation and blood supply to nasal mucosa' } },
+  ],
+  throat: [
+    { id: 'pharynx', position: [0, 0.92, 0.78], color: '#ee7c6a', label: { zh: '咽部', en: 'Pharynx' }, detail: { zh: '呼吸与吞咽共同经过的通道', en: 'Shared passage for breathing and swallowing' } },
+    { id: 'epiglottis', position: [0, 0.48, 0.94], color: '#f2a33b', label: { zh: '会厌', en: 'Epiglottis' }, detail: { zh: '吞咽时帮助保护喉入口', en: 'Helps protect the laryngeal inlet during swallowing' } },
+    { id: 'larynx', position: [0, 0.04, 1.02], color: '#6393d8', label: { zh: '喉', en: 'Larynx' }, detail: { zh: '参与发声并维持气道开放', en: 'Supports voice and keeps the airway open' } },
+    { id: 'subglottis', position: [0, -0.42, 1.04], color: '#d89bc4', label: { zh: '声门下区', en: 'Subglottis' }, detail: { zh: '儿童喉部相对狭窄的气道段', en: 'A relatively narrow pediatric airway segment' } },
+    { id: 'trachea', position: [0.15, -1.12, 0.84], color: '#7fa88a', label: { zh: '气管', en: 'Trachea' }, detail: { zh: '把空气继续送往胸腔', en: 'Carries air onward into the chest' } },
+    { id: 'laryngeal-nerves-vessels', position: [0.45, 0.12, 0.7], color: '#e6aa3c', label: { zh: '喉部神经与血管', en: 'Laryngeal nerves and vessels' }, detail: { zh: '参与喉部感觉、运动与血供', en: 'Support laryngeal sensation, movement and blood supply' } },
+  ],
+  mouth: [
+    { id: 'upper-primary-incisors', position: [0, 0.46, 1.05], color: '#6393d8', label: { zh: '上颌乳切牙', en: 'Upper primary incisors' }, detail: { zh: '模型展示 4 颗已萌出的上颌乳切牙', en: 'The model shows four erupted upper primary incisors' } },
+    { id: 'lower-primary-incisors', position: [0, -0.42, 1.08], color: '#f2a33b', label: { zh: '下颌乳切牙', en: 'Lower primary incisors' }, detail: { zh: '模型展示 4 颗已萌出的下颌乳切牙', en: 'The model shows four erupted lower primary incisors' } },
+    { id: 'upper-gingiva', position: [-0.72, 0.82, 0.82], color: '#ee7c6a', label: { zh: '上颌牙龈', en: 'Upper gingiva' }, detail: { zh: '包绕并支持上颌乳牙', en: 'Surrounds and supports the upper primary teeth' } },
+    { id: 'lower-gingiva', position: [0.72, -0.76, 0.82], color: '#d89bc4', label: { zh: '下颌牙龈', en: 'Lower gingiva' }, detail: { zh: '包绕并支持下颌乳牙', en: 'Surrounds and supports the lower primary teeth' } },
+  ],
+  stomach: [
+    { id: 'esophagus', position: [0.28, 1.35, 0.68], color: '#6393d8', label: { zh: '食管', en: 'Esophagus' }, detail: { zh: '把吞咽的食物送入胃', en: 'Carries swallowed food into the stomach' } },
+    { id: 'cardia', position: [0.35, 0.72, 0.92], color: '#ee7c6a', label: { zh: '胃食管连接处', en: 'Gastroesophageal junction' }, detail: { zh: '帮助限制胃内容物向食管反流', en: 'Helps limit reflux of stomach contents into the esophagus' } },
+    { id: 'fundus', position: [0.75, 0.46, 0.88], color: '#f2a33b', label: { zh: '胃底', en: 'Fundus' }, detail: { zh: '胃的上部膨隆区域', en: 'The upper dome of the stomach' } },
+    { id: 'stomach-body', position: [0.45, -0.05, 1.02], color: '#7fa88a', label: { zh: '胃体与胃皱襞', en: 'Stomach body and rugae' }, detail: { zh: '储存、搅拌食物并开始消化', en: 'Stores and mixes food while digestion begins' } },
+    { id: 'pylorus', position: [-0.8, -0.5, 0.8], color: '#d89bc4', label: { zh: '幽门与十二指肠', en: 'Pylorus and duodenum' }, detail: { zh: '调节胃内容物进入小肠', en: 'Regulates passage of stomach contents into the small intestine' } },
+    { id: 'gastric-nerves-vessels', position: [0.95, -0.08, 0.74], color: '#e6aa3c', label: { zh: '胃部神经与血管', en: 'Gastric nerves and vessels' }, detail: { zh: '参与胃运动、感觉与血供', en: 'Support gastric movement, sensation and blood supply' } },
+  ],
+  bladder: [
+    { id: 'ureters', position: [-0.4, 1.36, 0.76], color: '#6393d8', label: { zh: '输尿管', en: 'Ureters' }, detail: { zh: '左右各一条，将尿液送入膀胱', en: 'A paired set carrying urine into the bladder' } },
+    { id: 'bladder-wall', position: [0, 0.18, 1.02], color: '#ee7c6a', label: { zh: '膀胱壁与黏膜', en: 'Bladder wall and lining' }, detail: { zh: '储尿并在排尿时收缩', en: 'Stores urine and contracts during emptying' } },
+    { id: 'trigone', position: [0, -0.28, 1.12], color: '#f2a33b', label: { zh: '膀胱三角', en: 'Bladder trigone' }, detail: { zh: '位于两侧输尿管口与尿道内口之间', en: 'Lies between ureteric openings and the internal urethral opening' } },
+    { id: 'urethra', position: [0.25, -1.16, 0.82], color: '#7fa88a', label: { zh: '尿道', en: 'Urethra' }, detail: { zh: '把尿液排出体外', en: 'Carries urine out of the body' } },
+    { id: 'bladder-nerves-vessels', position: [0.78, -0.4, 0.72], color: '#d89bc4', label: { zh: '膀胱神经与血管', en: 'Bladder nerves and vessels' }, detail: { zh: '参与膀胱感觉、收缩与血供', en: 'Support bladder sensation, contraction and blood supply' } },
+  ],
+  bone: [
+    { id: 'proximal-growth-plate', position: [0, 1.2, 0.84], color: '#ee7c6a', label: { zh: '近端生长板', en: 'Proximal growth plate' }, detail: { zh: '儿童长骨纵向生长的重要区域', en: 'A key region for lengthwise growth of pediatric long bone' } },
+    { id: 'distal-growth-plate', position: [0.45, -1.2, 0.84], color: '#f2a33b', label: { zh: '远端生长板', en: 'Distal growth plate' }, detail: { zh: '骨成熟前保持开放的软骨区域', en: 'Cartilage remaining open before skeletal maturity' } },
+    { id: 'cortex', position: [0.35, 0.04, 1.02], color: '#6393d8', label: { zh: '骨皮质', en: 'Cortex' }, detail: { zh: '坚硬外层提供支撑和抗弯强度', en: 'The hard outer layer provides support and bending strength' } },
+    { id: 'medulla', position: [0.55, 0.08, 1.12], color: '#d89bc4', label: { zh: '髓腔', en: 'Medullary cavity' }, detail: { zh: '位于长骨中央并容纳骨髓', en: 'The central cavity containing marrow' } },
+    { id: 'nutrient-vessels', position: [0.56, -0.18, 0.82], color: '#e6aa3c', label: { zh: '滋养血管', en: 'Nutrient vessels' }, detail: { zh: '向骨组织与骨髓供血', en: 'Supply blood to bone tissue and marrow' } },
   ],
 }
 

@@ -48,8 +48,11 @@ test('organ learning links back to shared disease topics and tolerates missing m
   assert.ok(lungs.relatedDiseaseIds.includes('pneumonia'))
   assert.strictEqual(getDiseaseTopic(lungs.relatedDiseaseIds.find((id) => id === 'pneumonia')), getDiseaseTopic('pneumonia'))
   const ear = ORGAN_TOPICS.find((organ) => organ.id === 'ear')
-  assert.equal(ear.modelAvailability, 'PLANNED')
+  assert.equal(ear.modelAvailability, 'AVAILABLE')
+  assert.equal(ear.modelRef, '/assets/anatomy/models/ear.glb')
   assert.ok(ear.relatedDiseaseIds.includes('acute-otitis-media'))
+  assert.equal(ORGAN_TOPICS.length, 16)
+  assert.ok(ORGAN_TOPICS.every((organ) => organ.modelAvailability === 'AVAILABLE' && organ.modelRef))
 })
 
 test('every available disease model has two localized labels pointing to real organ hotspots', () => {
@@ -68,4 +71,17 @@ test('every available disease model has two localized labels pointing to real or
       assert.ok(line.effect.zh && line.effect.en, `${unit.id}:${line.id}:effect`)
     }
   }
+})
+
+test('new anatomy models bind only to anatomically accurate pediatric disease locations', () => {
+  assert.deepEqual(getDiseaseTopic('common-cold').anatomyBinding.displayUnits.map((unit) => unit.modelRef.split('/').pop()), ['nose.glb', 'throat.glb'])
+  assert.deepEqual(getDiseaseTopic('urinary-tract-infection').anatomyBinding.displayUnits.map((unit) => unit.modelRef.split('/').pop()), ['bladder.glb', 'kidneys.glb'])
+  assert.deepEqual(getDiseaseTopic('infant-reflux').anatomyBinding.anatomyAnchors, ['cardia', 'esophagus'])
+  assert.deepEqual(getDiseaseTopic('acute-otitis-media').anatomyBinding.anatomyAnchors, ['middle-ear', 'tympanic-membrane', 'eustachian-tube'])
+  assert.deepEqual(getDiseaseTopic('sinusitis').anatomyBinding.anatomyAnchors, ['maxillary-sinus', 'frontal-sinus', 'nasal-cavity'])
+  assert.deepEqual(getDiseaseTopic('croup').anatomyBinding.anatomyAnchors, ['subglottis', 'larynx'])
+  assert.deepEqual(getDiseaseTopic('vitamin-d-deficiency-rickets').anatomyBinding.anatomyAnchors, ['proximal-growth-plate', 'distal-growth-plate', 'cortex'])
+  assert.equal(getDiseaseTopic('mumps').anatomyBinding.modelAvailability, 'PLANNED')
+  assert.equal(getDiseaseTopic('stomatitis').anatomyBinding.modelAvailability, 'PLANNED')
+  assert.ok(getDiseaseTopic('hand-foot-mouth').anatomyBinding.displayUnits.every((unit) => !unit.modelRef?.endsWith('/mouth.glb')))
 })
