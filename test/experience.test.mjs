@@ -20,7 +20,7 @@ function d1For({ session, baby }) {
   }
 }
 
-test('Tavily search sends only server-generated query context and returns filtered cards', async () => {
+test('Tavily search requests domestic Chinese communities and rejects restricted foreign sources', async () => {
   const originalFetch = globalThis.fetch
   let requestBody
   let returnedResults
@@ -30,19 +30,25 @@ test('Tavily search sends only server-generated query context and returns filter
       assert.equal(init.headers.authorization, 'Bearer test-key')
       requestBody = JSON.parse(init.body)
       returnedResults = [
-        { title: '新生儿安全睡眠科普', url: 'https://www.nhc.gov.cn/sleep?utm_source=test', content: '介绍安全睡眠环境和睡姿。', raw_content: '介绍安全睡眠环境和睡姿，提醒不要自行用药。', score: 0.91 },
-        { title: '新生儿奶粉优惠', url: 'https://example.com/ad', content: '立即购买奶粉，限时优惠。', score: 0.99 },
+        { title: '新生儿喂养记录', url: 'https://www.xiaohongshu.com/explore/feeding?utm_source=test', content: '记录每次吃完奶后的拍嗝和吐奶情况。', raw_content: '家长记录每次吃完奶后的拍嗝和吐奶情况。', score: 0.91 },
+        { title: '中文育儿讨论', url: 'https://www.reddit.com/r/parenting-cn/post', content: '分享新生儿喂养和拍嗝经验。', raw_content: '分享新生儿喂养和拍嗝经验。', score: 0.95 },
+        { title: '新生儿奶粉优惠', url: 'https://www.xiaohongshu.com/explore/ad', content: '立即购买奶粉，限时优惠。', score: 0.99 },
       ]
       return { ok: true, status: 200, json: async () => ({ results: returnedResults }) }
     }
     const band = getContentAgeBandForBaby('2026-08-01', '2026-08-05').band
-    const articles = await searchExperience({ env: { TAVILY_API_KEY: 'test-key' }, band, categoryId: 'health' })
-    assert.equal(requestBody.query, '0到28天新生儿 健康观察 黄疸 体温 呼吸 尿便 精神状态 医院 医生科普')
+    const articles = await searchExperience({ env: { TAVILY_API_KEY: 'test-key' }, band, categoryId: 'feeding' })
+    assert.equal(requestBody.query, '0到28天新生儿 喂养 吃奶 吃饱 拍嗝 吐奶 家长经验 真实记录')
     assert.equal(requestBody.search_depth, 'basic')
     assert.equal(requestBody.auto_parameters, false)
     assert.equal(requestBody.include_answer, false)
+    assert.ok(requestBody.include_domains.includes('xiaohongshu.com'))
+    assert.ok(requestBody.include_domains.includes('zhihu.com'))
+    assert.equal(requestBody.include_domains.includes('reddit.com'), false)
+    assert.equal(requestBody.include_domains.includes('youtube.com'), false)
     assert.equal(articles.length, 1)
-    assert.equal(articles[0].sourceType, 'professional')
+    assert.equal(articles[0].sourceType, 'experience')
+    assert.equal(articles[0].sourceName, '小红书')
     assert.equal('score' in articles[0], false)
     assert.equal(returnedResults[0].raw_content, null)
   } finally {
@@ -100,7 +106,7 @@ test('experience API denies guest refresh and returns unavailable for ages beyon
 const newbornBand = getContentAgeBandForBaby('2026-08-01', '2026-08-05').band
 
 function normalizedArticle(content, title = '婴儿护理提醒') {
-  return normalizeExperienceResult({ title, url: 'https://example.com/article', content }, { band: newbornBand, categoryId: 'care' })
+  return normalizeExperienceResult({ title, url: 'https://www.xiaohongshu.com/explore/article', content }, { band: newbornBand, categoryId: 'care' })
 }
 
 test('trusted domains require explicit wildcard boundaries', () => {
@@ -131,8 +137,9 @@ test('unknown source domains use unique sort pools without changing stable order
 
 test('experience cache cleanup removes only experience entries', () => {
   const values = new Map([
-    ['babyforge:experience:v1:baby-1:zh-CN:newborn:care', '{}'],
-    ['babyforge:experience:v1:baby-2:zh-CN:newborn:feeding', '{}'],
+    ['babyforge:experience:v2:baby-1:zh-CN:newborn:care', '{}'],
+    ['babyforge:experience:v2:baby-2:zh-CN:newborn:feeding', '{}'],
+    ['babyforge:experience:v1:baby-1:zh-CN:newborn:sleep', '{}'],
     ['babyforge:workspace:v1:baby-1', '{}'],
   ])
   const storage = {
@@ -140,7 +147,7 @@ test('experience cache cleanup removes only experience entries', () => {
     key(index) { return [...values.keys()][index] || null },
     removeItem(key) { values.delete(key) },
   }
-  assert.equal(clearExperienceCache({ storage }), 2)
+  assert.equal(clearExperienceCache({ storage }), 3)
   assert.deepEqual([...values.keys()], ['babyforge:workspace:v1:baby-1'])
 })
 

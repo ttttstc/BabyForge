@@ -1,4 +1,4 @@
-export const EXPERIENCE_CACHE_VERSION = 'v1'
+export const EXPERIENCE_CACHE_VERSION = 'v2'
 export const EXPERIENCE_CONTENT_LANGUAGE = 'zh-CN'
 export const EXPERIENCE_FRESH_MS = 24 * 60 * 60 * 1000
 export const EXPERIENCE_STALE_MS = 7 * EXPERIENCE_FRESH_MS
@@ -24,22 +24,22 @@ export const EXPERIENCE_CATEGORIES = [
   {
     id: 'recommended',
     label: { zh: '推荐', en: 'Recommended' },
-    terms: '阶段育儿经验 日常护理 医院 医生科普',
+    terms: '阶段育儿经验 家长分享 真实记录 中文社区',
   },
   {
     id: 'feeding',
     label: { zh: '喂养', en: 'Feeding' },
-    terms: '喂养 吃奶 吃饱 拍嗝 吐奶 医院 医生科普',
+    terms: '喂养 吃奶 吃饱 拍嗝 吐奶 家长经验 真实记录',
   },
   {
     id: 'care',
     label: { zh: '护理', en: 'Care' },
-    terms: '日常护理 脐带 换尿布 洗澡 皮肤 妇幼',
+    terms: '日常护理 脐带 换尿布 洗澡 皮肤 家长经验 真实记录',
   },
   {
     id: 'sleep',
     label: { zh: '睡眠', en: 'Sleep' },
-    terms: '安全睡眠 睡姿 睡眠环境 夜间照护 医院',
+    terms: '安全睡眠 睡姿 睡眠环境 夜间照护 家长经验 真实记录',
   },
   {
     id: 'health',
@@ -47,6 +47,18 @@ export const EXPERIENCE_CATEGORIES = [
     terms: '健康观察 黄疸 体温 呼吸 尿便 精神状态 医院 医生科普',
   },
 ]
+
+export const CHINA_COMMUNITY_SOURCES = Object.freeze([
+  { domain: '*.xiaohongshu.com', name: '小红书', enabled: true },
+  { domain: '*.zhihu.com', name: '知乎', enabled: true },
+  { domain: '*.mama.cn', name: '妈妈网', enabled: true },
+  { domain: '*.babytree.com', name: '宝宝树', enabled: true },
+  { domain: '*.ci123.com', name: '育儿网', enabled: true },
+  { domain: '*.weibo.com', name: '微博', enabled: true },
+  { domain: 'tieba.baidu.com', name: '百度贴吧', enabled: true },
+  { domain: 'mp.weixin.qq.com', name: '微信公众平台', enabled: true },
+  { domain: '*.bilibili.com', name: '哔哩哔哩', enabled: true },
+])
 
 export const CONTENT_AGE_BANDS = [
   { id: 'newborn', label: '新生儿期', rangeLabel: '0～28天', queryLabel: '0到28天新生儿', minMonths: 0, maxMonths: 0, maxDays: 28, excludeTerms: ['3个月', '4个月', '5个月', '6个月', '半岁', '辅食', '学步', '1岁', '幼儿'] },
@@ -260,7 +272,7 @@ function publishedDate(value) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 10)
 }
 
-export function normalizeExperienceResult(result, { band, categoryId, sources = [] } = {}) {
+export function normalizeExperienceResult(result, { band, categoryId, sources = [], communitySources = CHINA_COMMUNITY_SOURCES } = {}) {
   if (!result || !band) return null
   const url = normalizeArticleUrl(result.url)
   const title = textContent(result.title)
@@ -269,6 +281,8 @@ export function normalizeExperienceResult(result, { band, categoryId, sources = 
   if (!url || !title || !raw || !/[\u3400-\u9fff]/u.test(combined) || adContent(combined) || obviousAgeMismatch(title, band)) return null
   if (dangerousAdvice(combined)) return null
   const source = trustedSourceForUrl(url, sources)
+  const communitySource = trustedSourceForUrl(url, communitySources)
+  if (!source && !communitySource) return null
   const category = inferCategory(combined, categoryId)
   const highRisk = category === 'health' || /黄疸|发热|呼吸异常|抽搐|用药|急救|疾病判断|异常发育/u.test(combined)
   if (highRisk && !source) return null
@@ -276,7 +290,7 @@ export function normalizeExperienceResult(result, { band, categoryId, sources = 
     id: url,
     title,
     summary: summaryFrom(result.content || result.raw_content),
-    sourceName: source?.name || hostnameFor(url),
+    sourceName: source?.name || communitySource.name,
     sourceDomain: hostnameFor(url),
     sourceType: source ? 'professional' : 'experience',
     publishedAt: publishedDate(result.published_date),
@@ -290,7 +304,7 @@ export function normalizeExperienceResult(result, { band, categoryId, sources = 
 
 export function sortExperienceResults(articles = [], maxPerDomain = 3) {
   const remaining = [...articles].sort((a, b) => {
-    if (a.sourceType !== b.sourceType) return a.sourceType === 'professional' ? -1 : 1
+    if (a.sourceType !== b.sourceType) return a.sourceType === 'experience' ? -1 : 1
     if (Number(b.score || 0) !== Number(a.score || 0)) return Number(b.score || 0) - Number(a.score || 0)
     return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''))
   })

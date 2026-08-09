@@ -1,15 +1,39 @@
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { Html, OrbitControls, useGLTF } from '@react-three/drei'
 
-function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHotspot, locale }) {
+function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHotspot, locale, onScreenPositionsChange }) {
+  const hotspotRefs = useRef(new Map())
+  const projectedPoint = useRef(new THREE.Vector3())
+  const lastPositions = useRef('')
+
+  useFrame(({ camera, size }) => {
+    if (!onScreenPositionsChange) return
+    const positions = {}
+    hotspotRefs.current.forEach((object, id) => {
+      object.getWorldPosition(projectedPoint.current)
+      projectedPoint.current.project(camera)
+      positions[id] = {
+        x: Math.round((projectedPoint.current.x + 1) * 0.5 * size.width),
+        y: Math.round((1 - projectedPoint.current.y) * 0.5 * size.height),
+      }
+    })
+    const signature = JSON.stringify(positions)
+    if (signature === lastPositions.current) return
+    lastPositions.current = signature
+    onScreenPositionsChange(positions)
+  })
+
   return hotspots.map((hotspot) => {
     const selected = hotspot.id === selectedHotspotId
     const position = hotspot.position.map((value) => value * markerScale)
     const label = locale === 'en-US' ? hotspot.label.en : hotspot.label.zh
     const detail = locale === 'en-US' ? hotspot.detail.en : hotspot.detail.zh
-    return <group key={hotspot.id} position={position} onClick={(event) => { event.stopPropagation(); onSelectHotspot(selected ? null : hotspot) }}>
+    return <group ref={(node) => {
+      if (node) hotspotRefs.current.set(hotspot.id, node)
+      else hotspotRefs.current.delete(hotspot.id)
+    }} key={hotspot.id} position={position} onClick={(event) => { event.stopPropagation(); onSelectHotspot(selected ? null : hotspot) }}>
       <mesh renderOrder={20} scale={selected ? 1.14 : 1}>
         <sphereGeometry args={[0.06, 18, 12]} />
         <meshBasicMaterial color={hotspot.color} transparent opacity={0.98} depthTest={false} depthWrite={false} />
@@ -23,7 +47,7 @@ function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHot
   })
 }
 
-function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, locale, settings, onReady }) {
+function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, locale, settings, onReady, onHotspotPositionsChange }) {
   const { scene } = useGLTF(resource.model)
   const controlsRef = useRef(null)
   const fitted = useMemo(() => {
@@ -126,7 +150,7 @@ function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, 
     <>
       <group scale={settings.isolate ? 1.12 : 1} rotation={[0.05, -0.28, 0]}>
         <primitive object={model} dispose={null} />
-        <AnatomyHotspots hotspots={hotspots} markerScale={markerScale} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} />
+        <AnatomyHotspots hotspots={hotspots} markerScale={markerScale} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} onScreenPositionsChange={onHotspotPositionsChange} />
       </group>
       <mesh position={[0, plinthY * (settings.isolate ? 1.12 : 1), 0]}>
         <cylinderGeometry args={[2.3, 2.48, 0.34, 56]} />
@@ -142,7 +166,7 @@ export function preloadAnatomyModel(url) {
   if (url) useGLTF.preload(url)
 }
 
-export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId = null, onSelectHotspot = () => {}, locale = 'zh-CN', settings, onReady = () => {} }) {
+export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId = null, onSelectHotspot = () => {}, locale = 'zh-CN', settings, onReady = () => {}, onHotspotPositionsChange }) {
   return (
     <Canvas
       dpr={settings.performanceMode === 'low' ? 1 : [1, 1.6]}
@@ -155,7 +179,7 @@ export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId 
       <directionalLight position={[-4.5, 1.2, 5.2]} intensity={1.05} color="#e6ecff" />
       <directionalLight position={[-4, 3.5, -5.5]} intensity={1.18} color="#ffb7a5" />
       <pointLight position={[-3, -1.4, 3.5]} intensity={0.5} color="#ff8d70" />
-      <AnatomyModel key={resource.id} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} settings={settings} onReady={onReady} />
+      <AnatomyModel key={resource.id} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} settings={settings} onReady={onReady} onHotspotPositionsChange={onHotspotPositionsChange} />
     </Canvas>
   )
 }

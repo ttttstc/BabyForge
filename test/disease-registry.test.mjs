@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DISEASE_TOPICS, ORGAN_TOPICS, getDiseaseTopic, searchDiseaseTopics } from '../src/content/diseaseRegistry.js'
+import { ANATOMY_RESOURCES, getAnatomyHotspots } from '../src/content/pediatricDiseases.js'
 
 test('issue 14 registry covers every listed high-frequency pediatric condition', () => {
   assert.equal(DISEASE_TOPICS.length, 51)
@@ -51,9 +52,20 @@ test('organ learning links back to shared disease topics and tolerates missing m
   assert.ok(ear.relatedDiseaseIds.includes('acute-otitis-media'))
 })
 
-test('available disease models keep their resource reference and valid optional anchors', () => {
+test('every available disease model has two localized labels pointing to real organ hotspots', () => {
   const availableUnits = DISEASE_TOPICS.flatMap((topic) => topic.anatomyBinding.displayUnits.filter((unit) => unit.modelAvailability === 'AVAILABLE'))
   assert.ok(availableUnits.length > 0)
-  assert.ok(availableUnits.every((unit) => unit.modelRef))
-  assert.ok(availableUnits.every((unit) => unit.leaderLines.every((line) => unit.anchorIds.includes(line.anchorId))))
+  for (const unit of availableUnits) {
+    assert.ok(unit.modelRef, unit.id)
+    assert.equal(unit.leaderLines.length, 2, unit.id)
+    const resource = ANATOMY_RESOURCES.find((item) => item.model === unit.modelRef)
+    assert.ok(resource, unit.id)
+    const hotspotIds = new Set(getAnatomyHotspots(resource.id).map((hotspot) => hotspot.id))
+    for (const line of unit.leaderLines) {
+      assert.ok(unit.anchorIds.includes(line.anchorId), `${unit.id}:${line.anchorId}`)
+      assert.ok(hotspotIds.has(line.anchorId), `${unit.id}:${line.anchorId}`)
+      assert.ok(line.label.zh && line.label.en, `${unit.id}:${line.id}:label`)
+      assert.ok(line.effect.zh && line.effect.en, `${unit.id}:${line.id}:effect`)
+    }
+  }
 })

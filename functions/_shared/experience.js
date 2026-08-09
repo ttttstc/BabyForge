@@ -1,5 +1,6 @@
 import {
   buildExperienceQuery,
+  CHINA_COMMUNITY_SOURCES,
   createCacheEnvelope,
   getCacheState,
   getExperienceServerCacheKey,
@@ -112,7 +113,10 @@ export async function searchExperience({ env, band, categoryId, timeoutMs = TAVI
     max_results: 12,
     country: 'china',
   }
-  if (categoryId === 'health') body.include_domains = TRUSTED_PROFESSIONAL_SOURCES.map((source) => source.domain.replace(/^\*\./u, ''))
+  const requestedSources = categoryId === 'health'
+    ? TRUSTED_PROFESSIONAL_SOURCES
+    : [...CHINA_COMMUNITY_SOURCES, ...TRUSTED_PROFESSIONAL_SOURCES]
+  body.include_domains = requestedSources.map((source) => source.domain.replace(/^\*\./u, ''))
   let result
   try {
     result = await fetchTavily(TAVILY_URL, {
@@ -131,7 +135,7 @@ export async function searchExperience({ env, band, categoryId, timeoutMs = TAVI
   const tavilyResults = Array.isArray(payload?.results) ? payload.results : []
   const articles = tavilyResults
     .map((result) => {
-      const normalized = normalizeExperienceResult(result, { band, categoryId, sources: TRUSTED_PROFESSIONAL_SOURCES })
+      const normalized = normalizeExperienceResult(result, { band, categoryId, sources: TRUSTED_PROFESSIONAL_SOURCES, communitySources: CHINA_COMMUNITY_SOURCES })
       if (result && typeof result === 'object') {
         try { result.raw_content = null } catch { /* A frozen provider object is not retained. */ }
       }

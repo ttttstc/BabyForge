@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, BookOpen, Box, ChevronRight, CircleDashed, ExternalLink, FileText, Layers3, RefreshCcw, RotateCcw, ScanLine, Search, ShieldCheck, Sparkles, Stethoscope, ZoomIn } from 'lucide-react'
 import { buildNaibaRoute, ROUTES, navigate } from '../app/router.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, localized } from '../content/pediatricDiseases.js'
@@ -62,32 +62,102 @@ function ModelFallback({ locale, title, onRetry }) {
 function DiseaseModelUnit({ unit, locale, performanceMode }) {
   const [retry, setRetry] = useState(0)
   const [ready, setReady] = useState(false)
+  const [hotspotPositions, setHotspotPositions] = useState({})
+  const [leaderGeometry, setLeaderGeometry] = useState({ width: 0, height: 0, items: [] })
+  const canvasRef = useRef(null)
+  const renderAreaRef = useRef(null)
+  const calloutRefs = useRef(new Map())
   const resource = ANATOMY_RESOURCES.find((item) => item.model === unit.modelRef || item.id === unit.modelRef)
   const webgl = canUseWebGL()
   const available = unit.modelAvailability === 'AVAILABLE' && resource && webgl
+  const leaderLines = useMemo(() => unit.leaderLines || [], [unit.leaderLines])
+  const impactLines = useMemo(() => leaderLines.filter((line) => line.kind === 'impact'), [leaderLines])
+  const quickMatch = leaderLines.find((line) => line.kind === 'sign')
   const lineByAnchor = new Map((unit.leaderLines || []).map((line) => [line.anchorId, line]))
   const hotspots = available ? getAnatomyHotspots(resource.id)
-    .filter((hotspot) => unit.anchorIds.includes(hotspot.id))
+    .filter((hotspot) => impactLines.some((line) => line.anchorId === hotspot.id))
     .map((hotspot) => {
       const line = lineByAnchor.get(hotspot.id)
       return line ? { ...hotspot, label: line.label, detail: line.effect } : hotspot
     }) : []
   const fallback = <ModelFallback locale={locale} title={unit.title} onRetry={unit.modelAvailability === 'LOAD_FAILED' ? () => setRetry((value) => value + 1) : null} />
 
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current
+    const renderArea = renderAreaRef.current
+    if (!canvas || !renderArea || !available || !impactLines.length) return undefined
+
+    const updateGeometry = () => {
+      const canvasRect = canvas.getBoundingClientRect()
+      const renderRect = renderArea.getBoundingClientRect()
+      const items = impactLines.flatMap((line) => {
+        const hotspot = hotspotPositions[line.anchorId]
+        const callout = calloutRefs.current.get(line.id)
+        if (!hotspot || !callout) return []
+        const calloutRect = callout.getBoundingClientRect()
+        const modelBelowCallout = renderRect.top >= calloutRect.bottom - 2
+        const startX = modelBelowCallout
+          ? calloutRect.left - canvasRect.left + calloutRect.width / 2
+          : calloutRect.right - canvasRect.left
+        const startY = modelBelowCallout
+          ? calloutRect.bottom - canvasRect.top
+          : calloutRect.top - canvasRect.top + calloutRect.height / 2
+        const endX = renderRect.left - canvasRect.left + hotspot.x
+        const endY = renderRect.top - canvasRect.top + hotspot.y
+        const path = modelBelowCallout
+          ? `M ${startX} ${startY} L ${startX} ${Math.min(startY + 24, endY - 18)} L ${endX} ${endY}`
+          : `M ${startX} ${startY} L ${Math.min(startX + 30, endX - 18)} ${startY} L ${endX} ${endY}`
+        return [{ ...line, path, endX, endY }]
+      })
+      setLeaderGeometry({ width: canvasRect.width, height: canvasRect.height, items })
+    }
+
+    updateGeometry()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateGeometry)
+    observer?.observe(canvas)
+    observer?.observe(renderArea)
+    calloutRefs.current.forEach((element) => observer?.observe(element))
+    globalThis.window?.addEventListener('resize', updateGeometry)
+    return () => {
+      observer?.disconnect()
+      globalThis.window?.removeEventListener('resize', updateGeometry)
+    }
+  }, [available, hotspotPositions, impactLines])
+
   return <article className="disease-display-unit">
     <header><span>{unit.displayOrder}</span><div><p>{unit.viewType.replaceAll('_', ' ')}</p><h3>{localized(unit.title, locale)}</h3></div></header>
     <p>{localized(unit.description, locale)}</p>
-    <div className="disease-unit-canvas">
-      {!available && fallback}
-      {available && <ModelErrorBoundary resetKey={retry} fallback={<ModelFallback locale={locale} title={unit.title} onRetry={() => setRetry((value) => value + 1)} />}>
-        {!ready && fallback}
-        <Suspense fallback={fallback}>
-          <AnatomyModelCanvas key={`${unit.id}-${retry}`} resource={resource} hotspots={hotspots} selectedHotspotId={hotspots[0]?.id} onSelectHotspot={() => {}} locale={locale} settings={{ autoRotate: true, isolate: false, crossSection: false, wireframe: false, zoomToken: 0, resetToken: retry, performanceMode }} onReady={() => setReady(true)} />
-        </Suspense>
-      </ModelErrorBoundary>}
+    <div className={`disease-model-stage${available && impactLines.length ? ' has-impact-callout' : ''}`}>
+      <div ref={canvasRef} className={`disease-unit-canvas${available && impactLines.length ? ' has-impact-callout' : ''}`}>
+        <div ref={renderAreaRef} className="disease-model-render-area">
+        {!available && fallback}
+        {available && <ModelErrorBoundary resetKey={retry} fallback={<ModelFallback locale={locale} title={unit.title} onRetry={() => setRetry((value) => value + 1)} />}>
+          {!ready && fallback}
+          <Suspense fallback={fallback}>
+            <AnatomyModelCanvas key={`${unit.id}-${retry}`} resource={resource} hotspots={hotspots} selectedHotspotId={null} onSelectHotspot={() => {}} locale={locale} settings={{ autoRotate: false, isolate: false, crossSection: false, wireframe: false, zoomToken: 0, resetToken: retry, performanceMode }} onReady={() => setReady(true)} onHotspotPositionsChange={setHotspotPositions} />
+          </Suspense>
+        </ModelErrorBoundary>}
+        </div>
+        {available && impactLines.map((line) => <DiseaseModelCallout key={line.id} line={line} locale={locale} elementRef={(node) => {
+          if (node) calloutRefs.current.set(line.id, node)
+          else calloutRefs.current.delete(line.id)
+        }} />)}
+      {leaderGeometry.items.length > 0 && <svg className="disease-leader-svg" width={leaderGeometry.width} height={leaderGeometry.height} viewBox={`0 0 ${leaderGeometry.width} ${leaderGeometry.height}`} aria-hidden="true">
+        {leaderGeometry.items.map((line) => <g key={line.id} style={{ '--leader-color': line.color }}><path d={line.path} /><circle cx={line.endX} cy={line.endY} r="3.5" /><circle className="leader-halo" cx={line.endX} cy={line.endY} r="7" /></g>)}
+      </svg>}
+      </div>
+      {available && quickMatch && <div className="disease-quick-match"><small>{locale === 'en-US' ? 'Quick comparison' : '快速对照'}</small><strong>{localized(quickMatch.effect, locale)}</strong></div>}
     </div>
-    {(unit.leaderLines || []).map((line) => <div className="disease-leader-copy" key={line.anchorId}><i /><span><b>{localized(line.label, locale)}</b>{localized(line.effect, locale)}</span></div>)}
   </article>
+}
+
+function DiseaseModelCallout({ line, locale, elementRef }) {
+  const isEnglish = locale === 'en-US'
+  return <div ref={elementRef} className="disease-model-callout impact" style={{ '--leader-color': line.color }}>
+    <small>{isEnglish ? 'Affected site' : '受影响部位'}</small>
+    <strong>{localized(line.label, locale)}</strong>
+    <span>{localized(line.effect, locale)}</span>
+  </div>
 }
 
 function TextList({ values, locale }) {

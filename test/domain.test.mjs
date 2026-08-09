@@ -75,7 +75,7 @@ test('experience queries and cache keys contain only band, category, and locale'
   const age = getContentAgeBandForBaby('2026-08-01', '2026-08-05')
   assert.match(buildExperienceQuery(age.band, 'feeding'), /0到28天新生儿/)
   assert.match(buildExperienceQuery(age.band, 'feeding'), /拍嗝/)
-  assert.equal(getExperienceCacheKey({ babyId: 'baby-1', bandId: age.band.id, categoryId: 'feeding' }), 'babyforge:experience:v1:baby-1:zh-CN:newborn:feeding')
+  assert.equal(getExperienceCacheKey({ babyId: 'baby-1', bandId: age.band.id, categoryId: 'feeding' }), 'babyforge:experience:v2:baby-1:zh-CN:newborn:feeding')
 })
 
 test('experience result filtering keeps trusted professional links and drops unsafe or promotional results', () => {
@@ -84,20 +84,23 @@ test('experience result filtering keeps trusted professional links and drops uns
   const professional = normalizeExperienceResult({ title: '新生儿安全睡眠科普', url: 'https://www.nhc.gov.cn/article?utm_source=test', content: '介绍安全睡眠环境和睡姿，提醒家长不要自行用药。', score: 0.9 }, { band, categoryId: 'health', sources })
   assert.equal(professional.sourceType, 'professional')
   assert.equal(professional.url, 'https://www.nhc.gov.cn/article')
-  assert.equal(normalizeExperienceResult({ title: '新生儿健康偏方', url: 'https://example.com/a', content: '祖传偏方可以治疗黄疸。', score: 0.9 }, { band, categoryId: 'health', sources }), null)
-  assert.equal(normalizeExperienceResult({ title: '新生儿奶粉优惠', url: 'https://example.com/a', content: '立即购买奶粉，限时优惠。', score: 0.9 }, { band, categoryId: 'feeding', sources }), null)
-  assert.ok(normalizeExperienceResult({ title: '新生儿配方奶喂养观察', url: 'https://example.com/feeding', content: '介绍配方奶喂养时的观察方法，不构成购买建议。', score: 0.8 }, { band, categoryId: 'feeding', sources }))
-  assert.equal(normalizeExperienceResult({ title: 'Newborn feeding guide', url: 'https://example.com/en', content: 'A general guide for feeding.', score: 0.8 }, { band, categoryId: 'feeding', sources }), null)
+  assert.equal(normalizeExperienceResult({ title: '新生儿健康偏方', url: 'https://www.xiaohongshu.com/explore/a', content: '祖传偏方可以治疗黄疸。', score: 0.9 }, { band, categoryId: 'health', sources }), null)
+  assert.equal(normalizeExperienceResult({ title: '新生儿奶粉优惠', url: 'https://www.xiaohongshu.com/explore/a', content: '立即购买奶粉，限时优惠。', score: 0.9 }, { band, categoryId: 'feeding', sources }), null)
+  assert.ok(normalizeExperienceResult({ title: '新生儿配方奶喂养观察', url: 'https://www.xiaohongshu.com/explore/feeding', content: '介绍配方奶喂养时的观察方法，不构成购买建议。', score: 0.8 }, { band, categoryId: 'feeding', sources }))
+  assert.equal(normalizeExperienceResult({ title: '中文喂养讨论', url: 'https://www.reddit.com/r/parenting-cn', content: '介绍配方奶喂养时的观察方法。', score: 0.8 }, { band, categoryId: 'feeding', sources }), null)
+  assert.equal(normalizeExperienceResult({ title: '中文喂养视频', url: 'https://www.youtube.com/watch?v=123', content: '介绍配方奶喂养时的观察方法。', score: 0.8 }, { band, categoryId: 'feeding', sources }), null)
+  assert.equal(normalizeExperienceResult({ title: 'Newborn feeding guide', url: 'https://www.xiaohongshu.com/explore/en', content: 'A general guide for feeding.', score: 0.8 }, { band, categoryId: 'feeding', sources }), null)
   assert.equal(normalizeArticleUrl('javascript:alert(1)'), null)
 })
 
 test('experience result sorting diversifies adjacent sources and cache state is explicit', () => {
   const articles = sortExperienceResults([
+    { id: 'experience', sourceType: 'experience', sourceDomain: 'xiaohongshu.com', score: 0.6 },
     { id: 'a', sourceType: 'professional', sourceDomain: 'a.cn', score: 0.9 },
     { id: 'b', sourceType: 'professional', sourceDomain: 'a.cn', score: 0.8 },
     { id: 'c', sourceType: 'professional', sourceDomain: 'b.cn', score: 0.7 },
   ])
-  assert.deepEqual(articles.map((item) => item.id), ['a', 'c', 'b'])
+  assert.deepEqual(articles.map((item) => item.id), ['experience', 'a', 'c', 'b'])
   assert.equal(sortExperienceResults([
     { id: 'a1', sourceDomain: 'a.cn', score: 1 },
     { id: 'a2', sourceDomain: 'a.cn', score: 0.9 },
@@ -267,7 +270,7 @@ test('baby assets resolve to separate male and female files while shared assets 
 test('pediatric anatomy library exposes the nine reusable 3D resources', () => {
   assert.equal(ANATOMY_RESOURCES.length, 9)
   assert.equal(new Set(ANATOMY_RESOURCES.map((resource) => resource.id)).size, 9)
-  assert.deepEqual(getAnatomyHotspots('lungs').map((item) => item.id), ['trachea', 'right-lung', 'left-lung', 'bronchus', 'base'])
+  assert.deepEqual(getAnatomyHotspots('lungs').map((item) => item.id), ['trachea', 'right-lung', 'left-lung', 'bronchus', 'bronchioles', 'alveoli', 'base'])
 })
 
 test('calendar exposes anniversaries, milestones, admin tasks, and completion state', () => {

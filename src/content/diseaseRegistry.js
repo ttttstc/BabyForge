@@ -1,4 +1,4 @@
-import { ANATOMY_RESOURCES } from './pediatricDiseases.js'
+import { ANATOMY_RESOURCES, getAnatomyHotspots } from './pediatricDiseases.js'
 
 const t = (zh, en) => Object.freeze({ zh, en })
 const items = (zh, en) => zh.split('|').map((value, index) => t(value, en.split('|')[index] || value))
@@ -104,6 +104,88 @@ const PROFILES = Object.freeze({
 
 const DEFAULT_PREPARATION = items('症状开始时间和变化趋势|体温、饮水进食、尿便和精神记录|已经使用的药物或处理|接触史、基础疾病和既往检查', 'Symptom onset and trend|Temperature, intake, output and alertness records|Medicines or care already used|Contacts, underlying conditions and previous tests')
 
+const DEFAULT_MODEL_ANCHORS = Object.freeze({
+  brain: ['frontal', 'parietal'],
+  eyeball: ['cornea', 'iris'],
+  heart: ['left-ventricle', 'aorta'],
+  intestine: ['jejunum', 'colon'],
+  kidneys: ['ureter', 'cortex'],
+  liver: ['portal', 'right-lobe'],
+  lungs: ['bronchus', 'right-lung'],
+  pancreas: ['body', 'duct'],
+  skin: ['epidermis', 'dermis'],
+})
+
+const DISEASE_MODEL_ANCHORS = Object.freeze({
+  'acute-bronchitis': ['bronchus', 'trachea'],
+  'acute-gastroenteritis': ['jejunum', 'colon'],
+  appendicitis: ['appendix', 'ileocecal'],
+  'atopic-dermatitis': ['epidermis', 'dermis'],
+  bronchiolitis: ['bronchioles', 'bronchus'],
+  chickenpox: ['epidermis', 'dermis'],
+  'childhood-asthma': ['bronchus', 'trachea'],
+  'common-cold': ['trachea', 'bronchus'],
+  conjunctivitis: ['conjunctiva', 'cornea'],
+  'contact-dermatitis': ['epidermis', 'dermis'],
+  'covid-19': ['trachea', 'alveoli'],
+  'diaper-dermatitis': ['epidermis', 'dermis'],
+  'febrile-seizure': ['frontal', 'parietal'],
+  'food-allergy': ['dermis', 'epidermis'],
+  'functional-constipation': ['colon', 'ileocecal'],
+  'fungal-skin-infection': ['epidermis', 'dermis'],
+  'hand-foot-mouth': ['epidermis', 'dermis'],
+  'heat-rash': ['epidermis', 'dermis'],
+  impetigo: ['epidermis', 'dermis'],
+  influenza: ['trachea', 'right-lung'],
+  intussusception: ['ileocecal', 'colon'],
+  'lactose-intolerance': ['jejunum', 'colon'],
+  measles: ['epidermis', 'dermis'],
+  pneumonia: ['alveoli', 'right-lung'],
+  roseola: ['epidermis', 'dermis'],
+  'rsv-infection': ['bronchioles', 'bronchus'],
+  'scarlet-fever': ['epidermis', 'dermis'],
+  stye: ['eyelid', 'cornea'],
+  urticaria: ['dermis', 'epidermis'],
+  'urinary-tract-infection': ['ureter', 'cortex'],
+  'viral-diarrhea': ['jejunum', 'colon'],
+})
+
+const DISPLAY_UNIT_MODEL_ANCHORS = Object.freeze({
+  'newborn-jaundice-surface': ['epidermis', 'dermis'],
+  'newborn-jaundice-pathway': ['portal', 'right-lobe'],
+})
+
+const DISPLAY_UNIT_SIGN_INDEXES = Object.freeze({
+  'hand-foot-mouth-palm': [2],
+  'hand-foot-mouth-sole': [2],
+  'newborn-jaundice-surface': [0],
+  'newborn-jaundice-pathway': [1, 2],
+})
+
+function modelLeaderLines(input, resource, { unitId = `${input.id}-overview`, location = input.location } = {}) {
+  if (!resource?.model) return []
+  const hotspots = getAnatomyHotspots(resource.id)
+  const hotspotById = new Map(hotspots.map((hotspot) => [hotspot.id, hotspot]))
+  const configured = DISPLAY_UNIT_MODEL_ANCHORS[unitId] || DISEASE_MODEL_ANCHORS[input.id] || DEFAULT_MODEL_ANCHORS[resource.id] || []
+  const anchors = [...configured.filter((id) => hotspotById.has(id)), ...hotspots.map((hotspot) => hotspot.id)]
+    .filter((id, index, values) => values.indexOf(id) === index)
+    .slice(0, 2)
+  if (!anchors.length) return []
+  if (anchors.length === 1) anchors.push(anchors[0])
+  const signs = items(input.symptoms[0], input.symptoms[1])
+  const signIndexes = DISPLAY_UNIT_SIGN_INDEXES[unitId] || [0, 1]
+  const sign = t(
+    signIndexes.map((index) => signs[index]?.zh).filter(Boolean).join('；'),
+    signIndexes.map((index) => signs[index]?.en).filter(Boolean).join('; '),
+  )
+  const impactHotspot = hotspotById.get(anchors[0])
+  const signHotspot = hotspotById.get(anchors[1])
+  return [
+    { id: `${unitId}-impact`, kind: 'impact', anchorId: anchors[0], label: impactHotspot.label, effect: location, color: impactHotspot.color },
+    { id: `${unitId}-sign`, kind: 'sign', anchorId: anchors[1], label: t('快速对照现象', 'Quick-match signs'), effect: sign, color: signHotspot.color },
+  ]
+}
+
 function defaultDisplayUnit(input) {
   const preciseSkinTopics = new Set(['atopic-dermatitis', 'diaper-dermatitis', 'contact-dermatitis', 'heat-rash', 'impetigo', 'fungal-skin-infection'])
   const skinResource = ANATOMY_RESOURCES.find((resource) => resource.id === 'skin')
@@ -113,16 +195,17 @@ function defaultDisplayUnit(input) {
   const hasSkinModel = preciseSkinTopics.has(input.id) && skinResource?.model
   const modelResource = hasSkinModel ? skinResource : organResource
   const hasModel = Boolean(modelResource?.model)
+  const leaderLines = hasModel ? modelLeaderLines(input, modelResource) : []
   return {
     id: `${input.id}-overview`,
     title: input.location,
-    anchorIds: hasSkinModel ? ['epidermis'] : [],
+    anchorIds: leaderLines.map((line) => line.anchorId),
     viewType: input.viewType || 'OVERVIEW',
     description: input.mechanism,
     displayOrder: 1,
     modelRef: hasModel ? modelResource.model : null,
     modelAvailability: hasModel ? 'AVAILABLE' : 'PLANNED',
-    leaderLines: hasSkinModel ? [{ anchorId: 'epidermis', label: input.location, effect: input.mechanism }] : [],
+    leaderLines,
   }
 }
 
@@ -133,21 +216,29 @@ function specialDisplayUnits(input) {
     ['mouth', t('口腔黏膜', 'Oral mucosa')],
     ['palm', t('手掌', 'Palms')],
     ['sole', t('足底', 'Soles')],
-  ].map(([id, title], index) => ({
-    id: `hand-foot-mouth-${id}`,
-    title,
-    anchorIds: [],
-    viewType: 'SURFACE_MAP',
-    description: input.mechanism,
-    displayOrder: index + 1,
-    modelRef: id === 'mouth' ? null : skinResource?.model || null,
-    modelAvailability: id === 'mouth' || !skinResource?.model ? 'PLANNED' : 'AVAILABLE',
-    leaderLines: [],
-  }))
+  ].map(([id, title], index) => {
+    const unitId = `hand-foot-mouth-${id}`
+    const leaderLines = id === 'mouth' ? [] : modelLeaderLines(input, skinResource, { unitId, location: title })
+    return {
+      id: unitId,
+      title,
+      anchorIds: leaderLines.map((line) => line.anchorId),
+      viewType: 'SURFACE_MAP',
+      description: input.mechanism,
+      displayOrder: index + 1,
+      modelRef: id === 'mouth' ? null : skinResource?.model || null,
+      modelAvailability: id === 'mouth' || !skinResource?.model ? 'PLANNED' : 'AVAILABLE',
+      leaderLines,
+    }
+  })
   if (input.id === 'newborn-jaundice') return [
-    { id: 'newborn-jaundice-surface', title: t('皮肤与巩膜黄染', 'Yellow skin and sclera'), anchorIds: [], viewType: 'SURFACE_MAP', description: t('这是家长可观察的表现层，不代表病因位于皮肤。', 'This is the visible layer and does not mean the cause is in the skin.'), displayOrder: 1, modelRef: skinResource?.model || null, modelAvailability: skinResource?.model ? 'AVAILABLE' : 'PLANNED', leaderLines: [] },
-    { id: 'newborn-jaundice-pathway', title: t('胆红素产生、肝脏处理与排泄', 'Bilirubin production, liver processing and excretion'), anchorIds: [], viewType: 'PATHWAY', description: input.mechanism, displayOrder: 2, modelRef: liverResource?.model || null, modelAvailability: liverResource?.model ? 'AVAILABLE' : 'PLANNED', leaderLines: [] },
-  ]
+    { id: 'newborn-jaundice-surface', title: t('皮肤与巩膜黄染', 'Yellow skin and sclera'), viewType: 'SURFACE_MAP', description: t('这是家长可观察的表现层，不代表病因位于皮肤。', 'This is the visible layer and does not mean the cause is in the skin.'), displayOrder: 1, modelRef: skinResource?.model || null, modelAvailability: skinResource?.model ? 'AVAILABLE' : 'PLANNED' },
+    { id: 'newborn-jaundice-pathway', title: t('胆红素产生、肝脏处理与排泄', 'Bilirubin production, liver processing and excretion'), viewType: 'PATHWAY', description: input.mechanism, displayOrder: 2, modelRef: liverResource?.model || null, modelAvailability: liverResource?.model ? 'AVAILABLE' : 'PLANNED' },
+  ].map((unit) => {
+    const resource = unit.id.endsWith('surface') ? skinResource : liverResource
+    const leaderLines = modelLeaderLines(input, resource, { unitId: unit.id, location: unit.title })
+    return { ...unit, anchorIds: leaderLines.map((line) => line.anchorId), leaderLines }
+  })
   return null
 }
 

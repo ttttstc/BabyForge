@@ -112,7 +112,7 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
   const feed = feeds[activeCategory]
   const error = errors[activeCategory]
   const category = EXPERIENCE_CATEGORIES.find((item) => item.id === activeCategory) || EXPERIENCE_CATEGORIES[0]
-  const sourceNotice = isEnglish ? 'Recommendations currently use Chinese-language sources.' : '当前推荐来自中文公开来源。'
+  const sourceNotice = isEnglish ? 'Chinese communities and directly accessible domestic sources only.' : '优先中文社区与国内可直连来源，不展示境外受限站点。'
 
   async function copyLink(article) {
     try {
