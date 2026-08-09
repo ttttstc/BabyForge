@@ -1,8 +1,8 @@
-import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, RotateCcw, Settings, Sparkles, Stethoscope, Syringe } from 'lucide-react'
+import { Baby, BookOpen, CalendarRange, ClipboardPlus, House, Languages, LogOut, Settings, Sparkles, Stethoscope, Syringe } from 'lucide-react'
 import { useLayoutEffect, useRef } from 'react'
 import { navigate, ROUTES } from '../app/router.js'
 import { getSexLabel } from '../domain/baby.js'
-import { getCopy, getLocaleLabel } from '../domain/i18n.js'
+import { getCopy } from '../domain/i18n.js'
 
 const PRIMARY_NAV_ITEMS = [
   { route: ROUTES.today, copyKey: 'today', icon: House },
@@ -14,7 +14,7 @@ const PRIMARY_NAV_ITEMS = [
   { route: ROUTES.naibaAi, copyKey: 'naibaAi', icon: Sparkles },
 ]
 
-export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
+export function Header({ route, baby, ageDays, onLogout, readOnly = false, role = 'admin', locale = 'zh-CN', careActors = [], currentRecorderId = '', onRecorderChange, syncStatus = 'idle', onSyncRetry }) {
   const copy = getCopy(locale)
   const primaryNavRef = useRef(null)
 
@@ -62,7 +62,7 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
             {careActors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
           </select>
         </label>
-        {syncStatus === 'offline' ? <button type="button" className="sync-status offline" onClick={onSyncRetry} aria-live="polite">{locale === 'en-US' ? 'Pending · Retry' : '待同步 · 点击重试'}</button> : <span className={`sync-status ${syncStatus === 'online' ? 'online' : 'pending'}`} aria-live="polite">{syncStatus === 'online' ? (locale === 'en-US' ? 'Synced' : '已同步') : (locale === 'en-US' ? 'Pending' : '待同步')}</span>}
+        {syncStatus === 'offline' ? <button type="button" className="sync-status offline" onClick={onSyncRetry} aria-live="polite">{locale === 'en-US' ? 'Pending · Retry' : '待同步 · 点击重试'}</button> : syncStatus === 'online' ? <span className="sync-status online" aria-live="polite">{locale === 'en-US' ? 'Synced' : '已同步'}</span> : null}
         <span className={`role-pill ${role === 'guest' ? 'guest' : role === 'caregiver' ? 'caregiver' : 'admin'}`}>
           {role === 'guest'
             ? (locale === 'en-US' ? 'Guest · read only' : '游客 · 只读')
@@ -70,17 +70,14 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
               ? (locale === 'en-US' ? 'Caregiver · editor' : '月嫂 · 可录入')
               : (locale === 'en-US' ? 'Admin' : '管理员')}
         </span>
-        <button className="icon-button language-button" onClick={() => navigate(ROUTES.settings)} title={copy.settings}>
-          <Languages size={16} />{getLocaleLabel(locale)}
+        <button className="icon-button language-button" onClick={() => navigate(ROUTES.settings)} title={locale === 'en-US' ? 'Language' : '语言'} aria-label={locale === 'en-US' ? 'Language' : '语言'}>
+          <Languages size={16} />
         </button>
-        <button className="icon-button settings-button" onClick={() => navigate(ROUTES.settings)} title={copy.settings}>
-          <Settings size={16} />{copy.nav.settings}
+        <button className="icon-button settings-button" onClick={() => navigate(ROUTES.settings)} title={copy.nav.settings} aria-label={copy.nav.settings}>
+          <Settings size={16} />
         </button>
-        {!readOnly && <button className="icon-button" onClick={onClear} title={copy.clearLocalData}>
-          <RotateCcw size={17} />{copy.clearLocalData}
-        </button>}
-        <button className="icon-button logout-button" onClick={onLogout} title={locale === 'en-US' ? 'Sign out' : '退出登录'}>
-          <LogOut size={17} />{locale === 'en-US' ? 'Sign out' : '退出'}
+        <button className="icon-button logout-button" onClick={onLogout} title={locale === 'en-US' ? 'Sign out' : '退出登录'} aria-label={locale === 'en-US' ? 'Sign out' : '退出'}>
+          <LogOut size={17} />
         </button>
       </div>
     </header>

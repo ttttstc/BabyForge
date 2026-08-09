@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
-import { ArrowLeft, Baby, Check, Clipboard, FileHeart, LogOut, Printer, RotateCcw, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Baby, Check, Clipboard, FileHeart, LogOut, Printer, ShieldCheck } from 'lucide-react'
 import { buildDoctorSummary } from '../domain/doctorSummary.js'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy } from '../domain/i18n.js'
@@ -126,7 +126,7 @@ function formatSummaryText(summary, locale) {
   return lines.join('\n')
 }
 
-export function DoctorSummaryView({ state, onBack, onClear, onLogout, readOnly = false }) {
+export function DoctorSummaryView({ state, onBack, onLogout }) {
   const locale = state.preferences.locale
   const copy = getCopy(locale)
   const isEnglish = locale === 'en-US'
@@ -144,7 +144,6 @@ export function DoctorSummaryView({ state, onBack, onClear, onLogout, readOnly =
       <header className="summary-header no-print">
         <button onClick={onBack}><ArrowLeft size={17} />{isEnglish ? 'Back to today' : '返回今天'}</button>
         <div className="brand-mark small"><Baby size={20} /><span>{copy.appName}</span></div>
-        {!readOnly && <button onClick={onClear}><RotateCcw size={16} />{copy.clearLocalData}</button>}
         <button onClick={onLogout}><LogOut size={16} />{isEnglish ? 'Sign out' : '退出登录'}</button>
       </header>
       <article className="summary-sheet">

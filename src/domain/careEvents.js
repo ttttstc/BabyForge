@@ -40,7 +40,7 @@ export const CARE_RECORD_CATEGORIES = Object.freeze([
 
 const DIAPER_KINDS = new Set(['urine', 'stool', 'both'])
 const BOTTLE_MILK_TYPES = new Set(['breast_milk', 'formula'])
-const GROWTH_MEASUREMENT_TYPES = new Set(['weight', 'length'])
+const GROWTH_MEASUREMENT_TYPES = new Set(['weight', 'length', 'headCircumference'])
 
 const OCCURRED_AT_ERROR_MESSAGES = Object.freeze({
   invalid: { zh: '发生时间无效，请重新选择。', en: 'Choose a valid event time.' },

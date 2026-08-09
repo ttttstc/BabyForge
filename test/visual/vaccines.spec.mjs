@@ -216,7 +216,7 @@ test('cloud vaccine writes show pending until the event is confirmed', async ({ 
   const writeStarted = page.waitForRequest((request) => request.method() === 'POST' && request.url().endsWith('/api/events'))
   await completionToggle.click()
   await writeStarted
-  await expect(page.locator('.sync-status')).toHaveText('待同步')
+  await expect(page.locator('.sync-status')).toHaveCount(0)
   releaseWrite()
   await expect(page.locator('.sync-status')).toHaveText('已同步')
 })
