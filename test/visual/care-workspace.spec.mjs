@@ -67,9 +67,10 @@ test('today tasks hand off to the growth read model and growth facts loop back t
   await page.getByRole('button', { name: '儿科病', exact: true }).click()
   await page.getByRole('button', { name: /呼吸道症状/ }).click()
   await page.getByRole('button', { name: '普通感冒', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: /普通感冒/ })
-  await expect(dialog.getByText('可能成因')).toBeVisible()
-  await expect(dialog.getByRole('heading', { name: '可能影响' })).toBeVisible()
+  const selectedDisease = page.locator('.disease-selected')
+  await expect(selectedDisease.getByRole('heading', { name: '普通感冒', exact: true })).toBeVisible()
+  await expect(selectedDisease.getByRole('heading', { name: '病因', exact: true })).toBeVisible()
+  await expect(selectedDisease.getByRole('heading', { name: '身体里发生了什么', exact: true })).toBeVisible()
   await expect(page.getByText('打开黄疸认知专题')).toHaveCount(0)
 })
 

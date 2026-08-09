@@ -7,7 +7,7 @@ import { getAdminTasks, getDailyTasks, getStageMilestones, localDateKey } from '
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { projectBabyState } from '../domain/babyState.js'
 import { updateBabyProfileState, validateBasicInfoForm } from '../domain/babyProfile.js'
-import { navigate, parseHashLocation, RECORD_PANEL_TYPES as RECORD_PANEL_TYPE_LIST, resolveRecordReturnTo, ROUTES } from '../app/router.js'
+import { navigate, parseHashLocation, RECORD_PANEL_TYPES as RECORD_PANEL_TYPE_LIST, resolveRecordReturnTo, ROUTES, useHashLocation } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
@@ -55,27 +55,28 @@ function currentCount(snapshot, stateKey) {
   return snapshot.recent24h.facts.filter((fact) => fact.stateKey === stateKey).length
 }
 
-export function RecordCenter({ state, commitState, onClear, onLogout, readOnly = false, role = 'admin' }) {
+export function RecordCenter({ state, commitState, onLogout, readOnly = false, role = 'admin' }) {
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
-  const initialQuery = new URLSearchParams(window.location.hash.split('?')[1] || '')
-  const legacyReturnTo = initialQuery.get('return') === 'today' ? ROUTES.today : null
-  const explicitReturnTo = resolveRecordReturnTo(initialQuery.get('returnTo') || legacyReturnTo)
-  const hasReturnContext = Boolean(explicitReturnTo)
-  const returnTo = explicitReturnTo || ROUTES.today
+  const location = useHashLocation()
+  const recordQuery = location.params
+  const legacyReturnTo = resolveRecordReturnTo(recordQuery.get('return') === 'today' ? ROUTES.today : null)
+  const explicitReturnTo = resolveRecordReturnTo(recordQuery.get('returnTo'))
+  const hasReturnContext = Boolean(explicitReturnTo || legacyReturnTo)
+  const returnTo = explicitReturnTo || legacyReturnTo || ROUTES.today
   const returnRoute = parseHashLocation(returnTo).route
   const [activePanel, setActivePanel] = useState(() => {
-    if (initialQuery.get('event') && initialQuery.get('mode') === 'detail') return null
-    const panel = initialQuery.get('type') || initialQuery.get('panel')
-    return RECORD_PANEL_TYPES.has(panel) || panel === 'illness' ? panel : null
+    if (recordQuery.get('event') && recordQuery.get('mode') === 'detail') return null
+    const panel = recordQuery.get('type') || recordQuery.get('panel')
+    return RECORD_PANEL_TYPES.has(panel) ? panel : null
   })
   const [editingEvent, setEditingEvent] = useState(null)
-  const [eventDetailId, setEventDetailId] = useState(() => initialQuery.get('event') || '')
+  const [eventDetailId, setEventDetailId] = useState(() => recordQuery.get('event') || '')
   const [selectedDay, setSelectedDay] = useState(() => {
-    const requested = initialQuery.get('date')
+    const requested = recordQuery.get('date')
     return requested && requested !== 'today' && /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : localDayKey()
   })
-  const [timelineFilter, setTimelineFilter] = useState(() => initialQuery.get('filter') || '')
+  const [timelineFilter, setTimelineFilter] = useState(() => recordQuery.get('filter') || '')
   const [toast, setToast] = useState('')
   const [entryError, setEntryError] = useState('')
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
@@ -265,7 +266,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
 
   return (
     <main className="record-center-page">
-      <Header route={ROUTES.records} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => commitState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
+      <Header route={ROUTES.records} baby={state.baby} ageDays={ageDays} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => commitState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="record-center-shell">
         <header className="record-center-hero">
           <div>
@@ -286,7 +287,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
 
         {eventDetail && <RecordEventDetail event={eventDetail} locale={locale} readOnly={readOnly} onClose={cancelEntry} onCorrect={() => editRecord(eventDetail)} onVoid={() => voidRecord(eventDetail)} />}
 
-        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}:${initialQuery.get('metric') || ''}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} initialGrowthType={initialQuery.get('metric')} onSave={saveP0Record} onCancel={cancelEntry} />}
+        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}:${recordQuery.get('metric') || ''}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} initialGrowthType={recordQuery.get('metric')} onSave={saveP0Record} onCancel={cancelEntry} />}
 
         {activePanel && !P0_PANEL_TYPES.has(activePanel) && <section className="record-entry-sheet" data-testid={`record-entry-${activePanel}`}>
           <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Add a note' : '补充记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={cancelEntry} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>

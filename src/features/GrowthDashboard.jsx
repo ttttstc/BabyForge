@@ -6,7 +6,7 @@ import { ageBasisLabel, ageContextSummary, resolveAgeContext } from '../domain/a
 import { buildGrowthInterpretation } from '../domain/naibaCapabilities.js'
 import { evaluateGrowthMeasurement, getGrowthChartModel, getGrowthMeasurementConflictIds, growthLevelLabel, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, isValidGrowthMeasurement } from '../domain/growth.js'
 import { getGrowthStageContent } from '../content/growthStages.js'
-import { buildRecordRoute, navigate, ROUTES } from '../app/router.js'
+import { buildRecordRoute, navigate, ROUTES, useHashLocation } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { GrowthRoadmap } from './GrowthRoadmap.jsx'
 import { GrowthInterpretationDialog } from './GrowthInterpretationDialog.jsx'
@@ -93,6 +93,7 @@ function normalizeParentActions(carePlanItems, adminTasks) {
 
 export function GrowthDashboard({ route = ROUTES.growth, state, setState, onClear, onLogout, readOnly = false, role = 'admin', cloudMode = false }) {
   const locale = state.preferences.locale
+  const location = useHashLocation()
   const [metric, setMetric] = useState(() => queryMetric() || 'weight')
   const [aiOpen, setAiOpen] = useState(false)
   const ageContext = useMemo(() => resolveAgeContext({ baby: state.baby, at: new Date(), purpose: 'dashboard' }), [state.baby])
@@ -110,7 +111,7 @@ export function GrowthDashboard({ route = ROUTES.growth, state, setState, onClea
   const chartRoute = route === ROUTES.growthChart
   const stageRoute = route === ROUTES.growthStage
   const historyRoute = route === ROUTES.growthHistory
-  const returnTo = () => globalThis.window?.location?.hash || route
+  const returnTo = () => `${location.route}${location.search}`
   const openRecord = (panel = 'growth', metric = null) => navigate(buildRecordRoute({ panel, metric, returnTo: returnTo() }))
   const openRecordEvent = (eventId) => navigate(buildRecordRoute({ panel: 'growth', event: eventId, mode: 'detail', returnTo: returnTo() }))
   const openChart = (nextMetric = activeMetric) => {
