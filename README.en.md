@@ -4,6 +4,8 @@
 
 [![Live demo](https://img.shields.io/badge/demo-live-2563EB?style=flat-square)](https://babyforge.pages.dev) [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=20232A)](https://react.dev/) [![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/) [![Cloudflare](https://img.shields.io/badge/Cloudflare-Pages%20%2B%20D1%20%2B%20R2-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/pages/)
 
+![BabyForge baby growth and care workspace](./public/assets/readme/babyforge-hero.png)
+
 A growth and care workspace for families in mainland China with children from birth to age six. BabyForge brings “what matters today, what happened, how things change over time, and which facts to take to a professional” into one shared family workspace. Important conclusions come from structured facts and deterministic rules first; AI only explains and assists within explicit boundaries.
 
 Live demo: [babyforge.pages.dev](https://babyforge.pages.dev)

@@ -4,6 +4,8 @@
 
 [![Live demo](https://img.shields.io/badge/demo-live-2563EB?style=flat-square)](https://babyforge.pages.dev) [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=20232A)](https://react.dev/) [![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/) [![Cloudflare](https://img.shields.io/badge/Cloudflare-Pages%20%2B%20D1%20%2B%20R2-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/pages/)
 
+![BabyForge 宝宝成长与照护工作台](./public/assets/readme/babyforge-hero.png)
+
 面向中国大陆家庭的 0–6 岁宝宝成长与照护工作台。BabyForge 把「今天看什么、发生了什么、长期怎样变化、何时带什么事实去咨询专业人员」放进同一个家庭工作区；所有重要结论优先来自结构化事实和确定性规则，AI 只在明确边界内解释与协助记录。
 
 在线体验：[babyforge.pages.dev](https://babyforge.pages.dev)
