@@ -18,12 +18,16 @@ const hotspots = {
     { id: 'right-lung', position: [-1.2, 0.1, 0.7], color: '#ee7c6a', label: { zh: '右肺', en: 'Right lung' }, detail: { zh: '有三叶', en: 'Three lobes' } },
     { id: 'left-lung', position: [1.2, 0.1, 0.7], color: '#f2a33b', label: { zh: '左肺', en: 'Left lung' }, detail: { zh: '两叶，为心脏留出空间', en: 'Two lobes, room for the heart' } },
     { id: 'bronchus', position: [-0.03, 0.3, 0.35], color: '#d89bc4', label: { zh: '支气管', en: 'Bronchus' }, detail: { zh: '分支气道', en: 'Branching airway' } },
+    { id: 'bronchioles', position: [-0.68, -0.28, 0.78], color: '#b784b2', label: { zh: '细支气管', en: 'Bronchioles' }, detail: { zh: '更细的末端气道', en: 'Smaller terminal airways' } },
+    { id: 'alveoli', position: [0.72, -0.72, 0.86], color: '#cf7b73', label: { zh: '肺泡区', en: 'Alveolar region' }, detail: { zh: '完成氧气与二氧化碳交换', en: 'Exchanges oxygen and carbon dioxide' } },
     { id: 'base', position: [-1.14, -1.2, 1], color: '#7fa88a', label: { zh: '肺底', en: 'Lung base' }, detail: { zh: '位于膈肌上方', en: 'Rests on the diaphragm' } },
   ],
   intestine: [
     { id: 'duodenum', position: [0.6, 0.8, 0.75], color: '#f2a33b', label: { zh: '十二指肠', en: 'Duodenum' }, detail: { zh: '小肠的起始段', en: 'First small-intestine segment' } },
     { id: 'jejunum', position: [-0.45, 0.1, 0.82], color: '#ee7c6a', label: { zh: '空肠', en: 'Jejunum' }, detail: { zh: '主要吸收区域', en: 'Major absorption region' } },
     { id: 'colon', position: [0.75, -0.55, 0.72], color: '#6393d8', label: { zh: '结肠', en: 'Colon' }, detail: { zh: '回收水分', en: 'Reclaims water' } },
+    { id: 'ileocecal', position: [0.72, -0.82, 0.76], color: '#b784b2', label: { zh: '回盲部', en: 'Ileocecal region' }, detail: { zh: '小肠与结肠交界', en: 'Junction of small bowel and colon' } },
+    { id: 'appendix', position: [0.95, -1.05, 0.7], color: '#cf7b73', label: { zh: '阑尾区', en: 'Appendix region' }, detail: { zh: '位于盲肠旁', en: 'Beside the cecum' } },
   ],
   skin: [
     { id: 'epidermis', position: [-0.05, 0.88, 1.4], color: '#ee7c6a', label: { zh: '表皮', en: 'Epidermis' }, detail: { zh: '外侧保护层', en: 'Outer protective layer' } },
@@ -33,6 +37,8 @@ const hotspots = {
   ],
   eyeball: [
     { id: 'cornea', position: [-0.94, 0.05, 1.47], color: '#6393d8', label: { zh: '角膜', en: 'Cornea' }, detail: { zh: '透明的聚焦表面', en: 'Clear focusing surface' } },
+    { id: 'conjunctiva', position: [-1.02, 0.38, 1.34], color: '#ee7c6a', label: { zh: '结膜', en: 'Conjunctiva' }, detail: { zh: '覆盖眼白与眼睑内面', en: 'Covers the sclera and inner eyelid' } },
+    { id: 'eyelid', position: [-1.12, 0.72, 1.08], color: '#c58696', label: { zh: '眼睑边缘', en: 'Eyelid margin' }, detail: { zh: '睫毛与睑板腺所在区域', en: 'Region of lashes and meibomian glands' } },
     { id: 'iris', position: [-1.22, -0.53, 1.15], color: '#f2a33b', label: { zh: '虹膜', en: 'Iris' }, detail: { zh: '控制进入眼内的光线', en: 'Controls light entry' } },
     { id: 'optic', position: [1.61, -0.18, 0.54], color: '#d89bc4', label: { zh: '视神经', en: 'Optic nerve' }, detail: { zh: '传递视觉信号', en: 'Carries visual signals' } },
   ],

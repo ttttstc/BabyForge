@@ -1,4 +1,4 @@
-import { EXPERIENCE_CACHE_VERSION, getCacheState, getExperienceCacheKey } from './experience.js'
+import { getCacheState, getExperienceCacheKey } from './experience.js'
 
 export const EXPERIENCE_REQUEST_TIMEOUT_MS = 8000
 
@@ -30,7 +30,7 @@ export function writeExperienceCache({ storage = globalThis.localStorage, babyId
 }
 
 export function clearExperienceCache({ storage = globalThis.localStorage } = {}) {
-  const prefix = `babyforge:experience:${EXPERIENCE_CACHE_VERSION}:`
+  const prefix = 'babyforge:experience:'
   if (!storage || typeof storage.length !== 'number' || typeof storage.key !== 'function') return 0
   const keys = []
   for (let index = 0; index < storage.length; index += 1) {
