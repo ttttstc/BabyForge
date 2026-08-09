@@ -6,17 +6,19 @@ function text(value, locale) {
   return value?.[locale === 'en-US' ? 'en' : 'zh'] || value?.zh || value || ''
 }
 
-export function CareTaskList({ tasks, locale = 'zh-CN', onUpdate, compact = false, readOnly = false }) {
+export function CareTaskList({ tasks, locale = 'zh-CN', onUpdate, compact = false, priority = false, readOnly = false }) {
   const completed = tasks.filter((task) => task.status === 'done').length
   const isEnglish = locale === 'en-US'
+  const visibleTasks = priority ? tasks.filter((task) => task.status !== 'done').slice(0, 3) : tasks
   return (
-    <section className={`care-task-panel ${compact ? 'compact' : ''}`} data-testid="care-task-list">
+    <section className={`care-task-panel ${compact ? 'compact' : ''} ${priority ? 'priority' : ''}`} data-testid="care-task-list">
       <header className="care-task-heading">
-        <div><p className="eyebrow">{isEnglish ? 'Doable today' : '今天可以做'}</p><h2>{isEnglish ? 'Three care actions' : '三项可实践照护'}</h2></div>
-        <span className="care-task-progress">{completed}/{tasks.length}</span>
+        <div><p className="eyebrow">{priority ? (isEnglish ? 'Current stage' : '当前阶段') : (isEnglish ? 'Doable today' : '今天可以做')}</p><h2>{priority ? (isEnglish ? 'Priority tasks' : '阶段重点待办') : (isEnglish ? 'Three care actions' : '三项可实践照护')}</h2></div>
+        <span className="care-task-progress">{priority ? visibleTasks.length : `${completed}/${tasks.length}`}</span>
       </header>
       <div className="care-task-list">
-        {tasks.map((task) => {
+        {visibleTasks.length === 0 && <p className="today-quiet-state">{isEnglish ? 'No remaining stage tasks today.' : '当前阶段待办已完成。'}</p>}
+        {visibleTasks.map((task) => {
           const Icon = ICONS[task.icon] || Check
           const done = task.status === 'done'
           const snoozed = task.status === 'snoozed'

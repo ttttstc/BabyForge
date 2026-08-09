@@ -5,6 +5,7 @@ import { navigate, ROUTES } from '../app/router.js'
 import { updateBabyProfileState } from '../domain/babyProfile.js'
 import { LLM_PROTOCOL_OPTIONS } from '../../functions/_shared/llmConfig.js'
 import { BasicInfoPanel } from './RecordCenter.jsx'
+import { GlobalAiEntry } from './GlobalAiEntry.jsx'
 
 export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false }) {
   const locale = state.preferences.locale
@@ -96,8 +97,9 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
       <header className="settings-header">
         <button className="settings-back" onClick={() => navigate(ROUTES.today)}><ArrowLeft size={17} />{copy.back}</button>
         <div className="settings-brand"><span><Settings2 size={18} /></span><strong>{copy.settings}</strong></div>
-        <div className="settings-header-actions">
-          {!readOnly && <button className="settings-clear" onClick={onClear}><RotateCcw size={16} />{copy.clearLocalData}</button>}
+          <div className="settings-header-actions">
+            <GlobalAiEntry locale={locale} returnTo={ROUTES.settings} />
+            {!readOnly && <button className="settings-clear" onClick={onClear}><RotateCcw size={16} />{copy.clearLocalData}</button>}
           <button className="settings-clear" onClick={onLogout}><LogOut size={16} />{locale === 'en-US' ? 'Sign out' : '退出登录'}</button>
         </div>
       </header>

@@ -9,6 +9,10 @@ export const ROUTES = {
   growthChart: '#/growth/chart',
   growthStage: '#/growth/stage',
   growthHistory: '#/growth/history',
+  health: '#/health',
+  healthVaccines: '#/health/vaccines',
+  healthDiseases: '#/health/diseases',
+  healthOrgans: '#/health/organs',
   vaccines: '#/vaccines',
   // Kept as an internal alias while existing surfaces migrate to Growth.
   stage: '#/growth',
@@ -45,6 +49,25 @@ export const RECORD_PANEL_TYPES = Object.freeze([
 
 export const RECORD_METRIC_TYPES = Object.freeze(['weight', 'length', 'headCircumference'])
 
+export const HEALTH_ROUTES = Object.freeze([
+  ROUTES.healthVaccines,
+  ROUTES.healthDiseases,
+  ROUTES.healthOrgans,
+])
+
+const APP_RETURN_ROUTES = Object.freeze([
+  ROUTES.today,
+  ROUTES.records,
+  ROUTES.growth,
+  ROUTES.growthChart,
+  ROUTES.growthStage,
+  ROUTES.growthHistory,
+  ...HEALTH_ROUTES,
+  ROUTES.experience,
+  ROUTES.summary,
+  ROUTES.settings,
+])
+
 export function buildRecordRoute({ panel, metric, filter, date, event, mode, returnTo } = {}) {
   const params = new URLSearchParams()
   if (panel) params.set('panel', panel)
@@ -64,7 +87,26 @@ export function resolveRecordReturnTo(value) {
   return RECORD_RETURN_ROUTES.includes(parsed.route) ? value : null
 }
 
+export function buildNaibaRoute({ returnTo, skill, unit, topic, capability } = {}) {
+  const params = new URLSearchParams()
+  if (returnTo) params.set('returnTo', returnTo)
+  if (skill) params.set('skill', skill)
+  if (unit) params.set('unit', unit)
+  if (topic) params.set('topic', topic)
+  if (capability) params.set('capability', capability)
+  const query = params.toString()
+  return query ? `${ROUTES.naibaAi}?${query}` : ROUTES.naibaAi
+}
+
+export function resolveNaibaReturnTo(value) {
+  if (!value) return null
+  const parsed = parseHashLocation(value)
+  return APP_RETURN_ROUTES.includes(parsed.route) ? `${parsed.route}${parsed.search}` : null
+}
+
 const LEGACY_ROUTE_ALIASES = {
+  [ROUTES.health]: ROUTES.healthVaccines,
+  [ROUTES.vaccines]: ROUTES.healthVaccines,
   '#/stage': ROUTES.growth,
   '#/stage/newborn': ROUTES.growth,
 }
@@ -81,9 +123,13 @@ export function parseHashLocation(value = hashValue()) {
   const normalized = String(value || ROUTES.onboarding).startsWith('#') ? String(value || ROUTES.onboarding) : `#${value}`
   const [pathname, query = ''] = normalized.slice(1).split('?')
   const rawRoute = `#${pathname || ROUTES.onboarding.slice(1)}`
-  const route = LEGACY_ROUTE_ALIASES[rawRoute] || rawRoute
+  const params = new URLSearchParams(query)
+  const pediatricRoute = rawRoute === ROUTES.pediatric
+    ? (params.get('view') === 'organs' ? ROUTES.healthOrgans : ROUTES.healthDiseases)
+    : null
+  const route = pediatricRoute || LEGACY_ROUTE_ALIASES[rawRoute] || rawRoute
   const search = query ? `?${query}` : ''
-  return { route, search, query, params: new URLSearchParams(query) }
+  return { route, search, query, params }
 }
 
 export function useHashLocation() {

@@ -1,23 +1,16 @@
-import { AlertCircle, ArrowRight, BookOpenCheck, ExternalLink, HeartHandshake, ShieldCheck } from 'lucide-react'
+import { AlertCircle, ArrowRight, BookOpenCheck, ExternalLink, ShieldCheck } from 'lucide-react'
 import { evaluateMedicalTopic } from '../domain/safety.js'
 import { JAUNDICE_TOPIC } from '../content/jaundice.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { getCopy } from '../domain/i18n.js'
-import { CareTaskList } from './CareTaskList.jsx'
-import { CareOverview } from './CareOverview.jsx'
+import { DailyHealthReminders } from './DailyHealthReminders.jsx'
 
-export function ContextInspector({ topicMode, tasks = [], onTaskUpdate, baby = null, careEvents = [], concerns = [], locale = 'zh-CN', readOnly = false }) {
+export function ContextInspector({ topicMode, healthReminders, onTaskUpdate, locale = 'zh-CN', readOnly = false }) {
   const copy = getCopy(locale)
   if (!topicMode) {
     return (
-      <aside className="context-inspector" data-testid="context-inspector">
-        <CareOverview baby={baby} careEvents={careEvents} concerns={concerns} locale={locale} />
-        <RecordsLink locale={locale} />
-        <div className="inspector-block inspector-task-block"><HeartHandshake size={18} /><CareTaskList tasks={tasks} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} /></div>
-        <section className="inspector-block tone-aqua">
-          <div className="inspector-section-title"><ShieldCheck size={18} /><span>{locale === 'en-US' ? 'How to use this information' : '信息使用说明'}</span></div>
-          <p>{locale === 'en-US' ? 'This helps you understand and record. It does not judge normality or provide a health score.' : '这里帮助你理解和记录，不判断宝宝是否正常，也不给健康评分。'}</p>
-        </section>
+      <aside className="context-inspector today-context-inspector" data-testid="context-inspector">
+        <DailyHealthReminders reminders={healthReminders} locale={locale} onUpdate={onTaskUpdate} readOnly={readOnly} />
       </aside>
     )
   }

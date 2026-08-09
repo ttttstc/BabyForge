@@ -2016,6 +2016,39 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .naiba-message-role { width: 25px; height: 25px; display: grid; place-items: center; color: #fffaf4; border-radius: 8px; background: var(--coral); }
 .naiba-message p { margin: 0; color: #5e534d; font-size: .74rem; line-height: 1.65; white-space: pre-line; }
 .naiba-message.user p { color: #6e5d9a; }
+.naiba-message-content { min-width: 0; display: grid; gap: 6px; }
+.naiba-markdown { min-width: 0; color: #5e534d; overflow-wrap: anywhere; }
+.naiba-markdown > :first-child { margin-top: 0; }
+.naiba-markdown > :last-child { margin-bottom: 0; }
+.naiba-markdown p,
+.naiba-markdown li { color: inherit; font-size: .74rem; line-height: 1.65; white-space: normal; }
+.naiba-markdown p { margin: 0 0 8px; }
+.naiba-markdown h1,
+.naiba-markdown h2,
+.naiba-markdown h3 { margin: 12px 0 6px; color: var(--ink); font-family: Georgia, 'Noto Serif SC', serif; line-height: 1.25; }
+.naiba-markdown h1 { font-size: 1.02rem; }
+.naiba-markdown h2 { font-size: .9rem; }
+.naiba-markdown h3 { font-size: .8rem; }
+.naiba-markdown ul,
+.naiba-markdown ol { margin: 6px 0 9px; padding-left: 20px; }
+.naiba-markdown li + li { margin-top: 3px; }
+.naiba-markdown strong { color: #4f413c; font-weight: 900; }
+.naiba-markdown em { color: #77645c; }
+.naiba-markdown blockquote { margin: 8px 0; padding: 7px 10px; color: #78695f; border-left: 3px solid var(--coral); border-radius: 0 9px 9px 0; background: #fff4e9; }
+.naiba-markdown blockquote p { margin: 0; }
+.naiba-markdown code { padding: 2px 4px; color: #6e5d9a; border-radius: 5px; background: #f1eafa; font-family: Consolas, monospace; font-size: .68rem; }
+.naiba-markdown pre { max-width: 100%; overflow-x: auto; margin: 8px 0; padding: 10px; border-radius: 10px; background: #302a27; }
+.naiba-markdown pre code { padding: 0; color: #fff8ef; background: transparent; }
+.naiba-markdown a { color: #6e5d9a; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.naiba-markdown table { width: 100%; display: block; overflow-x: auto; margin: 8px 0; border-collapse: collapse; font-size: .66rem; }
+.naiba-markdown th,
+.naiba-markdown td { min-width: 90px; padding: 6px 8px; border: 1px solid var(--line); text-align: left; }
+.naiba-markdown th { background: #f4ece2; }
+.naiba-markdown .naiba-task-checkbox { width: 14px; height: 14px; margin: 0 6px 0 0; padding: 0; vertical-align: -2px; accent-color: var(--coral); }
+.naiba-copy-answer { width: fit-content; min-height: 27px; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; color: #86776f; border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; font-size: .56rem; }
+.naiba-copy-answer:hover { color: var(--coral); border-color: rgba(235, 124, 107, .22); background: #fff4e9; }
+.naiba-copy-answer.copied { color: #4e8560; }
+.naiba-copy-answer.failed { color: #a35e50; }
 .naiba-thinking { color: #8f8178 !important; font-style: italic; }
 .naiba-suggestion-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .naiba-suggestion-row button { min-height: 30px; padding: 0 9px; color: #7b6a62; border: 1px solid rgba(117, 91, 70, .14); border-radius: 999px; background: rgba(255, 255, 255, .7); cursor: pointer; font-size: .6rem; }
@@ -2529,7 +2562,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 
 /* Shared primary navigation: one fixed tab rail keeps active states from
    resizing or nudging neighboring tabs between routes. */
-.app-header nav { width: clamp(470px, 46vw, 620px); min-width: 0; overflow: hidden; }
+.app-header nav { width: clamp(460px, 42vw, 580px); min-width: 0; overflow: hidden; }
 .app-header nav button { flex: 1 1 0; min-width: 0; min-height: 40px; justify-content: center; padding-inline: 7px; white-space: nowrap; }
 .app-header nav button svg { flex: 0 0 auto; }
 .record-more-purpose { display: flex; align-items: flex-start; gap: 9px; margin: -4px 0 15px; padding: 11px 13px; color: #665d77; border: 1px solid rgba(141, 107, 204, .16); border-radius: 13px; background: rgba(238, 233, 250, .55); }
@@ -2555,6 +2588,277 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 @media (max-width: 520px) {
   .record-center-page > .app-header,
   .naiba-ai-page > .app-header { width: calc(100% - 12px); margin-inline: 6px; }
+}
+
+/* Issue #39: Today hierarchy, five business tabs, Health sections and AI. */
+.global-ai-entry,
+.health-tabs button,
+.today-care-card-add,
+.today-view-all,
+.summary-header-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.global-ai-entry {
+  min-height: 36px;
+  gap: 6px;
+  padding: 0 12px;
+  color: #6f5d98;
+  border: 1px solid rgba(141, 107, 204, .24);
+  border-radius: 999px;
+  background: rgba(238, 233, 250, .72);
+  cursor: pointer;
+  font-size: .68rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.global-ai-entry:hover,
+.global-ai-entry.active { color: #fffaf4; border-color: #8d6bcc; background: #8d6bcc; }
+.global-ai-entry svg,
+.health-tabs button svg,
+.today-view-all svg { flex: 0 0 auto; }
+
+.health-tabs {
+  width: min(720px, calc(100% - 32px));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin: 14px auto 0;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 251, 244, .82);
+  box-shadow: 0 10px 28px rgba(87, 62, 43, .07);
+}
+.health-tabs button {
+  min-width: 0;
+  min-height: 42px;
+  gap: 7px;
+  padding: 0 12px;
+  color: #766c64;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  cursor: pointer;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.health-tabs button:hover { color: var(--coral); background: rgba(235, 124, 107, .08); }
+.health-tabs button.active { color: #fffaf4; background: var(--coral); box-shadow: 0 7px 17px rgba(235, 124, 107, .18); }
+.vaccine-page .vaccine-shell,
+.disease-hub-shell .disease-hub { padding-top: 18px; }
+.disease-hub-shell .organ-learning-workspace { height: calc(100vh - 142px); }
+
+.today-care-summary { display: grid; gap: 11px; }
+.today-care-summary-heading,
+.today-recent-events > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.today-care-summary-heading h2,
+.today-recent-events h2 { margin: 0; font-size: 1.02rem; letter-spacing: -.035em; }
+.today-care-summary-heading > span {
+  padding: 5px 8px;
+  color: #9b604e;
+  border-radius: 999px;
+  background: #fff0e9;
+  font-size: .58rem;
+  font-weight: 800;
+}
+.today-care-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.today-care-card {
+  position: relative;
+  min-width: 0;
+  min-height: 120px;
+  border: 1px solid rgba(117, 91, 70, .13);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .62);
+  overflow: hidden;
+}
+.today-care-card-body {
+  width: 100%;
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 10px 35px 10px 9px;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.today-care-card-body:hover { background: rgba(235, 124, 107, .07); }
+.today-care-card-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  align-self: start;
+  color: var(--coral);
+  border-radius: 10px;
+  background: #fff0e9;
+}
+.today-care-card.sleep .today-care-card-icon { color: #6f5d98; background: var(--aqua-soft); }
+.today-care-card.diaper .today-care-card-icon { color: #28786c; background: #e6f5ee; }
+.today-care-card.medication .today-care-card-icon { color: #896024; background: var(--gold-soft); }
+.today-care-card-copy { min-width: 0; display: grid; align-content: center; gap: 4px; }
+.today-care-card-copy strong { font-size: .69rem; }
+.today-care-card-copy b { font-size: .61rem; font-weight: 750; line-height: 1.42; }
+.today-care-card-copy small { color: var(--muted); font-size: .54rem; line-height: 1.35; }
+.today-care-card-add {
+  position: absolute;
+  top: 8px;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #fffaf4;
+  border: 0;
+  border-radius: 10px;
+  background: var(--coral);
+  cursor: pointer;
+}
+.today-care-card-add:disabled { cursor: not-allowed; opacity: .45; }
+.today-care-boundary { margin: 0; color: var(--muted); font-size: .54rem; line-height: 1.45; }
+
+.today-context-inspector { display: flex; flex-direction: column; gap: 11px; }
+.today-context-inspector > .inspector-block { margin-top: 0; }
+.today-context-inspector > .daily-health-reminders {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.app-header nav button { justify-content: center; }
+.today-quiet-state { margin: 10px 0 0; padding: 12px; color: var(--muted); border-radius: 11px; background: rgba(244, 236, 226, .62); font-size: .62rem; text-align: center; }
+.care-task-panel.priority .care-task-heading h2 { font-size: .94rem; }
+.care-task-panel.priority .care-task { grid-template-columns: 34px minmax(0, 1fr); align-items: center; }
+.care-task-panel.priority .care-task-copy p { display: none; }
+.care-task-panel.priority .care-task-progress { background: var(--coral); }
+.summary-header-actions { gap: 7px; }
+
+@media (max-width: 820px) {
+  .app-header {
+    position: sticky;
+    top: 0;
+    background: rgba(250, 246, 240, .94);
+    backdrop-filter: blur(18px);
+  }
+  .app-header nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 3px;
+    overflow: visible;
+  }
+  .app-header nav button {
+    min-width: 0;
+    width: 100%;
+    gap: 4px;
+    padding-inline: 4px;
+    overflow: hidden;
+  }
+  .header-actions .global-ai-entry {
+    width: 36px;
+    min-height: 36px;
+    padding: 0;
+  }
+  .header-actions .global-ai-entry span { display: none; }
+  .header-actions .recorder-picker > span,
+  .header-actions .sync-status,
+  .header-actions .role-pill { display: none; }
+  .health-tabs { width: calc(100% - 16px); margin-top: 8px; border-radius: 15px; }
+  .health-tabs button { min-height: 40px; gap: 5px; padding-inline: 5px; font-size: .65rem; }
+  .disease-hub-shell .organ-learning-workspace { height: auto; }
+
+  .today-workspace .left-rail { display: flex; overflow: visible; }
+  .today-workspace .active-baby-card { order: 1; }
+  .today-workspace .today-care-summary { order: 2; }
+  .today-workspace .new-parent-guide,
+  .today-workspace .topic-entry { display: none; }
+  .today-workspace .rail-card { border-radius: 20px; }
+  .today-workspace .today-middle-column { margin-top: 10px; }
+  .today-workspace .today-context-inspector { margin-top: 10px; }
+  .today-care-card { min-height: 112px; }
+  .today-care-card-body { min-height: 110px; }
+  .today-care-card-copy b { font-size: .64rem; }
+  .today-care-card-copy small { font-size: .57rem; }
+  .summary-header-actions .global-ai-entry span { display: none; }
+}
+
+@media (max-width: 560px) {
+  .app-header nav { gap: 4px; padding: 4px; }
+  .app-header nav button {
+    min-height: 48px;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 2px;
+    font-size: .62rem;
+    line-height: 1.1;
+  }
+  .app-header nav button svg { width: 16px; height: 16px; }
+}
+
+@media (max-width: 420px) {
+  .app-header nav button { font-size: .59rem; }
+  .app-header nav button svg { width: 15px; height: 15px; }
+  .health-tabs button { flex-direction: column; gap: 2px; font-size: .6rem; }
+  .today-care-card-body { grid-template-columns: 24px minmax(0, 1fr); gap: 5px; padding-left: 7px; }
+  .today-care-card-icon { width: 24px; height: 24px; }
+}
+
+/* Issue #39 feedback: preserve readable controls across compact desktop and mobile widths. */
+.baby-chip strong,
+.baby-chip small { white-space: nowrap; }
+.today-care-card-copy b,
+.today-care-card-copy small { overflow-wrap: anywhere; }
+
+@media (max-width: 1500px) {
+  .header-actions .recorder-picker > span,
+  .header-actions .role-pill { display: none; }
+}
+
+@media (min-width: 821px) and (max-width: 1180px) {
+  .header-actions .recorder-picker > span,
+  .header-actions .sync-status,
+  .header-actions .role-pill { display: none; }
+  .brand-button small { display: none; }
+  .today-workspace { grid-template-columns: 240px minmax(360px, 1fr) 330px; }
+  .today-care-grid { grid-template-columns: 1fr; }
+  .today-care-card,
+  .today-care-card-body { min-height: 88px; }
+}
+
+@media (min-width: 821px) and (max-width: 980px) {
+  .header-actions .global-ai-entry span,
+  .header-actions .settings-button { display: none; }
+  .today-workspace { grid-template-columns: minmax(170px, .8fr) minmax(270px, 1.45fr) minmax(230px, 1fr); }
+  .today-workspace .album-header { flex-wrap: wrap; }
+  .today-workspace .album-header > div:first-child { flex: 1 1 100%; }
+  .today-workspace .album-header h1 { max-width: none; }
+  .today-workspace .album-header-actions { width: 100%; justify-content: flex-start; }
+  .today-context-inspector .daily-reminder-group > div { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 820px) {
+  .disease-hub-organ-mode .pediatric-library { max-height: none; overflow: hidden; }
+  .disease-hub-organ-mode .pediatric-panel-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; }
+  .disease-hub-organ-mode .pediatric-panel-heading small { grid-column: 1; color: var(--muted); font-size: .54rem; font-weight: 700; letter-spacing: 0; text-transform: none; }
+  .disease-hub-organ-mode .pediatric-panel-heading svg { grid-column: 2; grid-row: 1 / span 2; }
+  .disease-hub-organ-mode .pediatric-library-body { flex: none; overflow-x: auto; overflow-y: hidden; padding: 0 0 5px; scrollbar-width: thin; scroll-snap-type: x proximity; }
+  .disease-hub-organ-mode .organ-topic-grid { width: max-content; display: grid; grid-auto-flow: column; grid-auto-columns: 96px; grid-template-columns: none; gap: 7px; }
+  .disease-hub-organ-mode .organ-topic-grid > button { width: 96px; min-height: 86px; grid-template-columns: 1fr; justify-items: center; align-content: center; gap: 4px; padding: 7px 5px; text-align: center; scroll-snap-align: start; }
+  .disease-hub-organ-mode .organ-topic-grid .pediatric-disease-item > span:nth-child(2) { justify-items: center; }
+  .disease-hub-organ-mode .organ-topic-grid .pediatric-disease-dot { position: absolute; top: 7px; right: 7px; }
+  .disease-hub-organ-mode .organ-topic-grid > button { position: relative; }
+  .disease-hub-organ-mode .organ-related { position: static; inset: auto; width: 100%; height: auto; max-height: none; margin-top: 9px; overflow: visible; }
 }
 
 /* Issue #14 feedback: keep the anatomy atlas path dense on desktop. */

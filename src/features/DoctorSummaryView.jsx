@@ -1,6 +1,8 @@
 import { Fragment, useMemo, useState } from 'react'
 import { ArrowLeft, Baby, Check, Clipboard, FileHeart, LogOut, Printer, ShieldCheck } from 'lucide-react'
 import { buildDoctorSummary } from '../domain/doctorSummary.js'
+import { ROUTES } from '../app/router.js'
+import { GlobalAiEntry } from './GlobalAiEntry.jsx'
 import { getSexLabel } from '../domain/baby.js'
 import { getCopy } from '../domain/i18n.js'
 import { eventCategoryLabel, eventFacts, eventKindLabel, eventTitle, formatEventTime } from '../domain/careSummary.js'
@@ -144,7 +146,7 @@ export function DoctorSummaryView({ state, onBack, onLogout }) {
       <header className="summary-header no-print">
         <button onClick={onBack}><ArrowLeft size={17} />{isEnglish ? 'Back to today' : '返回今天'}</button>
         <div className="brand-mark small"><Baby size={20} /><span>{copy.appName}</span></div>
-        <button onClick={onLogout}><LogOut size={16} />{isEnglish ? 'Sign out' : '退出登录'}</button>
+        <div className="summary-header-actions"><GlobalAiEntry locale={locale} returnTo={ROUTES.summary} /><button onClick={onLogout}><LogOut size={16} />{isEnglish ? 'Sign out' : '退出登录'}</button></div>
       </header>
       <article className="summary-sheet">
         <div className="summary-title-row"><div><p className="eyebrow">{isEnglish ? 'Parent-entered facts' : '家长记录整理'}</p><h1>{isEnglish ? 'Care summary' : '就医沟通摘要'}</h1><p>{isEnglish ? 'Generated' : '生成于'} {new Date(summary.generatedAt).toLocaleString(isEnglish ? 'en-US' : 'zh-CN')}</p></div><span className="summary-icon"><FileHeart size={30} /></span></div>
