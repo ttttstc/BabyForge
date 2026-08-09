@@ -10,7 +10,7 @@ import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
 import { canEdit, loadSession, login, logout } from '../domain/auth.js'
-import { clearState, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
+import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
@@ -297,6 +297,10 @@ export function App() {
       // uses the account-specific remote workspace returned by the API.
       const workspaceOwner = next.mode === 'demo' && next.role === 'guest' ? 'niwa' : next.username
       let current = loadState(globalThis.localStorage, workspaceOwner)
+      if (next.mode === 'demo' && next.username === 'guest' && !current.baby) {
+        current = createDemoWorkspace()
+        saveState(globalThis.localStorage, current, workspaceOwner)
+      }
       const remoteBaby = next.babies?.[0]
       if (next.mode === 'cloudflare' && remoteBaby?.id) {
         try {

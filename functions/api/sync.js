@@ -45,7 +45,7 @@ async function ensureHousehold(env, session, baby) {
   await env.DB.batch([
     env.DB.prepare('INSERT OR IGNORE INTO households (id, name, owner_account_id) VALUES (?, ?, ?)').bind(householdId, `${baby.nickname} 的家庭`, session.accountId),
     env.DB.prepare('INSERT OR IGNORE INTO household_members (household_id, account_id, role) VALUES (?, ?, ?)').bind(householdId, session.accountId, 'owner'),
-    env.DB.prepare('INSERT OR IGNORE INTO household_members (household_id, account_id, role) SELECT ?, id, ? FROM accounts WHERE username = ?').bind(householdId, 'guest', 'baby'),
+    env.DB.prepare('INSERT OR IGNORE INTO household_members (household_id, account_id, role) SELECT ?, id, ? FROM accounts WHERE username = ?').bind(householdId, 'guest', 'guest'),
   ])
   return householdId
 }

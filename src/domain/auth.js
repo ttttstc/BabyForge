@@ -3,6 +3,7 @@ export const SESSION_KEY = 'babyforge:session'
 const DEMO_ACCOUNTS = import.meta.env?.DEV ? {
   niwa: { username: 'niwa', password: 'niwaniwa', role: 'admin', displayName: '管理员' },
   baby: { username: 'baby', password: '0729', role: 'guest', displayName: '游客' },
+  guest: { username: 'guest', password: '123', role: 'guest', displayName: '只读演示账号' },
 } : null
 
 function normalizeUsername(value) {

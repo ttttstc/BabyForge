@@ -57,10 +57,7 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 
 更新生产密钥后重新部署 Pages，使新的 Functions 版本读取到该 Secret。不要把密钥写入 `wrangler.jsonc`、前端代码或提交记录。
 
-部署后访问 `https://babyforge.pages.dev`。当前初始化账号：
-
-- 管理员：`niwa` / `niwaniwa`，可创建、填写和修改。
-- 游客：`baby` / `0729`，只能查看，API 也会拒绝写入。
+部署后访问 `https://babyforge.pages.dev`。公开只读演示账号见根目录 [README](../README.md)；管理员和照护者账号请通过受控流程创建或提供，不要写入文档、源码或提交记录。
 
 线上数据库只保存 PBKDF2 密码哈希，不保存明文密码。后续新增月嫂账号时，应增加 `caregiver` 成员，而不是复用只读游客账号。
 
