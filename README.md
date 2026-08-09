@@ -1,57 +1,84 @@
 # BabyForge
 
-**简体中文** · [English](README.en.md)
+中文 | [English](./README.en.md)
 
-BabyForge 是面向中国大陆家庭的 0–6 岁宝宝成长与照护工作台。它把日常照护、成长测量、疫苗计划、儿科教育和就医前事实整理放在同一个工作区，帮助家庭成员留下可回看、可交接的记录。
+面向中国大陆家庭的 0–6 岁宝宝成长与照护工作台。BabyForge 把「今天看什么、发生了什么、长期怎样变化、何时带什么事实去咨询专业人员」放进同一个家庭工作区；所有重要结论优先来自结构化事实和确定性规则，AI 只在明确边界内解释与协助记录。
 
 在线体验：[babyforge.pages.dev](https://babyforge.pages.dev)
 
-> BabyForge 是研究型教育原型，不提供诊断、健康评分、自动就医分级、药物或剂量建议。疫苗安排和健康问题请以接种门诊及专业人员意见为准。
+> [!IMPORTANT]
+> BabyForge 是宝宝成长与照护工作台，不提供诊断、健康评分、自动就医分级、处方或药物剂量建议。疫苗安排、异常表现和健康问题请以接种门诊及专业人员意见为准。
 
-## 主要功能
-
-| 功能 | 可以做什么 |
-| --- | --- |
-| 今日照护 | 按宝宝年龄查看阶段重点、照护任务和提醒，在相册中保存日常照片，并快速记录当天事实。 |
-| 统一记录中心 | 记录喂奶、睡眠、尿布、用药、体温，以及体重、身长/身高和头围；按日期和类型查看时间线，支持查看详情、纠正与作废。 |
-| 成长追踪 | 保存出生与后续测量，查看成长图表、阶段说明和历史记录；保留测量来源、方式、年龄口径和标准版本。 |
-| 疫苗计划 | 按 2026 年版国家免疫规划展示 0–6 岁剂次，记录已接种事实，并提示替代程序需要由接种门诊确认。 |
-| 儿科教育 | 通过常见儿科主题、器官结构和教育病例理解“观察什么、如何描述”，不把教学内容当作诊断。 |
-| 育儿经验 | 按宝宝月龄和主题检索中文育儿资料；搜索请求不发送宝宝姓名、精确生日、家庭账号或照护记录。 |
-| 奶爸 AI | 在受限 Beta 中结合已授权的宝宝背景和照护事实回答问题、整理观察或生成待确认记录；支持配置 OpenAI Responses、Chat Completions 或 Anthropic Messages 兼容服务。 |
-| 就医摘要 | 把近期观察、成长测量、关注事项和待问问题整理为以事实为主的专业交接摘要。 |
-| 家庭协作 | 区分管理员、可录入照护者和只读游客；界面支持中文与 English。 |
-
-## 一条典型使用路径
-
-1. 登录并建立宝宝档案，可同时录入出生体重、身长和头围。
-2. 在“今天”查看当前阶段重点、完成照护任务并保存照片。
-3. 在“记录”留下喂养、睡眠、尿便、体温、用药或成长事实。
-4. 在“成长”和“疫苗”查看长期变化与下一步计划。
-5. 需要咨询专业人员时，打开就医摘要核对事实和问题清单。
-
-## 成长数据口径
-
-- 出生测量参考国家卫生健康委 `WS/T 800—2022`，适用范围为孕周 24–42 周的单胎出生记录。
-- 出生后整月参考使用 `WS/T 423—2022`，覆盖未满 84 月龄儿童。
-- 数据不足、超出标准范围或不满足适用条件时，界面会显示限制，不补造趋势、百分位或参考位置。
-
-## 数据与协作
-
-- 本地开发时，宝宝档案、照护事件、计划和关注事项保存在浏览器 IndexedDB，`localStorage` 作为降级副本；相册也保存在本地浏览器。
-- Cloudflare 部署使用 Pages、Pages Functions、D1 和 R2，可同步家庭工作区、事件、记录人和照片。
-- 照护事件采用在线优先写入。网络失败时保留可重试状态，不创建后台离线队列；服务端通过 `version` 检测冲突，避免静默覆盖。
-- “清除本地数据”位于设置页，只清除当前设备数据，不删除云端记录。
-- 云端相册保存原始上传文件，目前不会自动清理 EXIF；共享前请移除不希望家庭成员看到的设备或定位元数据。
-
-## 本地运行
+## 快速开始
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
-浏览器打开终端输出的本地地址。Vite 开发环境使用演示账号，不需要先配置 D1 或 R2。
+打开终端显示的本地地址。Vite 开发环境内置演示登录，不需要配置 D1、R2 或模型服务：
+
+- 管理员：`niwa` / `niwaniwa`
+- 只读游客：`baby` / `0729`
+
+## 当前能力
+
+| 工作区 | 已落地能力 |
+| --- | --- |
+| 今天 | 围绕当前宝宝展示喂养、睡眠、尿布、用药四项当日汇总；中间保留家庭相册，右侧集中每日事项；汇总卡可进入当天事实或直接打开对应记录表单。 |
+| 记录 | 统一记录亲喂、瓶喂、睡眠、尿布、用药、体温、体温观察和成长测量；按日期与类型查看事实时间线，并支持详情、纠正和永久作废，保留版本历史与记录人。 |
+| 成长 | 连续看板整合 0–6 岁成长路标、体重/身长（身高）/头围最近测量、个人变化、确定性摘要和父母事项；主图展示 P3/P50/P97，完整曲线提供七条百分位参考线、点详情和等价数据表。 |
+| 健康 | 统一收纳 2026 年版国家免疫规划的 0–6 岁疫苗路标、常见儿科主题、教育病例，以及带 2D 降级的器官 3D 教学。 |
+| 经验 | 按宝宝月龄在推荐、喂养、护理、睡眠、健康观察五类中检索中文原文；首版覆盖 0–36 个月，提供来源标识、缓存、刷新和安全外链。 |
+| 奶爸 AI | 作为全局入口读取已授权的宝宝背景与照护事实，回答阶段问题、解释成长变化、整理就医或照护交接摘要，并把自然语言记录转换为“核对后保存”的事实草稿。 |
+
+界面可在中文与 English 间切换。家庭角色分为管理员、可录入照护者和只读游客；写入权限同时在前端与 API 校验。
+
+## 三条核心工作流
+
+### 1. 低压力记录
+
+亲喂和尿布等完整事实可一步保存；瓶喂、睡眠、用药、体温和成长测量使用只包含必要字段的轻表单。保存后的事件进入同一条 `CareEvent` 事实时间线，可纠正或作废，不做物理删除。
+
+### 2. 可解释成长
+
+成长页把有效事实与国家标准可比较性分开：即使资料不足或超出标准范围，原始测量和个人变化仍可查看；同一指标同日冲突不会被静默择一。出生测量参考 `WS/T 800—2022`，出生后整月参考使用 `WS/T 423—2022`。
+
+### 3. 受约束的 AI 协助
+
+奶爸 AI 支持 OpenAI Responses、OpenAI Chat Completions 和 Anthropic Messages 兼容服务。服务端重新计算确定性结果并执行 guardrails；缺失事实不会自动补全，确认危险信号时会中断普通对话，AI 生成的记录草稿必须经用户核对确认后才能进入事实时间线。
+
+## 数据与部署
+
+```mermaid
+flowchart LR
+  UI["React family workspace / 家庭工作区"] --> FACTS["CareEvent fact ledger / 事实账本"]
+  FACTS --> TODAY["Daily summary / 今日汇总"]
+  FACTS --> GROWTH["Growth dashboard / 成长看板"]
+  FACTS --> BRIEF["Visit and handoff briefs / 就医与交接摘要"]
+  FACTS --> AI["Constrained Naiba AI / 受约束的奶爸 AI"]
+  UI --> LOCAL["IndexedDB + localStorage fallback"]
+  UI --> API["Cloudflare Pages Functions"]
+  API --> D1["D1 workspace and events / 工作区与事件"]
+  API --> R2["R2 original photos / 原始照片"]
+```
+
+- 本地开发默认把宝宝档案、照护事件、计划和关注事项保存在 IndexedDB，`localStorage` 作为降级副本；相册保存在当前浏览器。
+- Cloudflare 部署使用 Pages、Pages Functions、D1 和私有 R2，同步家庭工作区、成员、事件与照片。
+- 照护事件在线优先写入。网络失败时保留当前输入供手动重试，不建立后台离线队列；服务端通过 `version` 暴露冲突，避免静默覆盖。
+- “清除本地数据”只清除当前设备数据，不删除云端记录。云端相册保存原始文件，目前不会自动移除 EXIF。
+- 经验检索只向 Tavily 发送服务端生成的适龄段与分类，不发送宝宝姓名、ID、精确生日、家庭账号或照护记录。
+
+## 配置与部署
+
+完整步骤见 [Cloudflare 部署文档](./docs/cloudflare-deploy.md)，包括：
+
+- D1 migration、R2 binding 与 Pages 部署；
+- 奶爸 AI 的模型、Base URL、协议和 Secret；
+- Tavily 经验检索配置；
+- 管理员、照护者、游客权限验证。
+
+密钥只应放在 `.dev.vars`、`.env.local` 或平台 Secret 中，不要写入源码、`wrangler.jsonc` 或提交记录。
 
 ## 验证
 
@@ -62,22 +89,11 @@ npm run build
 npm run test:visual
 ```
 
-## 可选服务
-
-- Cloudflare 部署、账号权限、D1/R2 配置：[docs/cloudflare-deploy.md](docs/cloudflare-deploy.md)
-- 奶爸 AI 模型与协议配置：[docs/cloudflare-deploy.md#奶爸-ai-模型配置](docs/cloudflare-deploy.md#奶爸-ai-模型配置)
-- 育儿经验检索需要在服务端配置 Tavily；配置方式同样见部署文档。
-
-密钥只应放在 `.dev.vars`、`.env.local` 或平台 Secret 中，不要写入代码、`wrangler.jsonc` 或提交记录。
+单元测试覆盖事实协议、记录工作台、成长标准、年龄策略、经验检索、AI skills、模型协议和 guardrails；Playwright 覆盖桌面与移动端主路径。
 
 ## 项目资料
 
-- 产品边界与术语：[PRODUCT.md](PRODUCT.md) · [CONTEXT.md](CONTEXT.md)
-- MVP 范围与验收：[docs/mvp-spec.md](docs/mvp-spec.md)
-- 儿科双语内容规范：[docs/pediatric-bilingual-spec.md](docs/pediatric-bilingual-spec.md)
-- 长期愿景与研究：[docs/vision.md](docs/vision.md) · [docs/prd.md](docs/prd.md) · [docs/research/parenting-app-moat.md](docs/research/parenting-app-moat.md)
-- 教育素材说明：[prompt/README.md](prompt/README.md)
-
-## 来源与许可
-
-前端交互骨架参考并移植自 [3DCellForge](https://github.com/huangserva/3DCellForge) 提交 `df56957`。BabyForge 保留自身 Git 历史，并已移除细胞领域、在线模型生成 provider 和原项目服务端代码。第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 产品边界与上下文：[PRODUCT.md](./PRODUCT.md) · [CONTEXT.md](./CONTEXT.md)
+- MVP 与内容规范：[docs/mvp-spec.md](./docs/mvp-spec.md) · [docs/pediatric-bilingual-spec.md](./docs/pediatric-bilingual-spec.md)
+- 最新能力设计：[记录工作台](./docs/issue-28-recording-workspace-design.md) · [成长 V2](./docs/issue-40-growth-v2-design.md) · [Today 与全局导航](./docs/issue-39-today-navigation-design.md)
+- 长期愿景与研究：[docs/vision.md](./docs/vision.md) · [docs/prd.md](./docs/prd.md) · [docs/research/parenting-app-moat.md](./docs/research/parenting-app-moat.md)

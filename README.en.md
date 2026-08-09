@@ -1,59 +1,86 @@
 # BabyForge
 
-[简体中文](README.md) · **English**
+[中文](./README.md) | English
 
-BabyForge is a growth and care workspace for families in mainland China with children from birth to age six. It brings daily care, growth measurements, vaccination planning, pediatric education, and fact-based clinical handoffs into one place so family members can keep records that are easy to review and share.
+A growth and care workspace for families in mainland China with children from birth to age six. BabyForge brings “what matters today, what happened, how things change over time, and which facts to take to a professional” into one shared family workspace. Important conclusions come from structured facts and deterministic rules first; AI only explains and assists within explicit boundaries.
 
 Live demo: [babyforge.pages.dev](https://babyforge.pages.dev)
 
-> BabyForge is a research and education prototype. It does not provide diagnoses, health scores, automated triage, medication advice, or dosage recommendations. Confirm vaccination schedules and health concerns with a vaccination clinic or qualified professional.
+> [!IMPORTANT]
+> BabyForge is a baby growth and care workspace. It does not provide diagnoses, health scores, automated triage, prescriptions, or medication dosage advice. Confirm vaccination plans, unusual signs, and health concerns with a vaccination clinic or qualified professional.
 
-## Features
-
-| Area | What it provides |
-| --- | --- |
-| Daily care | Shows age-based priorities, care tasks, and reminders; saves everyday photos in the album; and provides quick access to daily facts. |
-| Unified record center | Records feeding, sleep, diapers, medication, temperature, weight, length/height, and head circumference. The timeline can be filtered by date and type, and saved facts can be reviewed, corrected, or voided. |
-| Growth tracking | Stores birth and follow-up measurements, displays charts, stage guidance, and history, and preserves measurement source, method, age basis, and standard version. |
-| Vaccination plan | Presents doses from birth through age six using China's 2026 National Immunization Program, stores completed vaccination facts, and flags alternative schedules that require clinic confirmation. |
-| Pediatric education | Uses common pediatric topics, anatomy models, and educational cases to explain what caregivers can observe and describe without presenting the material as a diagnosis. |
-| Parenting experience | Searches Chinese-language parenting resources by age and topic. Search requests exclude the baby's name, exact birth date, household account, and care records. |
-| Naiba AI | A restricted beta that uses authorized baby context and care facts to answer questions, organize observations, or prepare records for confirmation. It supports OpenAI Responses, Chat Completions, and Anthropic Messages-compatible services. |
-| Clinical handoff summary | Organizes recent observations, growth measurements, active concerns, and questions into a fact-first summary for a professional conversation. |
-| Household collaboration | Separates administrator, editing caregiver, and read-only guest roles. The interface supports Chinese and English. |
-
-## Typical workflow
-
-1. Sign in and create a baby profile, optionally including birth weight, length, and head circumference.
-2. Open Today to review the current stage, complete care tasks, and save photos.
-3. Use Records to capture feeding, sleep, diaper, temperature, medication, or growth facts.
-4. Review longer-term changes and upcoming items in Growth and Vaccines.
-5. Before speaking with a professional, open the clinical handoff summary and verify the recorded facts and questions.
-
-## Growth reference rules
-
-- Birth measurements use China's National Health Commission standard `WS/T 800—2022`, scoped to singleton births at 24–42 gestational weeks.
-- Completed-month references after birth use `WS/T 423—2022` for children younger than 84 months.
-- When data is insufficient, outside the standard, or ineligible for a reference, BabyForge shows the limitation instead of fabricating a trend, percentile, or reference position.
-
-## Data and collaboration
-
-- In local development, baby profiles, care events, plans, and concerns are stored in browser IndexedDB with a `localStorage` fallback. Album photos also stay in the browser.
-- The optional Cloudflare deployment uses Pages, Pages Functions, D1, and R2 to synchronize household workspaces, events, recorders, and photos.
-- Care events are written online-first. A failed network write remains explicitly retryable; BabyForge does not maintain a background offline queue. Server-side `version` checks prevent silent overwrites.
-- Clear local data is available in Settings. It removes data from the current device only and does not delete cloud records.
-- Cloud albums retain original uploaded files and currently do not strip EXIF metadata. Remove device or location metadata before sharing when needed.
-
-## Run locally
+## Quick start
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. Development mode uses demo accounts and does not require D1 or R2.
+Open the local URL printed by Vite. Local development includes demo login accounts and does not require D1, R2, or a model provider:
 
-## Verify
+- Administrator: `niwa` / `niwaniwa`
+- Read-only guest: `baby` / `0729`
+
+## Current capabilities
+
+| Workspace | What is available |
+| --- | --- |
+| Today | Shows the current baby plus daily feeding, sleep, diaper, and medication summaries; keeps the family album in the center and daily actions in the right rail; summary cards open that day's facts or the matching record form. |
+| Records | Records breastfeeding, bottle feeding, sleep, diapers, medication, temperature, temperature observations, and growth measurements; filters the fact timeline by date and type; supports details, corrections, and permanent voiding while retaining version history and recorder identity. |
+| Growth | Combines a birth-to-six roadmap, latest weight/length (height)/head-circumference measurements, personal changes, deterministic summaries, and parent actions in one continuous dashboard; the main chart shows P3/P50/P97, while the full chart provides seven percentile references, point details, and an equivalent data table. |
+| Health | Brings together the birth-to-six roadmap based on China's 2026 national immunization schedule, common pediatric topics, educational cases, and 3D organ teaching with a 2D fallback. |
+| Experience | Searches Chinese source articles by the baby's age across recommended, feeding, care, sleep, and health-observation categories; the first release covers 0–36 months and includes source labels, caching, refresh controls, and safe external links. |
+| Naiba AI | Available globally with authorized baby context and care facts; answers stage questions, explains growth changes, prepares visit or caregiver handoff briefs, and turns natural-language notes into fact drafts that must be reviewed before saving. |
+
+The interface switches between Chinese and English. Family roles include administrators, caregivers who can record, and read-only guests; write permissions are enforced in both the UI and API.
+
+## Three core workflows
+
+### 1. Low-friction recording
+
+Complete facts such as breastfeeding and diapers can be saved in one step. Bottle feeding, sleep, medication, temperature, and growth measurements use lightweight forms with only the necessary fields. Saved events enter one `CareEvent` fact timeline, where they can be corrected or voided without physical deletion.
+
+### 2. Explainable growth
+
+The growth workspace separates valid facts from national-standard comparability. Raw measurements and personal changes remain visible when profile data is incomplete or the measurement falls outside a standard's scope; conflicting same-day values are never silently resolved. Birth measurements reference `WS/T 800—2022`, while post-birth completed-month references use `WS/T 423—2022`.
+
+### 3. Constrained AI assistance
+
+Naiba AI supports services compatible with OpenAI Responses, OpenAI Chat Completions, and Anthropic Messages. The server recomputes deterministic results and applies guardrails. Missing facts are not silently filled in, confirmed danger signals interrupt ordinary conversation, and AI-generated record drafts require explicit user review and confirmation before entering the fact timeline.
+
+## Data and deployment
+
+```mermaid
+flowchart LR
+  UI["React family workspace / 家庭工作区"] --> FACTS["CareEvent fact ledger / 事实账本"]
+  FACTS --> TODAY["Daily summary / 今日汇总"]
+  FACTS --> GROWTH["Growth dashboard / 成长看板"]
+  FACTS --> BRIEF["Visit and handoff briefs / 就医与交接摘要"]
+  FACTS --> AI["Constrained Naiba AI / 受约束的奶爸 AI"]
+  UI --> LOCAL["IndexedDB + localStorage fallback"]
+  UI --> API["Cloudflare Pages Functions"]
+  API --> D1["D1 workspace and events / 工作区与事件"]
+  API --> R2["R2 original photos / 原始照片"]
+```
+
+- Local development stores baby profiles, care events, plans, and concerns in IndexedDB with `localStorage` as a fallback; the album remains in the current browser.
+- Cloudflare deployment uses Pages, Pages Functions, D1, and private R2 to synchronize family workspaces, members, events, and photos.
+- Care events use online-first writes. Network failures preserve the current input for manual retry instead of creating a background offline queue; server-side `version` checks expose conflicts rather than overwriting silently.
+- “Clear local data” only clears the current device and does not remove cloud records. The cloud album stores original files and does not currently strip EXIF automatically.
+- Experience search sends only a server-generated age band and category to Tavily, never the baby's name, ID, exact birth date, family account, or care records.
+
+## Configuration and deployment
+
+See the [Cloudflare deployment guide](./docs/cloudflare-deploy.md) for:
+
+- D1 migrations, R2 bindings, and Pages deployment;
+- Naiba AI model, base URL, protocol, and secrets;
+- Tavily configuration for Experience search;
+- administrator, caregiver, and guest permission checks.
+
+Keep secrets in `.dev.vars`, `.env.local`, or platform Secrets. Never place them in source code, `wrangler.jsonc`, or commit history.
+
+## Verification
 
 ```powershell
 npm test
@@ -62,22 +89,11 @@ npm run build
 npm run test:visual
 ```
 
-## Optional services
+Unit tests cover the fact protocol, recording workspace, growth standards, age policy, Experience search, AI skills, model protocols, and guardrails. Playwright covers key desktop and mobile flows.
 
-- Cloudflare deployment, account roles, and D1/R2 setup: [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md)
-- Naiba AI model and protocol configuration: [docs/cloudflare-deploy.md#奶爸-ai-模型配置](docs/cloudflare-deploy.md#奶爸-ai-模型配置)
-- Parenting Experience requires a server-side Tavily configuration; the same deployment guide explains the secret setup.
+## Project documents
 
-Keep credentials in `.dev.vars`, `.env.local`, or platform secrets. Never place them in source code, `wrangler.jsonc`, or commits.
-
-## Project documentation
-
-- Product boundaries and terminology: [PRODUCT.md](PRODUCT.md) · [CONTEXT.md](CONTEXT.md)
-- MVP scope and acceptance criteria: [docs/mvp-spec.md](docs/mvp-spec.md)
-- Bilingual pediatric content specification: [docs/pediatric-bilingual-spec.md](docs/pediatric-bilingual-spec.md)
-- Long-term vision and research: [docs/vision.md](docs/vision.md) · [docs/prd.md](docs/prd.md) · [docs/research/parenting-app-moat.md](docs/research/parenting-app-moat.md)
-- Educational asset guide: [prompt/README.md](prompt/README.md)
-
-## Attribution and licenses
-
-The front-end interaction foundation was adapted from [3DCellForge](https://github.com/huangserva/3DCellForge) at commit `df56957`. BabyForge keeps its own Git history and removes the cell-biology domain, online model-generation providers, and original server code. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party licenses.
+- Product boundaries and context: [PRODUCT.md](./PRODUCT.md) · [CONTEXT.md](./CONTEXT.md)
+- MVP and content specification: [docs/mvp-spec.md](./docs/mvp-spec.md) · [docs/pediatric-bilingual-spec.md](./docs/pediatric-bilingual-spec.md)
+- Latest capability designs: [recording workspace](./docs/issue-28-recording-workspace-design.md) · [Growth V2](./docs/issue-40-growth-v2-design.md) · [Today and global navigation](./docs/issue-39-today-navigation-design.md)
+- Long-term vision and research: [docs/vision.md](./docs/vision.md) · [docs/prd.md](./docs/prd.md) · [docs/research/parenting-app-moat.md](./docs/research/parenting-app-moat.md)
