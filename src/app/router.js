@@ -28,6 +28,42 @@ export const RECORD_RETURN_ROUTES = Object.freeze([
   ROUTES.growthHistory,
 ])
 
+export const RECORD_PANEL_TYPES = Object.freeze([
+  'feeding',
+  'sleep',
+  'diaper',
+  'medication',
+  'temperature',
+  'growth',
+  'basic',
+  'illness',
+  'care',
+  'concern',
+  'professional',
+  'questions',
+])
+
+export const RECORD_METRIC_TYPES = Object.freeze(['weight', 'length', 'headCircumference'])
+
+export function buildRecordRoute({ panel, metric, filter, date, event, mode, returnTo } = {}) {
+  const params = new URLSearchParams()
+  if (panel) params.set('panel', panel)
+  if (metric && RECORD_METRIC_TYPES.includes(metric)) params.set('metric', metric)
+  if (filter) params.set('filter', filter)
+  if (date) params.set('date', date)
+  if (event) params.set('event', event)
+  if (mode) params.set('mode', mode)
+  if (returnTo) params.set('returnTo', returnTo)
+  const query = params.toString()
+  return query ? `${ROUTES.records}?${query}` : ROUTES.records
+}
+
+export function resolveRecordReturnTo(value) {
+  if (!value) return null
+  const parsed = parseHashLocation(value)
+  return RECORD_RETURN_ROUTES.includes(parsed.route) ? value : null
+}
+
 const LEGACY_ROUTE_ALIASES = {
   '#/stage': ROUTES.growth,
   '#/stage/newborn': ROUTES.growth,

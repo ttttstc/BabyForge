@@ -96,9 +96,15 @@ function overlapsDay(event, bounds) {
 
 export function getLocalDayEvents(events = [], day = localDayKey(), category = '') {
   const bounds = localDayBounds(day)
+  const categoryGroups = {
+    feeding: new Set(['breastfeeding', 'bottle_feeding']),
+    temperature: new Set(['temperature', 'temperature_observation']),
+    growth: new Set(['growth_measurement']),
+  }
+  const group = categoryGroups[category]
   return events
     .filter(isActive)
-    .filter((event) => !category || categoryOf(event) === category)
+    .filter((event) => !category || (group ? group.has(categoryOf(event)) : categoryOf(event) === category))
     .filter((event) => overlapsDay(event, bounds))
     .sort((a, b) => asTime(b.occurredAt || b.createdAt) - asTime(a.occurredAt || a.createdAt))
 }
@@ -132,7 +138,7 @@ export function getDailyCareSummary(events = [], day = localDayKey()) {
   const diapers = daily.filter((event) => categoryOf(event) === 'diaper')
   const medication = daily.filter((event) => categoryOf(event) === 'medication')
   const temperature = daily.filter((event) => ['temperature', 'temperature_observation'].includes(categoryOf(event)))
-  const growth = daily.filter((event) => categoryOf(event) === 'growth_measurement' && ['weight', 'length'].includes(event.payload?.type))
+  const growth = daily.filter((event) => categoryOf(event) === 'growth_measurement' && ['weight', 'length', 'headCircumference'].includes(event.payload?.type))
   const wet = diapers.filter((event) => ['urine', 'both'].includes(event.payload?.kind)).length
   const stool = diapers.filter((event) => ['stool', 'both'].includes(event.payload?.kind)).length
   const bottleMl = bottle.reduce((sum, event) => sum + (Number(event.payload?.amountMl) || 0), 0)
@@ -173,6 +179,7 @@ export function getDailyCareSummary(events = [], day = localDayKey()) {
       count: growth.length,
       weightCount: growth.filter((event) => event.payload?.type === 'weight').length,
       lengthCount: growth.filter((event) => event.payload?.type === 'length').length,
+      headCircumferenceCount: growth.filter((event) => event.payload?.type === 'headCircumference').length,
       latest: latestEvent(growth),
     },
   }
