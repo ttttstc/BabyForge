@@ -7,7 +7,7 @@
 在线体验：[babyforge.pages.dev](https://babyforge.pages.dev)
 
 > [!IMPORTANT]
-> BabyForge 是研究型教育原型，不提供诊断、健康评分、自动就医分级、处方或药物剂量建议。疫苗安排、异常表现和健康问题请以接种门诊及专业人员意见为准。
+> BabyForge 是宝宝成长与照护工作台，不提供诊断、健康评分、自动就医分级、处方或药物剂量建议。疫苗安排、异常表现和健康问题请以接种门诊及专业人员意见为准。
 
 ## 快速开始
 
@@ -97,9 +97,3 @@ npm run test:visual
 - MVP 与内容规范：[docs/mvp-spec.md](./docs/mvp-spec.md) · [docs/pediatric-bilingual-spec.md](./docs/pediatric-bilingual-spec.md)
 - 最新能力设计：[记录工作台](./docs/issue-28-recording-workspace-design.md) · [成长 V2](./docs/issue-40-growth-v2-design.md) · [Today 与全局导航](./docs/issue-39-today-navigation-design.md)
 - 长期愿景与研究：[docs/vision.md](./docs/vision.md) · [docs/prd.md](./docs/prd.md) · [docs/research/parenting-app-moat.md](./docs/research/parenting-app-moat.md)
-
-## 来源与许可
-
-前端交互骨架参考并移植自 [3DCellForge](https://github.com/huangserva/3DCellForge) 提交 `df56957`。BabyForge 保留自身 Git 历史，并已移除细胞领域、在线模型生成 provider 和原项目服务端代码。
-
-项目采用 [MIT License](./LICENSE)，第三方许可见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。

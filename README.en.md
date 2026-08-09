@@ -7,7 +7,7 @@ A growth and care workspace for families in mainland China with children from bi
 Live demo: [babyforge.pages.dev](https://babyforge.pages.dev)
 
 > [!IMPORTANT]
-> BabyForge is a research and educational prototype. It does not provide diagnoses, health scores, automated triage, prescriptions, or medication dosage advice. Confirm vaccination plans, unusual signs, and health concerns with a vaccination clinic or qualified professional.
+> BabyForge is a baby growth and care workspace. It does not provide diagnoses, health scores, automated triage, prescriptions, or medication dosage advice. Confirm vaccination plans, unusual signs, and health concerns with a vaccination clinic or qualified professional.
 
 ## Quick start
 
@@ -97,9 +97,3 @@ Unit tests cover the fact protocol, recording workspace, growth standards, age p
 - MVP and content specification: [docs/mvp-spec.md](./docs/mvp-spec.md) · [docs/pediatric-bilingual-spec.md](./docs/pediatric-bilingual-spec.md)
 - Latest capability designs: [recording workspace](./docs/issue-28-recording-workspace-design.md) · [Growth V2](./docs/issue-40-growth-v2-design.md) · [Today and global navigation](./docs/issue-39-today-navigation-design.md)
 - Long-term vision and research: [docs/vision.md](./docs/vision.md) · [docs/prd.md](./docs/prd.md) · [docs/research/parenting-app-moat.md](./docs/research/parenting-app-moat.md)
-
-## Attribution and license
-
-The front-end interaction foundation was adapted from [3DCellForge](https://github.com/huangserva/3DCellForge) at commit `df56957`. BabyForge retains its own Git history and has removed the cell-domain features, online model-generation providers, and original server code.
-
-The project is available under the [MIT License](./LICENSE). See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for third-party notices.
