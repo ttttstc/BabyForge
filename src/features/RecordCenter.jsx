@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Activity, ArrowLeft, Baby, Check, ChevronRight, CircleHelp, ClipboardList, Clock3, Droplets, FileText, HeartPulse, Info, Moon, Pill, Plus, Save, ShieldCheck, Thermometer, Utensils, X } from 'lucide-react'
+import { Activity, ArrowLeft, Check, ChevronRight, CircleHelp, ClipboardList, Clock3, Droplets, FileText, HeartPulse, Info, Moon, Pill, Plus, Save, ShieldCheck, Thermometer, Utensils, X } from 'lucide-react'
 import { getAgeDays, getStage, getStageLabel, getStageRangeLabel } from '../domain/baby.js'
 import { assertCareRecordInput, createCareEvent, createConcern as createConcernRecord, correctCareEvent, voidCareEvent } from '../domain/careEvents.js'
-import { getDailyCareSummary, localDayKey } from '../domain/careSummary.js'
+import { eventFacts, eventTitle, formatEventTime, getDailyCareSummary, localDayKey } from '../domain/careSummary.js'
 import { getAdminTasks, getDailyTasks, getStageMilestones, localDateKey } from '../domain/carePlan.js'
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { projectBabyState } from '../domain/babyState.js'
 import { updateBabyProfileState, validateBasicInfoForm } from '../domain/babyProfile.js'
-import { navigate, parseHashLocation, RECORD_RETURN_ROUTES, ROUTES } from '../app/router.js'
+import { navigate, parseHashLocation, RECORD_PANEL_TYPES as RECORD_PANEL_TYPE_LIST, resolveRecordReturnTo, ROUTES, useHashLocation } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
 import { AdminTaskList } from './AdminTaskList.jsx'
@@ -24,16 +24,18 @@ const RECORD_CARDS = [
 ]
 
 const MORE_CARDS = [
-  { id: 'basic', icon: Baby, title: '基础信息', detail: '出生资料、喂养方式、过敏与长期用药' },
   { id: 'illness', icon: Thermometer, title: '生病 / 症状', detail: '只记录看到的表现、时间和测量' },
+  { id: 'professional', icon: FileText, title: '专业记录', detail: '录入医生或专业人员给出的结论' },
   { id: 'care', icon: ClipboardList, title: '照护动作', detail: '今日行动、阶段代办和里程碑' },
   { id: 'concern', icon: HeartPulse, title: '关注事项', detail: '创建、跟进和结束一个关注主题' },
-  { id: 'professional', icon: FileText, title: '专业记录', detail: '录入医生或专业人员给出的结论' },
   { id: 'questions', icon: CircleHelp, title: '咨询问题', detail: '保存下次想向专业人员确认的问题' },
 ]
 
 const P0_PANEL_TYPES = new Set(['feeding', 'sleep', 'diaper', 'medication', 'temperature', 'growth'])
-const RECORD_PANEL_TYPES = new Set([...P0_PANEL_TYPES, ...MORE_CARDS.map((card) => card.id)])
+const MORE_RECORD_CARDS = MORE_CARDS.filter((card) => ['illness', 'professional'].includes(card.id))
+const MORE_MATERIAL_CARDS = MORE_CARDS.filter((card) => ['care', 'concern', 'questions'].includes(card.id))
+const P0_CATEGORIES = new Set(['breastfeeding', 'bottle_feeding', 'sleep', 'diaper', 'medication', 'temperature', 'temperature_observation', 'growth_measurement'])
+const RECORD_PANEL_TYPES = new Set(RECORD_PANEL_TYPE_LIST)
 
 function text(value, locale) {
   return value?.[locale === 'en-US' ? 'en' : 'zh'] || value?.zh || value || ''
@@ -53,24 +55,28 @@ function currentCount(snapshot, stateKey) {
   return snapshot.recent24h.facts.filter((fact) => fact.stateKey === stateKey).length
 }
 
-export function RecordCenter({ state, commitState, onClear, onLogout, readOnly = false, role = 'admin' }) {
+export function RecordCenter({ state, commitState, onLogout, readOnly = false, role = 'admin' }) {
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
-  const initialQuery = new URLSearchParams(window.location.hash.split('?')[1] || '')
-  const returnTo = (() => {
-    const value = initialQuery.get('returnTo')
-    if (!value) return ROUTES.today
-    const route = parseHashLocation(value).route
-    return RECORD_RETURN_ROUTES.includes(route) ? value : ROUTES.today
-  })()
+  const location = useHashLocation()
+  const recordQuery = location.params
+  const legacyReturnTo = resolveRecordReturnTo(recordQuery.get('return') === 'today' ? ROUTES.today : null)
+  const explicitReturnTo = resolveRecordReturnTo(recordQuery.get('returnTo'))
+  const hasReturnContext = Boolean(explicitReturnTo || legacyReturnTo)
+  const returnTo = explicitReturnTo || legacyReturnTo || ROUTES.today
   const returnRoute = parseHashLocation(returnTo).route
   const [activePanel, setActivePanel] = useState(() => {
-    const panel = initialQuery.get('type') || initialQuery.get('panel')
-    return RECORD_PANEL_TYPES.has(panel) || panel === 'illness' ? panel : null
+    if (recordQuery.get('event') && recordQuery.get('mode') === 'detail') return null
+    const panel = recordQuery.get('type') || recordQuery.get('panel')
+    return RECORD_PANEL_TYPES.has(panel) ? panel : null
   })
   const [editingEvent, setEditingEvent] = useState(null)
-  const [selectedDay, setSelectedDay] = useState(() => localDayKey())
-  const [timelineFilter, setTimelineFilter] = useState('')
+  const [eventDetailId, setEventDetailId] = useState(() => recordQuery.get('event') || '')
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const requested = recordQuery.get('date')
+    return requested && requested !== 'today' && /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : localDayKey()
+  })
+  const [timelineFilter, setTimelineFilter] = useState(() => recordQuery.get('filter') || '')
   const [toast, setToast] = useState('')
   const [entryError, setEntryError] = useState('')
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
@@ -80,6 +86,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
   const adminTasks = useMemo(() => getAdminTasks(stage.id, ageDays, state.adminTaskRecords), [stage.id, ageDays, state.adminTaskRecords])
   const milestones = useMemo(() => getStageMilestones(stage.id, state.milestoneRecords), [stage.id, state.milestoneRecords])
   const dailySummary = useMemo(() => getDailyCareSummary(state.careEvents, selectedDay), [state.careEvents, selectedDay])
+  const eventDetail = useMemo(() => eventDetailId ? state.careEvents.find((event) => event.id === eventDetailId) || null : null, [eventDetailId, state.careEvents])
   const recentGrowth = useMemo(() => {
     const latest = {}
     state.careEvents
@@ -93,13 +100,27 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
     setEntryError('')
     setToast('')
     setEditingEvent(null)
+    setEventDetailId('')
     setActivePanel((current) => current === panel ? null : panel)
   }
 
-  function closePanel() {
+  function closePanel({ navigateBack = false } = {}) {
+    setEditingEvent(null)
+    setActivePanel(null)
+    setEventDetailId('')
+    setEntryError('')
+    if (navigateBack && hasReturnContext) navigate(returnTo)
+  }
+
+  function cancelEntry() {
+    closePanel({ navigateBack: true })
+  }
+
+  function showEventDetail(event) {
     setEditingEvent(null)
     setActivePanel(null)
     setEntryError('')
+    setEventDetailId(event?.id || '')
   }
 
   function showSaved(message = isEnglish ? 'Saved' : '已保存') {
@@ -141,7 +162,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
         recordedAt: input.recordedAt || now,
         occurredAt: input.occurredAt || now,
       }
-      if (P0_PANEL_TYPES.has(input.category) || input.category === 'temperature_observation') assertCareRecordInput(recordInput)
+      if (P0_CATEGORIES.has(input.category)) assertCareRecordInput(recordInput)
       const event = createCareEvent(recordInput, { now })
       return { ...current, careEvents: [...(current.careEvents || []), event] }
     }, message)
@@ -154,8 +175,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
         closePanel()
         setSelectedDay(localDayKey())
         setTimelineFilter('')
-        const query = new URLSearchParams(window.location.hash.split('?')[1] || '')
-        if (query.get('return') === 'today') navigate(ROUTES.today)
+        if (hasReturnContext) navigate(returnTo)
       }
       return result
     })
@@ -167,7 +187,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
       if (!actor?.id || !actor?.displayName) throw new Error(isEnglish ? 'Choose a recorder first.' : '请先选择记录人。')
       const now = input.recordedAt || new Date().toISOString()
       const patch = { ...input, babyId: current.baby.id, actor, source: input.source || 'caregiver', recordedAt: now }
-      if (P0_PANEL_TYPES.has(input.category) || input.category === 'temperature_observation') assertCareRecordInput(patch)
+      if (P0_CATEGORIES.has(input.category)) assertCareRecordInput(patch)
       return { ...current, careEvents: correctCareEvent(current.careEvents || [], originalEvent.id, patch, { now }) }
     }, message)
   }
@@ -193,6 +213,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
         : event.category === 'growth_measurement' ? 'growth' : event.category
     setEntryError('')
     setToast('')
+    setEventDetailId('')
     setEditingEvent(event)
     setActivePanel(panel)
   }
@@ -245,7 +266,7 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
 
   return (
     <main className="record-center-page">
-      <Header route={ROUTES.records} baby={state.baby} ageDays={ageDays} onClear={onClear} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => commitState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
+      <Header route={ROUTES.records} baby={state.baby} ageDays={ageDays} onLogout={onLogout} readOnly={readOnly} role={role} locale={locale} careActors={state.careActors} currentRecorderId={state.preferences.currentRecorderId} onRecorderChange={(value) => commitState((current) => ({ ...current, preferences: { ...current.preferences, currentRecorderId: value } }))} syncStatus={state.syncMeta?.status} onSyncRetry={() => window.dispatchEvent(new Event('babyforge:sync-retry'))} />
       <div className="record-center-shell">
         <header className="record-center-hero">
           <div>
@@ -264,10 +285,12 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
           <div className="record-card-grid">{RECORD_CARDS.map((card) => <RecordCard key={card.id} card={card} active={activePanel === card.id} onClick={() => openPanel(card.id)} meta={cardMeta(card.id, state, snapshot, locale, dailySummary)} />)}</div>
         </section>
 
-        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}:${initialQuery.get('metric') || ''}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} initialGrowthType={initialQuery.get('metric')} onSave={saveP0Record} onCancel={closePanel} />}
+        {eventDetail && <RecordEventDetail event={eventDetail} locale={locale} readOnly={readOnly} onClose={cancelEntry} onCorrect={() => editRecord(eventDetail)} onVoid={() => voidRecord(eventDetail)} />}
+
+        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}:${recordQuery.get('metric') || ''}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} initialGrowthType={recordQuery.get('metric')} onSave={saveP0Record} onCancel={cancelEntry} />}
 
         {activePanel && !P0_PANEL_TYPES.has(activePanel) && <section className="record-entry-sheet" data-testid={`record-entry-${activePanel}`}>
-          <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Add a note' : '补充记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={() => setActivePanel(null)} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>
+          <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Add a note' : '补充记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={cancelEntry} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>
           {activePanel === 'basic' && <BasicInfoPanel baby={state.baby} birthMeasurements={state.growthMeasurements} locale={locale} readOnly={readOnly} onSave={updateProfile} />}
           {activePanel === 'illness' && <IllnessPanel locale={locale} readOnly={readOnly} onRecord={recordEvent} />}
         </section>}
@@ -289,18 +312,19 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
           </div>
         </section>
 
-        <DailyCareTimeline events={state.careEvents} locale={locale} selectedDay={selectedDay} filter={timelineFilter} onDayChange={setSelectedDay} onFilterChange={setTimelineFilter} onEdit={editRecord} onVoid={voidRecord} readOnly={readOnly} />
+        <DailyCareTimeline events={state.careEvents} locale={locale} selectedDay={selectedDay} filter={timelineFilter} onDayChange={setSelectedDay} onFilterChange={setTimelineFilter} onDetail={showEventDetail} onEdit={editRecord} onVoid={voidRecord} readOnly={readOnly} />
 
         <section className="record-card-section record-more-section" aria-labelledby="record-more-heading">
           <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More to add' : '还可以记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Other moments worth keeping' : '其他想留下的宝宝情况'}</h2></div><span>{isEnglish ? 'Keep related moments together' : '把相关情况放在一起，更方便回看'}</span></div>
           <div className="record-more-purpose" role="note"><Info size={17} /><p><strong>{isEnglish ? 'What is this for?' : '它有什么用？'}</strong>{isEnglish ? 'Use it for facts that do not fit the six quick cards but may matter later, such as symptom changes, a clinician’s conclusion, an open concern, or a question for the next visit. It keeps the record traceable without changing the health assessment by itself.' : '用来保存不属于六个快捷记录、但之后可能影响照护或就医沟通的事实，例如症状变化、医生结论、待跟进事项或下次想问的问题。它只保留事实，不会自动改变健康判断。'}</p></div>
-          <div className="record-more-grid">{MORE_CARDS.map((card) => { const Icon = card.icon; return <button key={card.id} className={`record-more-card ${activePanel === card.id ? 'active' : ''}`} type="button" onClick={() => openPanel(card.id)}><span className="record-more-icon"><Icon size={17} /></span><span><strong>{isEnglish ? moreTitle(card.id) : card.title}</strong><small>{isEnglish ? moreDetail(card.id) : card.detail}</small></span><ChevronRight size={16} /></button> })}</div>
+          <MoreCardGroup title={isEnglish ? 'More records' : '更多记录'} cards={MORE_RECORD_CARDS} activePanel={activePanel} isEnglish={isEnglish} onOpen={openPanel} />
+          <MoreCardGroup title={isEnglish ? 'More materials' : '更多资料'} cards={MORE_MATERIAL_CARDS} activePanel={activePanel} isEnglish={isEnglish} onOpen={openPanel} />
         </section>
 
-          {activePanel === 'care' && <RecordSubsection title={isEnglish ? 'Care actions' : '照护动作'} onClose={() => setActivePanel(null)}><div className="record-subsection-stack"><CareTaskList tasks={dailyTasks} locale={locale} onUpdate={updateTask} readOnly={readOnly} /><AdminTaskList tasks={adminTasks} locale={locale} onUpdate={updateAdminTask} readOnly={readOnly} /><MilestonePanel milestones={milestones} locale={locale} readOnly={readOnly} onUpdate={updateMilestone} /></div></RecordSubsection>}
-          {activePanel === 'concern' && <RecordSubsection title={isEnglish ? 'Follow-up topics' : '关注事项'} onClose={() => setActivePanel(null)}><ConcernSupport locale={locale} concerns={state.concerns} onCreate={createConcern} onResolve={resolveConcern} readOnly={readOnly} /></RecordSubsection>}
-          {activePanel === 'professional' && <RecordSubsection title={isEnglish ? 'Professional record' : '专业记录'} onClose={() => setActivePanel(null)}><ProfessionalPanel locale={locale} readOnly={readOnly} onRecord={recordEvent} /></RecordSubsection>}
-          {activePanel === 'questions' && <RecordSubsection title={isEnglish ? 'Questions for a clinician' : '咨询问题'} onClose={() => setActivePanel(null)}><QuestionPanel questions={state.questions} locale={locale} readOnly={readOnly} onSave={saveQuestions} /></RecordSubsection>}
+          {activePanel === 'care' && <RecordSubsection title={isEnglish ? 'Care actions' : '照护动作'} onClose={cancelEntry}><div className="record-subsection-stack"><CareTaskList tasks={dailyTasks} locale={locale} onUpdate={updateTask} readOnly={readOnly} /><AdminTaskList tasks={adminTasks} locale={locale} onUpdate={updateAdminTask} readOnly={readOnly} /><MilestonePanel milestones={milestones} locale={locale} readOnly={readOnly} onUpdate={updateMilestone} /></div></RecordSubsection>}
+          {activePanel === 'concern' && <RecordSubsection title={isEnglish ? 'Follow-up topics' : '关注事项'} onClose={cancelEntry}><ConcernSupport locale={locale} concerns={state.concerns} onCreate={createConcern} onResolve={resolveConcern} readOnly={readOnly} /></RecordSubsection>}
+          {activePanel === 'professional' && <RecordSubsection title={isEnglish ? 'Professional record' : '专业记录'} onClose={cancelEntry}><ProfessionalPanel locale={locale} readOnly={readOnly} onRecord={recordEvent} /></RecordSubsection>}
+          {activePanel === 'questions' && <RecordSubsection title={isEnglish ? 'Questions for a clinician' : '咨询问题'} onClose={cancelEntry}><QuestionPanel questions={state.questions} locale={locale} readOnly={readOnly} onSave={saveQuestions} /></RecordSubsection>}
 
         {(toast || entryError) && <div className={`record-toast ${entryError ? 'error' : ''}`} role={entryError ? 'alert' : 'status'}>{entryError || toast}</div>}
         <footer className="record-center-footer"><Clock3 size={15} /><span>{isEnglish ? 'You can switch the recorder in the header; older entries keep their original name.' : '顶部可以切换记录人；之前的记录会保留原记录人。'}</span><button type="button" onClick={() => navigate(ROUTES.summary)}>{isEnglish ? 'Care summary' : '就医摘要'}<ChevronRight size={15} /></button></footer>
@@ -312,6 +336,17 @@ export function RecordCenter({ state, commitState, onClear, onLogout, readOnly =
 function RecordCard({ card, active, onClick, meta }) {
   const Icon = card.icon
   return <button type="button" className={`record-card ${card.tone} ${active ? 'active' : ''}`} onClick={onClick} aria-expanded={active}><span className="record-card-icon"><Icon size={21} /></span><span className="record-card-copy"><small>{card.eyebrow}</small><strong>{card.title}</strong><em>{card.detail}</em>{meta && <b>{meta}</b>}</span><ChevronRight className="record-card-arrow" size={18} /></button>
+}
+
+function MoreCardGroup({ title, cards, activePanel, isEnglish, onOpen }) {
+  return <section className="record-more-group"><div className="record-more-group-heading"><h3>{title}</h3><span>{isEnglish ? 'Secondary entry' : '次级入口'}</span></div><div className="record-more-grid">{cards.map((card) => { const Icon = card.icon; return <button key={card.id} className={`record-more-card ${activePanel === card.id ? 'active' : ''}`} type="button" onClick={() => onOpen(card.id)}><span className="record-more-icon"><Icon size={17} /></span><span><strong>{isEnglish ? moreTitle(card.id) : card.title}</strong><small>{isEnglish ? moreDetail(card.id) : card.detail}</small></span><ChevronRight size={16} /></button> })}</div></section>
+}
+
+function RecordEventDetail({ event, locale, readOnly, onClose, onCorrect, onVoid }) {
+  const isEnglish = locale === 'en-US'
+  const active = event.status === 'active'
+  const canEdit = !readOnly && active && P0_CATEGORIES.has(event.category)
+  return <section className="record-event-detail" data-testid="record-event-detail"><header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Saved fact' : '已保存事实'}</p><h2>{eventTitle(event, locale)}</h2></div><button className="record-close" type="button" onClick={onClose} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header><dl className="record-event-detail-list"><div><dt>{isEnglish ? 'Occurred' : '发生时间'}</dt><dd>{formatEventTime(event, locale)}</dd></div><div><dt>{isEnglish ? 'Recorder' : '记录人'}</dt><dd>{event.actor?.displayName || (isEnglish ? 'Caregiver' : '照护者')}</dd></div><div><dt>{isEnglish ? 'Fact' : '事实'}</dt><dd>{eventFacts(event, locale)}</dd></div><div><dt>{isEnglish ? 'Status' : '状态'}</dt><dd>{event.status === 'voided' ? (isEnglish ? 'Voided' : '已作废') : event.status === 'corrected' ? (isEnglish ? 'Corrected' : '已纠正') : (isEnglish ? 'Active' : '当前有效')}</dd></div></dl>{event.correctedFromId && <p className="record-event-detail-note">{isEnglish ? `Corrected from ${event.correctedFromId}.` : `这条事实纠正自 ${event.correctedFromId}。`}</p>}{canEdit && <div className="record-panel-actions"><button type="button" className="secondary-button compact" onClick={onCorrect}>{isEnglish ? 'Correct fact' : '纠正事实'}</button><button type="button" className="secondary-button compact danger" onClick={onVoid}>{isEnglish ? 'Void fact' : '作废事实'}</button></div>}</section>
 }
 
 function DailySummaryMetric({ label, value, detail }) {

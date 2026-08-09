@@ -1,5 +1,11 @@
 const DAY_MS = 24 * 60 * 60 * 1000
 
+const CATEGORY_GROUPS = Object.freeze({
+  feeding: new Set(['breastfeeding', 'bottle_feeding']),
+  temperature: new Set(['temperature', 'temperature_observation']),
+  growth: new Set(['growth_measurement']),
+})
+
 const EVENT_LABELS = {
   breastfeeding: { zh: '亲喂', en: 'Breastfeed' },
   bottle_feeding: { zh: '瓶喂', en: 'Bottle feed' },
@@ -96,9 +102,10 @@ function overlapsDay(event, bounds) {
 
 export function getLocalDayEvents(events = [], day = localDayKey(), category = '') {
   const bounds = localDayBounds(day)
+  const group = CATEGORY_GROUPS[category]
   return events
     .filter(isActive)
-    .filter((event) => !category || categoryOf(event) === category)
+    .filter((event) => !category || (group ? group.has(categoryOf(event)) : categoryOf(event) === category))
     .filter((event) => overlapsDay(event, bounds))
     .sort((a, b) => asTime(b.occurredAt || b.createdAt) - asTime(a.occurredAt || a.createdAt))
 }
@@ -126,13 +133,13 @@ export function formatDurationMinutes(minutes = 0, locale = 'zh-CN') {
 export function getDailyCareSummary(events = [], day = localDayKey()) {
   const bounds = localDayBounds(day)
   const daily = getLocalDayEvents(events, day)
-  const feeding = daily.filter((event) => ['breastfeeding', 'bottle_feeding'].includes(categoryOf(event)))
+  const feeding = daily.filter((event) => CATEGORY_GROUPS.feeding.has(categoryOf(event)))
   const bottle = feeding.filter((event) => categoryOf(event) === 'bottle_feeding')
   const sleep = daily.filter((event) => categoryOf(event) === 'sleep')
   const diapers = daily.filter((event) => categoryOf(event) === 'diaper')
   const medication = daily.filter((event) => categoryOf(event) === 'medication')
-  const temperature = daily.filter((event) => ['temperature', 'temperature_observation'].includes(categoryOf(event)))
-  const growth = daily.filter((event) => categoryOf(event) === 'growth_measurement' && ['weight', 'length'].includes(event.payload?.type))
+  const temperature = daily.filter((event) => CATEGORY_GROUPS.temperature.has(categoryOf(event)))
+  const growth = daily.filter((event) => CATEGORY_GROUPS.growth.has(categoryOf(event)) && ['weight', 'length', 'headCircumference'].includes(event.payload?.type))
   const wet = diapers.filter((event) => ['urine', 'both'].includes(event.payload?.kind)).length
   const stool = diapers.filter((event) => ['stool', 'both'].includes(event.payload?.kind)).length
   const bottleMl = bottle.reduce((sum, event) => sum + (Number(event.payload?.amountMl) || 0), 0)
@@ -173,6 +180,7 @@ export function getDailyCareSummary(events = [], day = localDayKey()) {
       count: growth.length,
       weightCount: growth.filter((event) => event.payload?.type === 'weight').length,
       lengthCount: growth.filter((event) => event.payload?.type === 'length').length,
+      headCircumferenceCount: growth.filter((event) => event.payload?.type === 'headCircumference').length,
       latest: latestEvent(growth),
     },
   }

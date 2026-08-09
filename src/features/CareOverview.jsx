@@ -1,7 +1,7 @@
-import { Activity, AlertCircle, Baby, Clock3, Droplets, Moon, Pill } from 'lucide-react'
+import { Activity, AlertCircle, Baby, Clock3, Droplets, Moon, Pill, Plus } from 'lucide-react'
 import { eventFacts, eventTitle, formatDurationMinutes, formatEventTime, getDailyCareSummary, getRecentCareEvents, localDayKey } from '../domain/careSummary.js'
 import { projectBabyState } from '../domain/babyState.js'
-import { navigate, ROUTES } from '../app/router.js'
+import { buildRecordRoute, navigate, ROUTES } from '../app/router.js'
 
 function text(value, locale) {
   return value?.[locale === 'en-US' ? 'en' : 'zh'] || value?.zh || value || ''
@@ -40,5 +40,6 @@ function CareStateSummary({ snapshot, isEnglish }) {
 }
 
 function Metric({ type, icon: Icon, label, value, detail }) {
-  return <button type="button" className="care-metric" onClick={() => navigate(`${ROUTES.records}?type=${type}&return=today`)} aria-label={label}><Icon size={15} /><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</button>
+  const panel = type === 'feeding' || type === 'sleep' || type === 'diaper' || type === 'medication' ? type : null
+  return <article className="care-metric"><button type="button" className="care-metric-main" onClick={() => navigate(buildRecordRoute({ filter: type, date: 'today', returnTo: ROUTES.today }))} aria-label={label}><Icon size={15} /><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</button><button type="button" className="care-metric-add" onClick={() => navigate(buildRecordRoute({ panel, returnTo: ROUTES.today }))} aria-label={`${label} +`}> <Plus size={15} /><span>＋</span></button></article>
 }

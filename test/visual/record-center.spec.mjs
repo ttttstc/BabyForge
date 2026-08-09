@@ -28,7 +28,9 @@ test('record center keeps six P0 facts and secondary records together', async ({
   await expect(page.getByRole('heading', { name: '记录中心' })).toBeVisible()
   await expect(page.getByText('选择最符合宝宝情况的一项')).toBeVisible()
 
-  await page.locator('.record-more-card').filter({ hasText: '基础信息' }).click()
+  await expect(page.locator('.record-more-card').filter({ hasText: '基础信息' })).toHaveCount(0)
+  await page.goto('/#/today')
+  await page.goto('/#/records?panel=basic')
   await expect(page.getByTestId('record-entry-basic')).toBeVisible()
   await page.getByLabel('宝宝昵称').fill('小舟-更新')
   await page.getByRole('button', { name: '保存事实' }).click()
@@ -41,8 +43,9 @@ test('record center keeps six P0 facts and secondary records together', async ({
   await expect(page.getByText('配方奶 60 mL', { exact: true }).first()).toBeVisible()
 
   await page.locator('.record-card').filter({ hasText: '睡眠' }).click()
-  await page.getByLabel('开始时间').fill('2026-08-07T08:00')
-  await page.getByLabel('结束时间').fill('2026-08-07T09:15')
+  const today = dateDaysAgo(0)
+  await page.getByLabel('开始时间').fill(`${today}T08:00`)
+  await page.getByLabel('结束时间').fill(`${today}T09:15`)
   await page.getByRole('button', { name: '保存事实' }).click()
   await expect(page.getByText('睡眠 1小时15分', { exact: true }).first()).toBeVisible()
 
@@ -82,7 +85,7 @@ test('record center keeps six P0 facts and secondary records together', async ({
   await page.getByRole('button', { name: /咨询问题/ }).click()
   await page.getByLabel('希望咨询的问题').fill('需要复测胆红素吗？\n吃奶量如何记录？')
   await page.getByRole('button', { name: '保存事实' }).click()
-  await expect(page.getByText('咨询问题已保存')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('babyforge:workspace:niwa') || '{}').questions)).toEqual(['需要复测胆红素吗？', '吃奶量如何记录？'])
 
   await page.getByRole('button', { name: /关注事项/ }).click()
   await page.getByTestId('concern-support').getByRole('button', { name: /发现宝宝有变化/ }).click()

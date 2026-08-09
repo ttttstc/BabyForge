@@ -34,6 +34,7 @@ test('P0 care record validation keeps complete sleep intervals and numeric facts
   assert.equal(validateCareRecordInput({ category: 'temperature', occurredAt: '2026-08-07T10:00:00Z', payload: { value: 36.5, unit: '°C', method: 'axillary' } }).valid, true)
   assert.equal(validateCareRecordInput({ category: 'temperature', occurredAt: '2026-08-07T10:00:00Z', payload: { value: '', unit: '°C', method: 'axillary' } }).errors[0].field, 'payload.value')
   assert.equal(validateCareRecordInput({ category: 'growth_measurement', occurredAt: '2026-08-07T10:00:00Z', payload: { type: 'weight', value: 3.5, unit: 'kg', measuredAt: '2026-08-07' } }).valid, true)
+  assert.equal(validateCareRecordInput({ category: 'growth_measurement', occurredAt: '2026-08-07T10:00:00Z', payload: { type: 'headCircumference', value: 35, unit: 'cm', measuredAt: '2026-08-07' } }).valid, true)
   assert.throws(() => assertCareRecordInput({ category: 'bottle_feeding', occurredAt: '2026-08-07T10:00:00Z', payload: { milkType: 'formula', amountMl: '' } }), /实际摄入量/)
   assert.throws(() => assertCareRecordInput({ category: 'diaper', occurredAt: '2026-08-07T10:00:00Z', payload: { kind: 'invalid' } }), /尿布类型/)
 })
@@ -47,6 +48,7 @@ test('daily care summary uses local calendar day and clips sleep across midnight
     event('sleep', localIso(2026, 8, 6, 23, 30), { endedAt: localIso(2026, 8, 7, 0, 30) }),
     event('diaper', localIso(2026, 8, 7, 12, 0), { kind: 'both' }),
     event('medication', localIso(2026, 8, 7, 13, 0), { medicationName: '维生素 D', amount: '1', unit: '滴' }),
+    event('growth_measurement', localIso(2026, 8, 7, 14, 0), { type: 'headCircumference', value: 35, unit: 'cm', measuredAt: '2026-08-07' }),
     event('diaper', localIso(2026, 8, 7, 14, 0), { kind: 'urine' }, { status: 'voided' }),
   ]
   const summary = getDailyCareSummary(events, selectedDay)
@@ -57,6 +59,8 @@ test('daily care summary uses local calendar day and clips sleep across midnight
   assert.equal(summary.diaper.wetCount, 1)
   assert.equal(summary.diaper.stoolCount, 1)
   assert.equal(summary.medication.count, 1)
+  assert.equal(summary.growth.count, 1)
+  assert.equal(summary.growth.headCircumferenceCount, 1)
   assert.equal(getDailyCareSummary(events, previousDay).sleep.minutes, 30)
   assert.equal(getLocalDayEvents(events, selectedDay).some((item) => item.status === 'voided'), false)
 })

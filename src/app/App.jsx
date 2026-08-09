@@ -374,7 +374,7 @@ export function App() {
   }
 
   if (route === ROUTES.records) {
-    return <RecordCenter state={state} commitState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <RecordCenter state={state} commitState={commitState} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.pediatric) {

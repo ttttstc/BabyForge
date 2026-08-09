@@ -48,7 +48,6 @@ test('parent creates a profile and sees the newborn workspace', async ({ page })
 
   await expect(page).toHaveURL(/#\/today$/)
   await expect(page.getByText('出生后 6 天').first()).toBeVisible()
-  await expect(page.getByText('新生儿早期', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('男孩', { exact: true }).first()).toBeVisible()
   await expect(page.getByTestId('care-task-list').locator('[data-task-id]')).toHaveCount(3)
   await expect(page.getByTestId('baby-album')).toBeVisible()
@@ -141,7 +140,7 @@ test('growth dashboard exposes the national chart, stage guide, and history rout
   await page.getByRole('button', { name: '成长', exact: true }).click()
   await expect(page.getByText('成长数据', { exact: true })).toBeVisible()
   await expect(page.getByTestId('growth-roadmap')).toBeVisible()
-  await page.locator('.growth-metric-card').filter({ hasText: '身长' }).getByRole('button').click()
+  await page.locator('.growth-metric-card').filter({ hasText: '身长' }).locator('.growth-metric-card-button').click()
   await expect(page).toHaveURL(/#\/growth\/chart\?metric=length$/)
   await expect(page.locator('.growth-chart-card .growth-switcher button.active')).toHaveText('身长')
   await page.goto('/#/growth')
@@ -178,8 +177,7 @@ test('birth measurements persist through onboarding and growth profile settings'
   await expect(page.locator('.growth-history-card')).toContainText('出生记录')
   await expect(page.locator('.growth-history-card')).toContainText('经后年龄')
 
-  await page.getByRole('button', { name: '记录', exact: true }).click()
-  await page.locator('.record-more-card').filter({ hasText: '基础信息' }).click()
+  await page.goto('/#/records?panel=basic')
   await expect(page.getByLabel('年龄口径')).toHaveCount(0)
   await page.getByLabel('出生孕周').fill('34')
   await page.getByLabel('体重').fill('2.1')
@@ -198,7 +196,8 @@ test('birth measurements persist through onboarding and growth profile settings'
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '作废 体重 2.4 kg' }).click()
   await expect(page.getByRole('button', { name: '作废 体重 2.4 kg' })).toHaveCount(0)
-  await page.locator('.record-more-card').filter({ hasText: '基础信息' }).click()
+  await page.goto('/#/today')
+  await page.goto('/#/records?panel=basic')
   await page.getByTestId('record-entry-basic').getByLabel('体重（kg）').fill('')
   await page.getByRole('button', { name: '保存事实' }).click()
   await page.getByRole('button', { name: '成长', exact: true }).click()
@@ -227,8 +226,7 @@ test('guest account can view the workspace but cannot edit records', async ({ pa
   await expect(page.getByTestId('care-task-list').locator('button').first()).toBeDisabled()
   await page.getByRole('button', { name: '成长', exact: true }).click()
   await expect(page.getByRole('button', { name: '去记录中心录入成长测量' })).toBeVisible()
-  await page.getByRole('button', { name: '记录', exact: true }).click()
-  await page.locator('.record-more-card').filter({ hasText: '基础信息' }).click()
+  await page.goto('/#/records?panel=basic')
   await expect(page.getByLabel('年龄口径')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '保存事实' })).toHaveCount(0)
 })
@@ -250,17 +248,14 @@ test('today album does not depend on WebGL', async ({ page }) => {
 
 test('common pediatric education advances through anatomy steps and records raw facts', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '病例', exact: true }).click()
+  await page.getByRole('button', { name: '儿科病', exact: true }).click()
 
-  await expect(page.getByText('呼吸道症状', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('使用说明', { exact: true })).toBeVisible()
-  await expect(page.getByText('先看日常状态', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '下一步' }).click()
-  await expect(page.getByText('认识肺和气道', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '下一步' }).click()
-  await expect(page.getByText('记录可见事实', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '快速查疾病，看懂发生在哪里，知道该观察什么', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: /普通感冒/ }).first().click()
+  await expect(page.locator('.disease-selected').getByRole('heading', { name: '普通感冒', exact: true })).toBeVisible()
+  await expect(page.getByText('家长重点观察什么', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: /去记录中心录入这次观察/ }).click()
+  await page.getByRole('button', { name: '去记录中心整理就医前事实' }).click()
   await expect(page.getByTestId('record-entry-illness')).toBeVisible()
   await page.getByLabel('发热').check()
   await page.getByLabel('咳嗽').check()
@@ -276,24 +271,19 @@ test('common pediatric education advances through anatomy steps and records raw 
 
 test('pediatric library exposes all anatomy models and opens a concrete case guide', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '病例', exact: true }).click()
+  await page.getByRole('button', { name: '儿科病', exact: true }).click()
 
   await page.getByRole('tab', { name: /器官模型/ }).click()
   await expect(page.locator('.pediatric-organ-list .pediatric-disease-item')).toHaveCount(9)
   await page.getByRole('button', { name: /大脑.*神经系统/ }).click()
-  await expect(page.getByRole('heading', { name: '大脑', exact: true })).toBeVisible()
+  await expect(page.getByLabel('大脑 3D viewer')).toBeVisible()
 
   await page.getByRole('tab', { name: /疾病分类/ }).click()
-  await page.getByRole('button', { name: /肝胆与黄疸/ }).click()
-  await expect(page.getByRole('heading', { name: '肝脏', exact: true })).toBeVisible()
-  await expect(page.getByText('新生儿黄疸（常见现象）', { exact: true })).toBeVisible()
-
-  await page.getByRole('button', { name: /呼吸道症状/ }).click()
-  await page.getByRole('button', { name: /普通感冒（急性上呼吸道感染）/ }).click()
-  const dialog = page.getByRole('dialog', { name: /普通感冒/ })
-  await expect(dialog).toBeVisible()
-  await expect(dialog.getByText('病例情境')).toBeVisible()
-  await expect(dialog.getByText('common-cold.webp')).toBeVisible()
+  await expect(page.locator('.disease-selected').getByRole('heading', { name: '新生儿黄疸', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: /呼吸系统/ }).first().click()
+  await page.getByRole('button', { name: /普通感冒/ }).first().click()
+  await expect(page.locator('.disease-selected').getByRole('heading', { name: '普通感冒', exact: true })).toBeVisible()
+  await expect(page.locator('.disease-selected').getByText('为什么会发生', { exact: true })).toBeVisible()
 })
 
 test('settings switches the persisted interface language', async ({ page }) => {
@@ -302,11 +292,11 @@ test('settings switches the persisted interface language', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '设置' })).toBeVisible()
   await page.locator('input[name="locale"][value="en-US"]').check()
   await page.getByRole('button', { name: 'Done' }).click()
-  await expect(page.getByRole('button', { name: 'Cases', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Cases', exact: true }).click()
-  await expect(page.getByText('Respiratory symptoms', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Conditions', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Conditions', exact: true }).click()
+  await expect(page.locator('.disease-selected').getByRole('heading', { name: 'Newborn jaundice', exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Cases', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Conditions', exact: true })).toBeVisible()
 })
 
 test('settings edits baby birth profile and recalculates age-based plans', async ({ page }) => {
@@ -322,12 +312,25 @@ test('settings edits baby birth profile and recalculates age-based plans', async
 
   await page.getByRole('button', { name: '完成设置' }).click()
   await page.getByRole('button', { name: '成长', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '婴儿早期', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /婴儿早期/ })).toBeVisible()
   await expect(page.getByTestId('growth-roadmap')).toContainText('婴儿早期')
 })
 
 test('clearing local data returns to onboarding', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 800 })
   await createBaby(page)
+  await expect(page.getByRole('button', { name: '清除本地数据' })).toHaveCount(0)
+  await expect(page.locator('.header-actions .icon-button')).toHaveCount(3)
+  await expect.poll(() => page.locator('.header-actions .icon-button').evaluateAll((buttons) => buttons.every((button) => getComputedStyle(button).whiteSpace === 'nowrap'))).toBe(true)
+  await expect.poll(() => page.locator('.header-actions .icon-button').evaluateAll((buttons) => buttons.every((button) => button.textContent.trim() === ''))).toBe(true)
+  await expect.poll(() => page.locator('.header-actions .icon-button').evaluateAll((buttons) => buttons.every((button) => {
+    const buttonBox = button.getBoundingClientRect()
+    const iconBox = button.querySelector('svg')?.getBoundingClientRect()
+    return iconBox
+      && Math.abs(buttonBox.left + buttonBox.width / 2 - iconBox.left - iconBox.width / 2) < 0.5
+      && Math.abs(buttonBox.top + buttonBox.height / 2 - iconBox.top - iconBox.height / 2) < 0.5
+  }))).toBe(true)
+  await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: '清除本地数据' }).click()
   await expect(page).toHaveURL(/#\/onboarding$/)
   await expect(page.getByRole('heading', { name: '先从宝宝档案开始' })).toBeVisible()
