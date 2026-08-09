@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildBabyContextSummary } from '../src/domain/naibaContext.js'
-import { buildCaregiverHandoff, buildDailyGrowthPlan, buildDetailedCareAnalysis, buildVisitBrief, executeNaibaSkill, parseMedicalReportText } from '../src/domain/naibaCapabilities.js'
+import { buildCaregiverHandoff, buildDailyGrowthPlan, buildDetailedCareAnalysis, buildGrowthInterpretation, buildVisitBrief, executeNaibaSkill, parseMedicalReportText } from '../src/domain/naibaCapabilities.js'
 import { createCareEvent, DEFAULT_RECORDERS } from '../src/domain/careEvents.js'
 import { NAIBA_SKILLS } from '../src/domain/naibaSkills.js'
 
@@ -34,6 +34,25 @@ test('detailed analysis and growth plan never fabricate missing trends', () => {
   const plan = buildDailyGrowthPlan({ baby, events, now })
   assert.ok(plan.plans.length > 0 && plan.plans.length <= 3)
   assert.ok(plan.plans.every((item) => item.reason && item.action && item.completion))
+})
+
+test('growth interpretation recomputes current facts and withholds conflict deltas', () => {
+  const result = buildGrowthInterpretation({
+    baby: { ...baby, sex: 'male' },
+    metric: 'weight',
+    measurements: [
+      { id: 'old-weight', type: 'weight', value: 3.2, unit: 'kg', measuredAt: '2026-08-05', status: 'active' },
+      { id: 'replacement-weight', type: 'weight', value: 3.5, unit: 'kg', measuredAt: '2026-08-06', status: 'active', correctedFromId: 'old-weight' },
+      { id: 'conflict-a', type: 'weight', value: 3.6, unit: 'kg', measuredAt: '2026-08-07', status: 'active' },
+      { id: 'conflict-b', type: 'weight', value: 3.8, unit: 'kg', measuredAt: '2026-08-07', status: 'active' },
+    ],
+    now,
+  })
+  assert.equal(result.status, 'conflicted')
+  assert.equal(result.latest.conflicted, true)
+  assert.equal(result.delta, null)
+  assert.deepEqual(result.measurements.map((item) => item.id), ['conflict-a', 'conflict-b', 'replacement-weight'])
+  assert.match(result.summary, /核对/)
 })
 
 test('report parser preserves uncertainty and only extracts checkable fields', () => {

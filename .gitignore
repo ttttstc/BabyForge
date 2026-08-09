@@ -1,6 +1,8 @@
 node_modules/
 .wrangler/
 _worker.bundle
+.worker.bundle
+.wrangler-meta.json
 dist/
 test-results/
 playwright-report/

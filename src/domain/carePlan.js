@@ -241,8 +241,8 @@ export const NEWBORN_ADMIN_TASKS = [
 ]
 
 export const GROWTH_TYPES = [
-  { id: 'weight', label: { zh: '体重', en: 'Weight' }, unit: 'kg', min: 0, max: 20 },
-  { id: 'length', label: { zh: '身长', en: 'Length' }, unit: 'cm', min: 0, max: 100 },
+  { id: 'weight', label: { zh: '体重', en: 'Weight' }, unit: 'kg', min: 0, max: 40 },
+  { id: 'length', label: { zh: '身长', en: 'Length' }, unit: 'cm', min: 0, max: 160 },
   { id: 'headCircumference', label: { zh: '头围', en: 'Head circumference' }, unit: 'cm', min: 0, max: 70 },
 ]
 

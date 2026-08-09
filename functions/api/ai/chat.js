@@ -63,12 +63,17 @@ function localAnswer(message, recommendation = {}, decision = null) {
 async function loadAuthorizedContext(env, accountId, babyId) {
   const baby = await accessibleBaby(env, accountId, babyId)
   if (!baby || baby.status === 'detached') return null
-  const [rows, planRows, concernRows] = await Promise.all([
+  const [rows, growthRows, planRows, concernRows] = await Promise.all([
     env.DB.prepare(`
       SELECT * FROM care_events
       WHERE baby_id = ? AND status != 'voided'
       ORDER BY occurred_at DESC, created_at DESC
       LIMIT 60
+    `).bind(baby.id).all(),
+    env.DB.prepare(`
+      SELECT * FROM care_events
+      WHERE baby_id = ? AND category = 'growth_measurement' AND status != 'voided'
+      ORDER BY occurred_at ASC, created_at ASC
     `).bind(baby.id).all(),
     env.DB.prepare('SELECT * FROM care_plan_items WHERE baby_id = ? ORDER BY due_at, created_at').bind(baby.id).all(),
     env.DB.prepare('SELECT * FROM concerns WHERE baby_id = ? ORDER BY updated_at').bind(baby.id).all(),
@@ -76,6 +81,7 @@ async function loadAuthorizedContext(env, accountId, babyId) {
   return {
     baby,
     careEvents: (rows.results || []).map(eventFromRow).filter(Boolean).reverse(),
+    growthEvents: (growthRows.results || []).map(eventFromRow).filter(Boolean),
     carePlanItems: (planRows.results || []).map(planFromRow).filter(Boolean),
     concerns: (concernRows.results || []).map(concernFromRow).filter(Boolean),
   }
@@ -188,6 +194,7 @@ export async function onRequestPost({ request, env }) {
 
   const babyId = String(body?.baby?.id || '').trim()
   if (!babyId) return json({ error: '缺少宝宝档案编号' }, 422)
+  const growthMetric = ['weight', 'length', 'headCircumference'].includes(String(body?.growthMetric || '')) ? String(body.growthMetric) : null
   const context = await loadAuthorizedContext(env, session.accountId, babyId)
   if (!context) return json({ error: '无权访问该宝宝档案' }, 403)
   const conversation = await openConversation(env, session.accountId, babyId, String(body?.conversationId || '').trim())
@@ -228,6 +235,7 @@ export async function onRequestPost({ request, env }) {
       skillId,
       baby: context.baby,
       careEvents: context.careEvents,
+      growthEvents: context.growthEvents,
       carePlanItems: context.carePlanItems,
       concerns: context.concerns,
       questions: [],
@@ -240,6 +248,7 @@ export async function onRequestPost({ request, env }) {
       baseURL: llmConfig.baseUrl,
       protocol: llmConfig.protocol,
       useResponses: llmConfig.useResponses,
+      growthMetric,
     })
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)
     return respond([{ type: 'message', delta: output }, { type: 'done' }], output)

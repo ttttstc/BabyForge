@@ -145,6 +145,46 @@ function validateMeasurement(measurement, baby, now = new Date()) {
   return errors
 }
 
+function isActiveMeasurement(measurement) {
+  return measurement?.status !== 'voided' && measurement?.status !== 'corrected'
+}
+
+function currentMeasurements(measurements = []) {
+  const list = Array.isArray(measurements) ? measurements : []
+  const superseded = new Set(list.map((item) => item?.correctedFromId).filter(Boolean))
+  return list.filter((item) => isActiveMeasurement(item) && item?.id && !superseded.has(item.id))
+}
+
+/**
+ * A valid fact is deliberately less strict than a standard comparison. Missing
+ * sex only prevents choosing a national reference package; it does not erase a
+ * positive, dated measurement from the baby's history.
+ */
+export function isValidGrowthMeasurement(measurement, baby, options = {}) {
+  if (!measurement || !isActiveMeasurement(measurement)) return false
+  const errors = validateMeasurement(measurement, baby, options.now || new Date())
+  return errors.filter((error) => error !== '缺少用于选择标准的宝宝性别').length === 0
+}
+
+export function getGrowthMeasurementConflictIds(measurements = [], baby, options = {}) {
+  const valid = currentMeasurements(measurements)
+    .filter((item) => isValidGrowthMeasurement(item, baby, options))
+  const conflicts = new Set()
+  const byDate = new Map()
+  for (const item of valid) {
+    if (!item?.measuredAt) continue
+    const key = `${item.type}:${String(item.measuredAt || '').slice(0, 10)}`
+    const bucket = byDate.get(key) || []
+    bucket.push(item)
+    byDate.set(key, bucket)
+  }
+  for (const bucket of byDate.values()) {
+    const values = new Set(bucket.map((item) => measurementValue(item)).filter((value) => value !== null))
+    if (values.size > 1) bucket.forEach((item) => conflicts.add(item.id))
+  }
+  return conflicts
+}
+
 export function validateGrowthMeasurement(measurement, baby, options = {}) {
   return validateMeasurement(measurement, baby, options.now || new Date())
 }
@@ -349,12 +389,19 @@ export function getGrowthReferenceSeries({ baby, type = 'weight', startMonth = 0
 }
 
 export function getGrowthChartModel({ baby, measurements = [], type = 'weight', startMonth = 0, endMonth = 3, now = new Date() } = {}) {
-  const evaluations = (Array.isArray(measurements) ? measurements : [])
-    .filter((item) => item?.type === type && item?.status !== 'voided')
-    .map((item) => ({ ...item, evaluation: evaluateGrowthMeasurement(item, baby, measurements, { now }) }))
+  const current = currentMeasurements(measurements)
+  const conflictIds = getGrowthMeasurementConflictIds(current, baby, { now })
+  const evaluations = current
+    .filter((item) => item?.type === type)
+    .map((item) => ({
+      ...item,
+      evaluation: evaluateGrowthMeasurement(item, baby, measurements, { now }),
+      factValid: isValidGrowthMeasurement(item, baby, { now }),
+      conflicted: conflictIds.has(item.id),
+    }))
   const points = evaluations
-    .filter((item) => item.evaluation?.standardPackageId === WS_T_423_2022.metadata.id && item.evaluation?.dataQuality === 'sufficient' && Number.isFinite(Number(item.evaluation.ageMonths)))
-    .map((item) => ({ id: item.id, month: Number(item.evaluation.ageMonths), value: Number(item.value), measuredAt: String(item.measuredAt).slice(0, 10), evaluation: item.evaluation }))
+    .filter((item) => item.factValid && item.source !== 'birth_record' && item.evaluation?.standardPackageId !== WS_T_800_2022.metadata.id && Number.isFinite(Number(item.evaluation.ageMonths)))
+    .map((item) => ({ id: item.id, month: Number(item.evaluation.ageMonths), value: Number(item.value), unit: item.unit, measuredAt: String(item.measuredAt).slice(0, 10), source: item.source, evaluation: item.evaluation, conflicted: item.conflicted, quality: item.evaluation?.dataQuality === 'sufficient' ? 'standard' : 'fact-only' }))
     .filter((point) => point.month >= startMonth && point.month <= endMonth && Number.isFinite(point.value))
     .sort((a, b) => a.month - b.month || a.measuredAt.localeCompare(b.measuredAt))
   const birthPoint = evaluations
@@ -367,6 +414,7 @@ export function getGrowthChartModel({ baby, measurements = [], type = 'weight', 
     range: { startMonth, endMonth },
     reference: getGrowthReferenceSeries({ baby, type, startMonth, endMonth }),
     points,
+    conflictIds: [...conflictIds],
     birthPoint: birthPoint ? { id: birthPoint.id, value: Number(birthPoint.value), measuredAt: String(birthPoint.measuredAt).slice(0, 10), evaluation: birthPoint.evaluation } : null,
     standard: { id: WS_T_423_2022.metadata.id, version: WS_T_423_2022.metadata.version, sourceUrl: WS_T_423_2022.metadata.sourceUrl },
   }

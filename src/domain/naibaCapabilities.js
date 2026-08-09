@@ -8,6 +8,7 @@ import { searchApprovedKnowledge } from './knowledgePack.js'
 import { buildBabyContextSummary } from './naibaContext.js'
 import { runDecisionUnit } from './decisionKernel.js'
 import { resolveAgeContext } from './agePolicy.js'
+import { evaluateGrowthMeasurement, getGrowthMeasurementConflictIds, isValidGrowthMeasurement } from './growth.js'
 
 const HOUR_MS = 3_600_000
 
@@ -106,17 +107,54 @@ export function buildDailyGrowthPlan({ baby, events = [], concerns = [], carePla
   return { status: 'ready', date: new Date(now).toISOString().slice(0, 10), plans: plans.slice(0, 3), source: Number.isFinite(ageDays) && ageDays <= 28 ? 'NHC early-development guidance + BabyForge facts' : 'BabyForge stage plan + BabyForge facts', usedFacts: context.recentKeyFacts }
 }
 
-export function buildGrowthInterpretation({ baby, events = [], locale = 'zh-CN' } = {}) {
+export function buildGrowthInterpretation({ baby, events = [], measurements = null, metric = null, type = null, locale = 'zh-CN', now = new Date() } = {}) {
   const isEnglish = locale === 'en-US'
-  const measurements = events.filter((event) => event.status === 'active' && event.category === 'growth_measurement').sort((a, b) => asTime(b.occurredAt) - asTime(a.occurredAt))
-  if (!measurements.length) return { status: 'needs_information', summary: isEnglish ? 'No growth measurement is available.' : '还没有成长测量记录。', measurements: [] }
-  const latest = measurements[0]
-  const evaluation = latest.payload?.evaluation || latest.payload?.reference || null
+  const source = Array.isArray(measurements)
+    ? measurements
+    : events.filter((event) => event?.status !== 'voided' && event?.category === 'growth_measurement').map((event) => ({
+      id: event.id,
+      type: event.payload?.type,
+      value: event.payload?.value,
+      unit: event.payload?.unit,
+      measuredAt: event.payload?.measuredAt || String(event.occurredAt || '').slice(0, 10),
+      source: event.payload?.source || event.source,
+      method: event.payload?.method,
+      status: event.status,
+      correctedFromId: event.correctedFromId,
+    }))
+  const selectedMetric = metric || type || null
+  const superseded = new Set(source.map((item) => item?.correctedFromId).filter(Boolean))
+  const scoped = source.filter((item) => item?.status !== 'voided' && item?.status !== 'corrected' && !superseded.has(item?.id) && (!selectedMetric || item.type === selectedMetric))
+  const conflictIds = getGrowthMeasurementConflictIds(scoped, baby, { now })
+  const evaluated = scoped
+    .filter((item) => item?.status !== 'voided' && isValidGrowthMeasurement(item, baby, { now }))
+    .map((item) => ({ ...item, evaluation: evaluateGrowthMeasurement(item, baby, scoped, { now }), conflicted: conflictIds.has(item.id) }))
+    .sort((a, b) => String(b.measuredAt || '').localeCompare(String(a.measuredAt || '')) || asTime(b.createdAt) - asTime(a.createdAt))
+  if (!evaluated.length) return { status: 'needs_information', summary: isEnglish ? 'No growth measurement is available.' : '还没有可用的成长测量记录。', measurements: [], metric: selectedMetric, conflictIds: [...conflictIds] }
+  const reliable = evaluated.filter((item) => !item.conflicted)
+  const latest = evaluated[0]
+  const latestReliable = latest?.conflicted ? null : reliable[0]
+  const previous = latestReliable ? reliable.find((item) => item.id !== latestReliable.id && String(item.measuredAt || '') < String(latestReliable.measuredAt || '')) : null
+  const latestValue = Number(latestReliable?.value)
+  const previousValue = Number(previous?.value)
+  const delta = !latest?.conflicted && Number.isFinite(latestValue) && Number.isFinite(previousValue) ? latestValue - previousValue : null
+  const evaluation = latest.evaluation
+  const limitations = [...new Set(evaluated.flatMap((item) => item.evaluation?.limitations || []))]
   return {
-    status: evaluation ? 'ready' : 'limited',
-    summary: evaluation ? (isEnglish ? 'The latest measurement keeps its stored standard evaluation.' : '最近一次测量沿用已保存的标准评价。') : (isEnglish ? 'The measurement is shown as a fact; no reference conclusion is invented.' : '只展示测量事实，不补造标准结论。'),
-    measurements: measurements.slice(0, 6).map((event) => ({ id: event.id, occurredAt: event.occurredAt, type: event.payload?.type, value: event.payload?.value, unit: event.payload?.unit, evaluation: event.payload?.evaluation || null })),
-    ageBasis: resolveAgeContext({ baby, at: latest.occurredAt || new Date(), purpose: 'growth_standard' }).basis,
+    status: latest.conflicted ? 'conflicted' : evaluation?.dataQuality === 'sufficient' ? 'ready' : 'limited',
+    summary: latest.conflicted
+      ? (isEnglish ? 'Two measurements on the same day disagree; verify before reading the change.' : '同一指标同一天有不同数值，请先核对，再解读变化。')
+      : evaluation?.dataQuality === 'sufficient'
+        ? (isEnglish ? 'The latest fact has a comparable national reference.' : '最近一次事实可以与对应国家标准进行比较。')
+        : (isEnglish ? 'The measurement is shown as a fact; no reference conclusion is invented.' : '只展示测量事实，不补造标准结论。'),
+    metric: selectedMetric || latest.type,
+    latest: { id: latest.id, value: latest.value, unit: latest.unit, measuredAt: latest.measuredAt, conflicted: latest.conflicted, evaluation },
+    previous: previous ? { id: previous.id, value: previous.value, unit: previous.unit, measuredAt: previous.measuredAt, evaluation: previous.evaluation } : null,
+    delta,
+    measurements: evaluated.slice(0, 12).map((item) => ({ id: item.id, measuredAt: item.measuredAt, type: item.type, value: item.value, unit: item.unit, conflicted: item.conflicted, evaluation: item.evaluation })),
+    conflictIds: [...conflictIds],
+    limitations,
+    ageBasis: resolveAgeContext({ baby, at: latest.measuredAt || now, purpose: 'growth_standard' }).basis,
   }
 }
 
@@ -186,7 +224,7 @@ export function buildCaregiverHandoff({ baby, events = [], concerns = [], carePl
 }
 
 export function executeNaibaSkill(skillId, input = {}, runtime = {}) {
-  const common = { baby: runtime.baby, events: runtime.events || [], concerns: runtime.concerns || [], carePlanItems: runtime.carePlanItems || [], now: runtime.now || new Date(), locale: runtime.locale || 'zh-CN' }
+  const common = { baby: runtime.baby, events: runtime.events || [], measurements: runtime.measurements || null, metric: runtime.metric || null, concerns: runtime.concerns || [], carePlanItems: runtime.carePlanItems || [], now: runtime.now || new Date(), locale: runtime.locale || 'zh-CN' }
   switch (skillId) {
     case 'baby_context_injector': return buildBabyContextSummary(common)
     case 'authority_knowledge_retriever': return { status: 'ready', results: searchApprovedKnowledge(input.query || '', { ageDays: getAgeDays(runtime.baby?.birthDate, common.now), ageMonths: Math.floor(getAgeDays(runtime.baby?.birthDate, common.now) / 30.4375), domain: input.domain }) }

@@ -24,14 +24,18 @@ export function Header({ route, baby, ageDays, onClear, onLogout, readOnly = fal
     const nav = primaryNavRef.current
     const active = nav?.querySelector('[aria-current="page"]')
     if (!nav || !active) return
-    const activeLeft = active.offsetLeft
-    const activeRight = activeLeft + active.offsetWidth
-    const visibleLeft = nav.scrollLeft
-    const visibleRight = visibleLeft + nav.clientWidth
-    if (activeLeft >= visibleLeft && activeRight <= visibleRight) return
-    const centered = activeLeft + active.offsetWidth / 2 - nav.clientWidth / 2
-    const maxScrollLeft = Math.max(0, nav.scrollWidth - nav.clientWidth)
-    nav.scrollLeft = Math.max(0, Math.min(maxScrollLeft, centered))
+    const keepActiveVisible = () => {
+      const navBounds = nav.getBoundingClientRect()
+      const activeBounds = active.getBoundingClientRect()
+      if (activeBounds.left < navBounds.left) {
+        nav.scrollLeft += activeBounds.left - navBounds.left
+      } else if (activeBounds.right > navBounds.right) {
+        nav.scrollLeft += activeBounds.right - navBounds.right
+      }
+    }
+    keepActiveVisible()
+    const frame = window.requestAnimationFrame(keepActiveVisible)
+    return () => window.cancelAnimationFrame(frame)
   }, [route])
 
   return (

@@ -21,7 +21,7 @@ import { onRequestPost as onPhotoPost } from '../functions/api/photos.js'
 import { onRequestDelete as onPhotoDelete, onRequestGet as onPhotoGet } from '../functions/api/photos/[id].js'
 import { getCareSnapshot, eventTitle } from '../src/domain/careSummary.js'
 import { concernsFromCareEvents, evaluateSupport } from '../src/domain/healthSupport.js'
-import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, getGrowthChartModel, growthLevelLabel, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, validateGrowthMeasurement } from '../src/domain/growth.js'
+import { createEvaluatedGrowthMeasurement, evaluateGrowthMeasurement, getGrowthAgeContext, getGrowthChartModel, getGrowthMeasurementConflictIds, growthLevelLabel, growthReferenceLabel, growthSourceLabel, growthTrajectoryLabel, isValidGrowthMeasurement, validateGrowthMeasurement } from '../src/domain/growth.js'
 import { ageContextSummary, ageBasisLabel, resolveAgeContext } from '../src/domain/agePolicy.js'
 import { buildExperienceQuery, getCacheState, getContentAgeBandForBaby, getExperienceCacheKey, normalizeArticleUrl, normalizeExperienceResult, sortExperienceResults } from '../src/domain/experience.js'
 import { MAX_PHOTO_BYTES, dateTimeInputToIso, detectPhotoTime, isSupportedPhoto } from '../src/domain/babyAlbum.js'
@@ -435,6 +435,26 @@ test('growth chart model keeps all seven official percentile lines and the baby 
   assert.equal(model.reference.every((line) => line.points.length === 4), true)
   assert.equal(model.points[0].value, 3.5)
   assert.equal(growthLevelLabel(measurement.evaluation), '中')
+})
+
+test('growth chart keeps birth-standard records outside the monthly trajectory', () => {
+  const baby = { id: 'birth-chart-baby', birthDate: '2026-08-01', sex: 'male', gestationalWeeks: 40, gestationalDays: 0 }
+  const birth = createEvaluatedGrowthMeasurement({ id: 'birth-weight', type: 'weight', value: '3.2', measuredAt: '2026-08-01', source: 'birth_record' }, baby, [], { now: '2026-08-06T10:00:00.000Z' })
+  const followUp = createEvaluatedGrowthMeasurement({ id: 'follow-up-weight', type: 'weight', value: '3.5', measuredAt: '2026-08-06', source: 'clinical' }, baby, [birth], { now: '2026-08-06T10:00:00.000Z' })
+  const model = getGrowthChartModel({ baby, measurements: [birth, followUp], type: 'weight', startMonth: 0, endMonth: 3, now: '2026-08-06T10:00:00.000Z' })
+  assert.deepEqual(model.points.map((point) => point.id), ['follow-up-weight'])
+  assert.equal(model.birthPoint?.id, 'birth-weight')
+})
+
+test('growth facts remain visible without sex while same-day conflicts stop comparisons', () => {
+  const baby = { id: 'fact-only-baby', birthDate: '2026-08-01', sex: null, gestationalWeeks: 40, gestationalDays: 0 }
+  const first = { id: 'fact-a', type: 'weight', value: '3.5', unit: 'kg', measuredAt: '2026-08-06' }
+  const second = { id: 'fact-b', type: 'weight', value: '3.7', unit: 'kg', measuredAt: '2026-08-06' }
+  assert.equal(isValidGrowthMeasurement(first, baby, { now: '2026-08-07' }), true)
+  assert.deepEqual([...getGrowthMeasurementConflictIds([first, second], baby, { now: '2026-08-07' })].sort(), ['fact-a', 'fact-b'])
+  const model = getGrowthChartModel({ baby, measurements: [first, second], type: 'weight', endMonth: 3, now: '2026-08-07' })
+  assert.equal(model.points.length, 2)
+  assert.equal(model.points.every((point) => point.conflicted), true)
 })
 
 test('growth evaluator reports insufficient history and never fabricates reference values', () => {

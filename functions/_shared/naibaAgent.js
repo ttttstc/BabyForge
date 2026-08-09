@@ -2,6 +2,7 @@ import { Agent, OpenAIProvider, Runner } from '@openai/agents'
 import OpenAI from 'openai'
 import { z } from 'zod'
 import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
+import { buildGrowthInterpretation } from '../../src/domain/naibaCapabilities.js'
 import { sanitizeMedicalReport } from '../../src/domain/careEventDraft.js'
 import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { outputAllowed } from '../../src/domain/naibaGuardrails.js'
@@ -111,6 +112,8 @@ function instructionsFor(context) {
 
 Active Skill contract: ${JSON.stringify(skill)}
 BabyContextSummary: ${JSON.stringify(context.babyContext)}
+Deterministic growth interpretation request: ${JSON.stringify(context.growthMetric || null)}
+Deterministic growth interpretation: ${JSON.stringify(context.growthInterpretation || null)}
 Deterministic decision result: ${JSON.stringify(context.decisionResult || null)}
 Approved local knowledge candidates: ${JSON.stringify(context.localKnowledge)}
 
@@ -129,12 +132,15 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, skillId, baby, careEvents, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2 }) {
+export async function runNaibaAgent({ message, skillId, baby, careEvents, growthEvents = null, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, growthMetric = null, conversationId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2 }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
   const localKnowledge = searchApprovedKnowledge(message, { ageDays: babyContext.profile.ageDays, ageMonths: babyContext.profile.ageMonths })
-  const context = { skillId, baby, events: careEvents, concerns, carePlanItems, questions, actor, feedingReference, decisionResult, conversationId, locale, now, babyContext, localKnowledge }
+  const growthInterpretation = skillId === 'growth_and_development_interpreter'
+    ? buildGrowthInterpretation({ baby, events: Array.isArray(growthEvents) ? growthEvents : careEvents, metric: growthMetric, locale, now })
+    : null
+  const context = { skillId, baby, events: careEvents, metric: growthMetric, growthMetric, growthInterpretation, concerns, carePlanItems, questions, actor, feedingReference, decisionResult, conversationId, locale, now, babyContext, localKnowledge }
   if (protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES || protocol === LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) {
     const output = protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES
       ? await runAnthropicMessages({ message, context, model, apiKey, baseURL, transportFetch })
