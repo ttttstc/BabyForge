@@ -15,7 +15,7 @@ export async function onRequestPost({ request, env }) {
   const rawEvent = body?.draft?.event || body?.event
   let event
   try { event = safeEventInput(rawEvent, {}, { requireId: true, requireActor: true, requireTimestamps: true }) } catch (error) { return json({ error: error.message || '草稿事件不正确', field: error.field || null }, 422) }
-  const baby = await accessibleBaby(env, auth.session.accountId, event.babyId)
+  const baby = await accessibleBaby(env, auth.session, event.babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const draftId = id()
   const now = new Date()

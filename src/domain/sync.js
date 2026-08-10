@@ -1,7 +1,11 @@
 export async function pullWorkspace(babyId, fetchImpl = globalThis.fetch) {
   if (!babyId || typeof fetchImpl !== 'function') return null
   const response = await fetchImpl(`/api/sync?babyId=${encodeURIComponent(babyId)}`, { credentials: 'include' })
-  if (!response.ok) throw new Error('线上档案暂时无法读取')
+  if (!response.ok) {
+    const error = new Error('线上档案暂时无法读取')
+    error.status = response.status
+    throw error
+  }
   const payload = await response.json()
   return payload?.baby ? payload : null
 }
@@ -22,6 +26,10 @@ export async function pushWorkspace(state, fetchImpl = globalThis.fetch) {
       milestoneRecords: state.milestoneRecords,
     }),
   })
-  if (!response.ok) throw new Error('线上同步暂时失败')
+  if (!response.ok) {
+    const error = new Error('线上同步暂时失败')
+    error.status = response.status
+    throw error
+  }
   return response.json()
 }

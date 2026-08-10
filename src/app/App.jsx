@@ -6,10 +6,11 @@ import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
 import { ExperienceView } from '../features/ExperienceView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
+import { UsernameSetup } from '../features/UsernameSetup.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
-import { canEdit, loadSession, login, logout } from '../domain/auth.js'
+import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resumeSession, SESSION_KEY, startGoogleLogin, updateUsername } from '../domain/auth.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
@@ -29,10 +30,11 @@ export function App() {
   const location = useHashLocation()
   const route = location.route
   const [session, setSession] = useState(() => loadSession())
-  const initialOwnerRef = useRef(session?.username)
+  const sessionOwner = (value) => value?.userId || value?.username
+  const initialOwnerRef = useRef(sessionOwner(session))
   const sessionRef = useRef(session)
   const [state, setState] = useState(() => {
-    const owner = loadSession()?.username
+    const owner = sessionOwner(loadSession())
     return loadState(globalThis.localStorage, owner)
   })
   const [authError, setAuthError] = useState('')
@@ -43,10 +45,30 @@ export function App() {
   const pendingWritesRef = useRef(0)
   const pendingSequenceRef = useRef(0)
   const localRevisionRef = useRef(0)
+  const revokingRef = useRef(false)
   const readOnly = Boolean(session) && !canEdit(session)
 
   function hasPendingSync() {
     return pendingWritesRef.current > 0 || pendingSyncRef.current.length > 0 || Boolean(pendingWorkspaceRef.current)
+  }
+
+  function handleAuthRevoked() {
+    if (revokingRef.current) return
+    revokingRef.current = true
+    const current = sessionRef.current
+    const owner = sessionOwner(current)
+    clearState(globalThis.localStorage, owner)
+    if (current?.username && current?.userId) clearState(globalThis.localStorage, current.username)
+    if (stateRef.current.baby?.id) void clearLocalBabyAlbum(stateRef.current.baby.id).catch(() => {})
+    clearExperienceCache({ storage: globalThis.localStorage })
+    globalThis.localStorage?.removeItem(SESSION_KEY)
+    sessionRef.current = null
+    setSession(null)
+    const initial = createInitialState()
+    stateRef.current = initial
+    setState(initial)
+    setAuthError('登录状态已失效，请重新登录。')
+    navigate(ROUTES.login)
   }
 
   useEffect(() => {
@@ -57,7 +79,7 @@ export function App() {
     const current = stateRef.current
     const next = { ...current, syncMeta: { ...(current.syncMeta || {}), ...patch } }
     stateRef.current = next
-    saveState(globalThis.localStorage, next, sessionRef.current?.username)
+    saveState(globalThis.localStorage, next, sessionOwner(sessionRef.current))
     setState(next)
     return next
   }
@@ -77,7 +99,7 @@ export function App() {
       : next
     localRevisionRef.current += 1
     stateRef.current = visibleNext
-    saveState(globalThis.localStorage, visibleNext, session?.username)
+    saveState(globalThis.localStorage, visibleNext, sessionOwner(session))
     setState(visibleNext)
     if (!shouldSyncRemotely || !hasRemoteChanges) return Promise.resolve(true)
     const workspaceSnapshot = nonEventWorkspaceChanged ? visibleNext : null
@@ -109,6 +131,11 @@ export function App() {
       updateSyncMeta({ status: hasPendingSync() ? 'pending' : 'online' })
       return true
     }).catch((error) => {
+      if ([401, 403].includes(error?.status)) {
+        handleAuthRevoked()
+        pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1)
+        throw error
+      }
       pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1)
       // Event writes are optimistic. Revert every event touched by this
       // commit, including corrections and voids, so a failed save never looks
@@ -121,7 +148,7 @@ export function App() {
         const changedIds = new Set(eventChanges.flatMap((change) => [change.event.id, change.event.correctedFromId].filter(Boolean)))
         pendingSyncRef.current = pendingSyncRef.current.filter((item) => !changedIds.has(item.event.id))
         stateRef.current = rolledBack
-        saveState(globalThis.localStorage, rolledBack, session?.username)
+        saveState(globalThis.localStorage, rolledBack, sessionOwner(session))
         setState(rolledBack)
       }
       if (workspaceSnapshot && pendingWorkspaceRef.current === workspaceSnapshot) pendingWorkspaceRef.current = stateRef.current
@@ -130,7 +157,7 @@ export function App() {
     })
   }
 
-  async function pullEventWorkspace(owner = sessionRef.current?.username, babyId = stateRef.current.baby?.id) {
+  async function pullEventWorkspace(owner = sessionOwner(sessionRef.current), babyId = stateRef.current.baby?.id) {
     if (!babyId || sessionRef.current?.mode !== 'cloudflare' || syncingRef.current) return
     syncingRef.current = true
     try {
@@ -155,7 +182,11 @@ export function App() {
       stateRef.current = next
       saveState(globalThis.localStorage, next, owner)
       setState(next)
-    } catch {
+    } catch (error) {
+      if ([401, 403].includes(error?.status)) {
+        handleAuthRevoked()
+        return
+      }
       stateRef.current = { ...stateRef.current, syncMeta: { ...(stateRef.current.syncMeta || {}), status: hasPendingSync() ? 'pending' : 'offline' } }
       saveState(globalThis.localStorage, stateRef.current, owner)
       setState(stateRef.current)
@@ -176,9 +207,13 @@ export function App() {
         await pushWorkspace(pendingWorkspace)
         if (pendingWorkspaceRef.current === pendingWorkspace) pendingWorkspaceRef.current = null
       }
-      await pullEventWorkspace(sessionRef.current?.username, stateRef.current.baby?.id)
+      await pullEventWorkspace(sessionOwner(sessionRef.current), stateRef.current.baby?.id)
       updateSyncMeta({ status: hasPendingSync() ? 'pending' : 'online' })
-    } catch {
+    } catch (error) {
+      if ([401, 403].includes(error?.status)) {
+        handleAuthRevoked()
+        return
+      }
       updateSyncMeta({ status: hasPendingSync() ? 'pending' : 'offline' })
     }
   }
@@ -201,7 +236,7 @@ export function App() {
     const initialSession = sessionRef.current
     const revisionAtEffectStart = localRevisionRef.current
     hydrateState(globalThis.localStorage, owner).then(async (next) => {
-      if (!active || !next?.version || sessionRef.current?.username !== owner) return
+      if (!active || !next?.version || sessionOwner(sessionRef.current) !== owner) return
       let hydrated = next
       const remoteBabyId = initialSession?.mode === 'cloudflare' ? initialSession.babies?.[0]?.id : null
       if (remoteBabyId) {
@@ -209,7 +244,7 @@ export function App() {
         const stateBeforeRemote = stateRef.current
         try {
           const remote = await pullWorkspace(remoteBabyId)
-          if (remote?.baby && sessionRef.current?.username === owner) {
+          if (remote?.baby && sessionOwner(sessionRef.current) === owner) {
             const latest = stateRef.current
             const localChangedBeforeRemote = revisionBeforeRemote !== revisionAtEffectStart
             const localChangedDuringRemote = localRevisionRef.current !== revisionBeforeRemote
@@ -240,7 +275,7 @@ export function App() {
           if (localRevisionRef.current !== revisionAtEffectStart) hydrated = stateRef.current
         }
       }
-      if (!active || sessionRef.current?.username !== owner) return
+      if (!active || sessionOwner(sessionRef.current) !== owner) return
       stateRef.current = hydrated
       saveState(globalThis.localStorage, hydrated, owner)
       setState(hydrated)
@@ -262,79 +297,140 @@ export function App() {
     // retrySync closes over refs and the current pull helper; rerunning this
     // listener on every render would create duplicate handlers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.mode, session?.username, state.baby?.id])
+  }, [session?.mode, session?.userId, session?.username, state.baby?.id])
 
-  function createBaby(baby) {
+  async function createBaby(baby) {
     if (readOnly || !session) return
-    const { birthMeasurements = [], ...profile } = baby
-    commitState((current) => {
-      const actor = current.careActors.find((item) => item.id === current.preferences.currentRecorderId) || current.careActors[0]
-      const measurements = birthMeasurements.map((input) => createEvaluatedGrowthMeasurement(input, profile, current.growthMeasurements))
-      const events = measurements.map((measurement) => createCareEvent({
-        id: measurement.id,
-        babyId: profile.id,
-        kind: 'measurement',
-        category: 'growth_measurement',
-        occurredAt: `${measurement.measuredAt}T12:00:00.000Z`,
-        recordedAt: measurement.createdAt,
-        actor,
-        source: 'caregiver',
-        payload: measurement,
-      }))
-      return { ...current, baby: profile, careEvents: [...current.careEvents, ...events] }
-    })
-    navigate(ROUTES.today)
+    try {
+      const { birthMeasurements = [], householdName, ...profile } = baby
+      let nextSession = sessionRef.current
+      if (session.mode === 'cloudflare' && !session.household) {
+        const response = await fetch('/api/household', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: householdName || `${profile.nickname} 的家庭`, baby: profile }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload.error || '创建家庭失败')
+        nextSession = { ...nextSession, household: payload.household, role: payload.household?.role || 'owner', babies: payload.household?.baby ? [payload.household.baby] : [] }
+        sessionRef.current = nextSession
+        setSession(nextSession)
+      }
+      await commitState((current) => {
+        const actor = current.careActors.find((item) => item.id === current.preferences.currentRecorderId) || current.careActors[0]
+        const measurements = birthMeasurements.map((input) => createEvaluatedGrowthMeasurement(input, profile, current.growthMeasurements))
+        const events = measurements.map((measurement) => createCareEvent({
+          id: measurement.id,
+          babyId: profile.id,
+          kind: 'measurement',
+          category: 'growth_measurement',
+          occurredAt: `${measurement.measuredAt}T12:00:00.000Z`,
+          recordedAt: measurement.createdAt,
+          actor,
+          source: 'caregiver',
+          payload: measurement,
+        }))
+        return { ...current, baby: profile, careEvents: [...current.careEvents, ...events] }
+      }, { skipSync: true })
+      if (nextSession.mode === 'cloudflare') await pushWorkspace(stateRef.current)
+      navigate(ROUTES.today)
+    } catch (error) {
+      setAuthError(error.message || '创建家庭失败')
+    }
   }
+
+  async function activateSession(next) {
+    revokingRef.current = false
+    setSession(next)
+    sessionRef.current = next
+    // The Vite demo accounts share the seeded local workspace so the guest
+    // flow mirrors the production household membership. Cloudflare always
+    // uses the account-specific remote workspace returned by the API.
+    const workspaceOwner = sessionOwner(next)
+    let current = loadState(globalThis.localStorage, workspaceOwner)
+    if (next.mode === 'demo' && next.username === 'guest' && !current.baby) {
+      current = createDemoWorkspace()
+      saveState(globalThis.localStorage, current, workspaceOwner)
+    }
+    const remoteBaby = next.babies?.[0]
+    if (next.mode === 'cloudflare' && remoteBaby?.id) {
+      try {
+        const remote = await pullWorkspace(remoteBaby.id)
+        if (remote?.baby) {
+          current = {
+            ...createInitialState(),
+            ...remote,
+            preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
+          }
+        }
+      } catch (error) {
+        if ([401, 403].includes(error?.status)) handleAuthRevoked()
+        setAuthError(error.message)
+      }
+    }
+    current = applyCareEventsToLegacy(migrateLegacyState(current), current.careEvents || [])
+    stateRef.current = current
+    saveState(globalThis.localStorage, current, workspaceOwner)
+    setState(current)
+    if (next.mode === 'cloudflare' && remoteBaby?.id) void pullEventWorkspace(sessionOwner(next), remoteBaby.id)
+    if (next.role === 'guest' && !current.baby) {
+      setAuthError('当前账号暂未关联宝宝档案，请联系管理员。')
+      return
+    }
+    navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
+  }
+
+  useEffect(() => {
+    if (session) return undefined
+    let active = true
+    resumeSession().then(async (next) => {
+      if (!active || !next) return
+      await activateSession(next)
+    }).catch((error) => {
+      if (active && error?.message) setAuthError(error.message)
+    })
+    return () => { active = false }
+    // activateSession intentionally remains a stable-in-practice component
+    // helper; the effect only needs to rerun when the auth state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
 
   async function handleLogin(username, password) {
     setAuthError('')
     try {
       const next = await login(username, password)
-      setSession(next)
-      sessionRef.current = next
-      // The Vite demo accounts share the seeded local workspace so the guest
-      // flow mirrors the production household membership. Cloudflare always
-      // uses the account-specific remote workspace returned by the API.
-      const workspaceOwner = next.mode === 'demo' && next.role === 'guest' ? 'niwa' : next.username
-      let current = loadState(globalThis.localStorage, workspaceOwner)
-      if (next.mode === 'demo' && next.username === 'guest' && !current.baby) {
-        current = createDemoWorkspace()
-        saveState(globalThis.localStorage, current, workspaceOwner)
-      }
-      const remoteBaby = next.babies?.[0]
-      if (next.mode === 'cloudflare' && remoteBaby?.id) {
-        try {
-          const remote = await pullWorkspace(remoteBaby.id)
-          if (remote?.baby) {
-            current = {
-              ...createInitialState(),
-              ...remote,
-              preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
-            }
-          }
-        } catch (error) {
-          setAuthError(error.message)
-        }
-      }
-      current = applyCareEventsToLegacy(migrateLegacyState(current), current.careEvents || [])
-      stateRef.current = current
-      saveState(globalThis.localStorage, current, next.username)
-      setState(current)
-      if (next.mode === 'cloudflare' && remoteBaby?.id) void pullEventWorkspace(next.username, remoteBaby.id)
-      if (next.role === 'guest' && !current.baby) {
-        setAuthError('当前账号暂未关联宝宝档案，请联系管理员。')
-        return
-      }
-      navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
+      await activateSession(next)
     } catch (error) {
       setAuthError(error.message || '账号或密码不正确')
       return null
     }
   }
 
+  async function handleUsernameSetup(username) {
+    setAuthError('')
+    try {
+      const user = await updateUsername(username)
+      const next = { ...sessionRef.current, userId: user.id, username: user.username, needsUsername: false }
+      persistSession(next)
+      sessionRef.current = next
+      setSession(next)
+    } catch (error) {
+      setAuthError(error.message || '用户名不可用')
+      throw error
+    }
+  }
+
   async function handleLogout() {
+    const current = sessionRef.current
+    const owner = sessionOwner(current)
+    const babyId = stateRef.current.baby?.id
     await logout()
+    clearState(globalThis.localStorage, owner)
+    if (current?.userId && current?.username) clearState(globalThis.localStorage, current.username)
+    if (babyId) void clearLocalBabyAlbum(babyId).catch(() => {})
     clearExperienceCache({ storage: globalThis.localStorage })
+    sessionRef.current = null
     setSession(null)
     const initial = createInitialState()
     stateRef.current = initial
@@ -358,7 +454,8 @@ export function App() {
       }
     }
     clearExperienceCache({ storage: globalThis.localStorage })
-    clearState(globalThis.localStorage, session?.username)
+    clearState(globalThis.localStorage, sessionOwner(session))
+    if (session?.userId && session?.username) clearState(globalThis.localStorage, session.username)
     const initial = createInitialState()
     stateRef.current = initial
     setState(initial)
@@ -366,8 +463,12 @@ export function App() {
     return true
   }
 
+  if (session?.needsUsername) {
+    return <UsernameSetup locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onSubmit={handleUsernameSetup} error={authError} />
+  }
+
   if (!session || route === ROUTES.login || (session?.role === 'guest' && !state.baby)) {
-    return <LoginView locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
+    return <LoginView locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input) }} onGoogleLogin={() => startGoogleLogin(ROUTES.login)} onForgotPassword={(email) => requestPasswordReset(email)} onResendVerification={(email) => resendVerification(email)} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
   }
 
   if (!state.baby || route === ROUTES.onboarding) {

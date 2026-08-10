@@ -40,7 +40,7 @@ export async function onRequestGet({ request, env }) {
   if (auth.response) return auth.response
   const babyId = new URL(request.url).searchParams.get('babyId')
   if (!babyId) return json({ photos: [] })
-  const baby = await accessibleBaby(env, auth.session.accountId, babyId)
+  const baby = await accessibleBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const rows = await env.DB.prepare('SELECT * FROM baby_photos WHERE baby_id = ? ORDER BY created_at, id').bind(baby.id).all()
   return json({ photos: (rows.results || []).map(photoFromRow) })
@@ -59,7 +59,7 @@ export async function onRequestPost({ request, env }) {
   const babyId = String(form.get('babyId') || '')
   const photo = form.get('photo')
   if (!babyId) return json({ error: '缺少 babyId' }, 422)
-  const baby = await accessibleBaby(env, auth.session.accountId, babyId)
+  const baby = await accessibleBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   if (!photo || typeof photo.stream !== 'function' || !photo.size) return json({ error: '请选择照片文件' }, 422)
   if (photo.size > MAX_PHOTO_BYTES) return json({ error: '单张照片不能超过 12 MB' }, 413)

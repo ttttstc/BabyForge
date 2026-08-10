@@ -1,12 +1,17 @@
 import { json, requireSession } from '../../_shared/auth.js'
 
-async function accessiblePhoto(env, accountId, photoId) {
+async function accessiblePhoto(env, principalOrAccountId, photoId) {
+  const formal = principalOrAccountId && typeof principalOrAccountId === 'object'
+  const membershipClause = formal ? '(m.user_id = ? OR m.account_id = ?)' : 'm.account_id = ?'
+  const membershipBinds = formal ? [principalOrAccountId.userId || null, principalOrAccountId.accountId] : [principalOrAccountId]
   return env.DB.prepare(`
     SELECT p.*, COALESCE(b.status, 'active') AS baby_status FROM baby_photos p
     JOIN baby_profiles b ON b.id = p.baby_id
     JOIN household_members m ON m.household_id = b.household_id
-    WHERE p.id = ? AND m.account_id = ? AND m.active = 1
-  `).bind(photoId, accountId).first()
+    JOIN households h ON h.id = b.household_id
+    WHERE p.id = ? AND ${membershipClause} AND m.active = 1
+      AND h.deleted_at IS NULL
+  `).bind(photoId, ...membershipBinds).first()
 }
 
 export async function onRequestGet({ request, env, params }) {
@@ -16,7 +21,7 @@ export async function onRequestGet({ request, env, params }) {
   if (auth.response) return auth.response
   const download = new URL(request.url).searchParams.get('download') === '1'
   if (download && auth.session.role === 'guest') return json({ error: '游客账号只读，不能下载照片' }, 403)
-  const photo = await accessiblePhoto(env, auth.session.accountId, params.id)
+  const photo = await accessiblePhoto(env, auth.session, params.id)
   if (!photo || photo.baby_status === 'detached') return json({ error: '照片不存在或无权访问' }, 404)
   const object = await env.BABY_PHOTOS.get(photo.object_key)
   if (!object) return json({ error: '照片文件不存在' }, 404)
@@ -39,7 +44,7 @@ export async function onRequestDelete({ request, env, params }) {
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
   if (auth.session.role === 'guest') return json({ error: '游客账号只读，不能删除照片' }, 403)
-  const photo = await accessiblePhoto(env, auth.session.accountId, params.id)
+  const photo = await accessiblePhoto(env, auth.session, params.id)
   if (!photo || photo.baby_status === 'detached') return json({ error: '照片不存在或无权访问' }, 404)
   try {
     // Remove the active metadata first. If storage cleanup is interrupted,

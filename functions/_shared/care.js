@@ -18,23 +18,37 @@ export class EventInputError extends Error {
   }
 }
 
-export async function accessibleBaby(env, accountId, babyId) {
+function membershipAccess(principalOrAccountId, alias = 'm') {
+  if (principalOrAccountId && typeof principalOrAccountId === 'object') {
+    return {
+      clause: `(${alias}.user_id = ? OR ${alias}.account_id = ?)`,
+      binds: [principalOrAccountId.userId || null, principalOrAccountId.accountId],
+    }
+  }
+  return { clause: `${alias}.account_id = ?`, binds: [principalOrAccountId] }
+}
+
+export async function accessibleBaby(env, principalOrAccountId, babyId) {
+  const access = membershipAccess(principalOrAccountId)
   return env.DB.prepare(`
     SELECT b.id, b.household_id AS householdId, b.nickname, b.birth_date AS birthDate,
       b.gestational_weeks AS gestationalWeeks, b.gestational_days AS gestationalDays, b.growth_age_basis AS growthAgeBasis, b.birth_multiplicity AS birthMultiplicity, b.sex, b.feeding_mode AS feedingMode, b.locale,
       COALESCE(b.status, 'active') AS status
     FROM baby_profiles b JOIN household_members m ON m.household_id = b.household_id
-    WHERE b.id = ? AND m.account_id = ? AND m.active = 1
-  `).bind(babyId, accountId).first()
+    JOIN households h ON h.id = b.household_id
+    WHERE b.id = ? AND ${access.clause} AND m.active = 1 AND h.deleted_at IS NULL
+  `).bind(babyId, ...access.binds).first()
 }
 
-export async function accessibleEvent(env, accountId, eventId) {
+export async function accessibleEvent(env, principalOrAccountId, eventId) {
+  const access = membershipAccess(principalOrAccountId)
   return env.DB.prepare(`
     SELECT e.* FROM care_events e
     JOIN baby_profiles b ON b.id = e.baby_id
     JOIN household_members m ON m.household_id = b.household_id
-    WHERE e.id = ? AND m.account_id = ? AND m.active = 1
-  `).bind(eventId, accountId).first()
+    JOIN households h ON h.id = b.household_id
+    WHERE e.id = ? AND ${access.clause} AND m.active = 1 AND h.deleted_at IS NULL
+  `).bind(eventId, ...access.binds).first()
 }
 
 export function parseJson(value, fallback = {}) {

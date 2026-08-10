@@ -1541,6 +1541,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .login-input input:focus { box-shadow: none; }
 .login-error { margin: 0; padding: 9px 11px; color: #a14d43; border-radius: 10px; background: #fff0eb; font-size: .75rem; line-height: 1.45; }
 .login-submit { min-height: 48px; margin-top: 4px; font-size: .84rem; }
+.login-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.login-links button { padding: 0; color: var(--aqua); border: 0; background: transparent; cursor: pointer; font-size: .72rem; }
+.text-button { padding: 0 0 0 8px; color: var(--aqua); border: 0; background: transparent; cursor: pointer; font: inherit; text-decoration: underline; }
 .login-note { margin: 22px 0 0; color: #9a8e84; font-size: .68rem; line-height: 1.55; }
 .role-pill { display: inline-flex; align-items: center; padding: 7px 9px; border-radius: 999px; font-size: .65rem; font-weight: 800; white-space: nowrap; }
 .role-pill.admin { color: #6e5d9a; background: var(--aqua-soft); }

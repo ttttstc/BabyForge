@@ -40,7 +40,7 @@ async function correctEvent({ request, env, params }) {
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
   if (auth.session.role === 'guest') return json({ error: '游客账号只读，不能写入' }, 403)
-  const current = await accessibleEvent(env, auth.session.accountId, params.id)
+  const current = await accessibleEvent(env, auth.session, params.id)
   if (!current) return json({ error: '事件不存在或无权访问' }, 404)
   if (current.status && current.status !== 'active') return conflict(current, '只有 active 事件可以纠正')
   let body
@@ -97,7 +97,7 @@ async function correctEvent({ request, env, params }) {
   }
   const update = results?.[0] || {}
   if (typeof update.meta?.changes === 'number' && update.meta.changes === 0) {
-    const latest = await accessibleEvent(env, auth.session.accountId, current.id)
+    const latest = await accessibleEvent(env, auth.session, current.id)
     return conflict(latest || current)
   }
   const row = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(next.id).first()
@@ -117,7 +117,7 @@ export async function onRequestDelete({ request, env, params }) {
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
   if (auth.session.role === 'guest') return json({ error: '游客账号只读，不能写入' }, 403)
-  const current = await accessibleEvent(env, auth.session.accountId, params.id)
+  const current = await accessibleEvent(env, auth.session, params.id)
   if (!current) return json({ error: '事件不存在或无权访问' }, 404)
   if (current.status && current.status !== 'active') return conflict(current, '只有 active 事件可以作废')
   let body = {}
@@ -144,7 +144,7 @@ export async function onRequestDelete({ request, env, params }) {
   }
   const update = results?.[0] || {}
   if (typeof update.meta?.changes === 'number' && update.meta.changes === 0) {
-    const latest = await accessibleEvent(env, auth.session.accountId, current.id)
+    const latest = await accessibleEvent(env, auth.session, current.id)
     return conflict(latest || current)
   }
   const row = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(current.id).first()

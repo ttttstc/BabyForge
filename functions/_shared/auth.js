@@ -3,6 +3,7 @@ export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30
 // Keep the demo login within Cloudflare Pages Functions' free CPU budget.
 // Replace the seeded demo credentials before treating this as production auth.
 export const PASSWORD_ITERATIONS = 10000
+import { getBetterAuthSession } from './betterAuth.js'
 
 function hexToBytes(value) {
   const clean = String(value || '').replace(/[^0-9a-f]/gi, '')
@@ -46,6 +47,22 @@ export async function createSession(env, account) {
 
 export async function getSession(request, env) {
   if (!env.DB) return null
+  const better = await getBetterAuthSession(request, env)
+  if (better?.user?.emailVerified) {
+    const { ensureLegacyAccount } = await import('./principal.js')
+    const account = await ensureLegacyAccount(env, better.user)
+    return {
+      token: null,
+      expiresAt: null,
+      accountId: account.id,
+      userId: better.user.id,
+      username: better.user.username || account.username,
+      role: 'member',
+      displayName: better.user.name || account.displayName,
+      email: better.user.email,
+      auth: 'better-auth',
+    }
+  }
   const value = parseCookies(request)[SESSION_COOKIE]
   if (!value) return null
   const row = await env.DB.prepare(`
