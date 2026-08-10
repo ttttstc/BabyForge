@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { stat } from 'node:fs/promises'
 
 import { getAgeDays, getStage, getStageLabel, getStageRangeLabel, getStages, getTodayPriorities } from '../src/domain/baby.js'
 import { createObservation } from '../src/domain/observation.js'
@@ -267,10 +268,16 @@ test('baby assets resolve to separate male and female files while shared assets 
   assert.equal(resolveSexAsset(ASSET_MANIFEST.models.newborn, null), null)
 })
 
-test('pediatric anatomy library exposes the nine reusable 3D resources', () => {
-  assert.equal(ANATOMY_RESOURCES.length, 9)
-  assert.equal(new Set(ANATOMY_RESOURCES.map((resource) => resource.id)).size, 9)
+test('pediatric anatomy library exposes sixteen reusable 3D resources under ten megabytes', async () => {
+  assert.equal(ANATOMY_RESOURCES.length, 16)
+  assert.equal(new Set(ANATOMY_RESOURCES.map((resource) => resource.id)).size, 16)
+  for (const resource of ANATOMY_RESOURCES) {
+    const info = await stat(new URL(`../public${resource.model}`, import.meta.url))
+    assert.ok(info.size < 10 * 1024 * 1024, `${resource.id}: ${info.size} bytes`)
+  }
   assert.deepEqual(getAnatomyHotspots('lungs').map((item) => item.id), ['trachea', 'right-lung', 'left-lung', 'bronchus', 'bronchioles', 'alveoli', 'base'])
+  assert.deepEqual(getAnatomyHotspots('mouth').map((item) => item.id), ['upper-primary-incisors', 'lower-primary-incisors', 'upper-gingiva', 'lower-gingiva'])
+  assert.ok(['ear', 'nose', 'throat', 'stomach', 'bladder', 'bone'].every((id) => getAnatomyHotspots(id).length >= 5))
 })
 
 test('calendar exposes anniversaries, milestones, admin tasks, and completion state', () => {
