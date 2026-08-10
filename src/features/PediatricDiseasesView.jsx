@@ -4,10 +4,26 @@ import { buildNaibaRoute, ROUTES, navigate } from '../app/router.js'
 import { ANATOMY_RESOURCES, getAnatomyHotspots, localized } from '../content/pediatricDiseases.js'
 import { DISEASE_TOPICS, ORGAN_TOPICS, getDiseaseTopic, searchDiseaseTopics } from '../content/diseaseRegistry.js'
 import { getAgeDays } from '../domain/baby.js'
+import { canUseWebGL } from '../viewer/webglSupport.js'
 import { Header } from './Header.jsx'
 import { HealthTabs } from './HealthTabs.jsx'
 
-const AnatomyModelCanvas = lazy(() => import('../viewer/AnatomyModelCanvas.jsx').then((module) => ({ default: module.AnatomyModelCanvas })))
+let anatomyModelModule
+
+function loadAnatomyModelModule() {
+  anatomyModelModule ||= import('../viewer/AnatomyModelCanvas.jsx')
+  return anatomyModelModule
+}
+
+const AnatomyModelCanvas = lazy(() => loadAnatomyModelModule().then((module) => ({ default: module.AnatomyModelCanvas })))
+
+function clearModelCache(url) {
+  return loadAnatomyModelModule().then((module) => module.clearAnatomyModel(url))
+}
+
+function preloadModel(url) {
+  if (url) void loadAnatomyModelModule().then((module) => module.preloadAnatomyModel(url))
+}
 
 class ModelErrorBoundary extends Component {
   constructor(props) {
@@ -19,6 +35,10 @@ class ModelErrorBoundary extends Component {
     return { failed: true }
   }
 
+  componentDidCatch(error) {
+    this.props.onError?.(error)
+  }
+
   componentDidUpdate(previous) {
     if (previous.resetKey !== this.props.resetKey && this.state.failed) this.setState({ failed: false })
   }
@@ -28,13 +48,31 @@ class ModelErrorBoundary extends Component {
   }
 }
 
-function canUseWebGL() {
-  try {
-    const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'))
-  } catch {
-    return false
-  }
+function useViewportActivity(rootMargin = '200px') {
+  const elementRef = useRef(null)
+  const [shouldLoad, setShouldLoad] = useState(false)
+  const [active, setActive] = useState(false)
+
+  useEffect(() => {
+    const element = elementRef.current
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      setShouldLoad(true)
+      setActive(true)
+      return undefined
+    }
+    const preloadObserver = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setShouldLoad(true)
+    }, { rootMargin })
+    const activityObserver = new IntersectionObserver(([entry]) => setActive(entry.isIntersecting))
+    preloadObserver.observe(element)
+    activityObserver.observe(element)
+    return () => {
+      preloadObserver.disconnect()
+      activityObserver.disconnect()
+    }
+  }, [rootMargin])
+
+  return { elementRef, shouldLoad, active }
 }
 
 function initialSelection(defaultView = 'diseases') {
@@ -55,32 +93,73 @@ function syncHash(view, diseaseId, organId) {
   globalThis.window?.history?.replaceState(null, '', `${route}?${params}`)
 }
 
-function ModelFallback({ locale, title, onRetry }) {
-  return <div className="disease-model-fallback"><Box size={30} /><strong>{locale === 'en-US' ? '3D teaching model is being prepared' : '3D 教学模型正在完善'}</strong><p>{localized(title, locale)} · {locale === 'en-US' ? 'The complete text guide remains available.' : '完整文字指导仍可继续查看。'}</p>{onRetry && <button type="button" onClick={onRetry}><RefreshCcw size={14} />{locale === 'en-US' ? 'Reload' : '重新加载'}</button>}</div>
+function ModelFallback({ locale, title, onRetry, className = 'disease-model-fallback' }) {
+  return <div className={className}><Box size={30} /><strong>{locale === 'en-US' ? '3D teaching model is being prepared' : '正在准备 3D 教学模型'}</strong><p>{localized(title, locale)} · {locale === 'en-US' ? 'The complete text guide remains available.' : '完整文字指导仍可继续查看。'}</p>{onRetry && <button type="button" onClick={onRetry}><RefreshCcw size={14} />{locale === 'en-US' ? 'Reload model' : '重新加载模型'}</button>}</div>
 }
 
 function DiseaseModelUnit({ unit, locale, performanceMode }) {
   const [retry, setRetry] = useState(0)
   const [ready, setReady] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [hotspotPositions, setHotspotPositions] = useState({})
   const [leaderGeometry, setLeaderGeometry] = useState({ width: 0, height: 0, items: [] })
   const canvasRef = useRef(null)
   const renderAreaRef = useRef(null)
   const calloutRefs = useRef(new Map())
+  const automaticRetryRef = useRef(false)
+  const { elementRef: viewportRef, shouldLoad, active } = useViewportActivity()
   const resource = ANATOMY_RESOURCES.find((item) => item.model === unit.modelRef || item.id === unit.modelRef)
   const webgl = canUseWebGL()
   const available = unit.modelAvailability === 'AVAILABLE' && resource && webgl
   const leaderLines = useMemo(() => unit.leaderLines || [], [unit.leaderLines])
   const impactLines = useMemo(() => leaderLines.filter((line) => line.kind === 'impact'), [leaderLines])
   const quickMatch = leaderLines.find((line) => line.kind === 'sign')
-  const lineByAnchor = new Map((unit.leaderLines || []).map((line) => [line.anchorId, line]))
-  const hotspots = available ? getAnatomyHotspots(resource.id)
+  const lineByAnchor = useMemo(() => new Map(leaderLines.map((line) => [line.anchorId, line])), [leaderLines])
+  const hotspots = useMemo(() => available ? getAnatomyHotspots(resource.id)
     .filter((hotspot) => impactLines.some((line) => line.anchorId === hotspot.id))
     .map((hotspot) => {
       const line = lineByAnchor.get(hotspot.id)
       return line ? { ...hotspot, label: line.label, detail: line.effect } : hotspot
-    }) : []
-  const fallback = <ModelFallback locale={locale} title={unit.title} onRetry={unit.modelAvailability === 'LOAD_FAILED' ? () => setRetry((value) => value + 1) : null} />
+    }) : [], [available, impactLines, lineByAnchor, resource])
+  const viewerSettings = useMemo(() => ({ autoRotate: false, isolate: false, crossSection: false, wireframe: false, zoomToken: 0, resetToken: retry, performanceMode }), [performanceMode, retry])
+
+  const retryModel = useCallback(async () => {
+    setFailed(false)
+    setReady(false)
+    setHotspotPositions({})
+    try {
+      await clearModelCache(resource?.model)
+    } finally {
+      setRetry((value) => value + 1)
+    }
+  }, [resource?.model])
+
+  const handleFailure = useCallback(() => {
+    if (!automaticRetryRef.current) {
+      automaticRetryRef.current = true
+      void retryModel()
+      return
+    }
+    setFailed(true)
+  }, [retryModel])
+
+  const manualRetry = useCallback(() => {
+    automaticRetryRef.current = false
+    return retryModel()
+  }, [retryModel])
+
+  const handleReady = useCallback(() => {
+    setReady(true)
+    setFailed(false)
+  }, [])
+
+  useEffect(() => {
+    if (!available || !shouldLoad || ready || failed) return undefined
+    const timer = window.setTimeout(handleFailure, 20_000)
+    return () => window.clearTimeout(timer)
+  }, [available, failed, handleFailure, ready, retry, shouldLoad])
+
+  const fallback = <ModelFallback locale={locale} title={unit.title} onRetry={failed ? manualRetry : null} />
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current
@@ -127,14 +206,15 @@ function DiseaseModelUnit({ unit, locale, performanceMode }) {
   return <article className="disease-display-unit">
     <header><span>{unit.displayOrder}</span><div><p>{unit.viewType.replaceAll('_', ' ')}</p><h3>{localized(unit.title, locale)}</h3></div></header>
     <p>{localized(unit.description, locale)}</p>
-    <div className={`disease-model-stage${available && impactLines.length ? ' has-impact-callout' : ''}`}>
+    <div ref={viewportRef} className={`disease-model-stage${available && impactLines.length ? ' has-impact-callout' : ''}`}>
       <div ref={canvasRef} className={`disease-unit-canvas${available && impactLines.length ? ' has-impact-callout' : ''}`}>
         <div ref={renderAreaRef} className="disease-model-render-area">
         {!available && fallback}
-        {available && <ModelErrorBoundary resetKey={retry} fallback={<ModelFallback locale={locale} title={unit.title} onRetry={() => setRetry((value) => value + 1)} />}>
+        {available && (!shouldLoad || failed) && fallback}
+        {available && shouldLoad && !failed && <ModelErrorBoundary resetKey={retry} onError={handleFailure} fallback={fallback}>
           {!ready && fallback}
           <Suspense fallback={fallback}>
-            <AnatomyModelCanvas key={`${unit.id}-${retry}`} resource={resource} hotspots={hotspots} selectedHotspotId={null} onSelectHotspot={() => {}} locale={locale} settings={{ autoRotate: false, isolate: false, crossSection: false, wireframe: false, zoomToken: 0, resetToken: retry, performanceMode }} onReady={() => setReady(true)} onHotspotPositionsChange={setHotspotPositions} />
+            <AnatomyModelCanvas key={retry} resource={resource} hotspots={hotspots} selectedHotspotId={null} onSelectHotspot={() => {}} locale={locale} settings={viewerSettings} active={active} onReady={handleReady} onContextLost={handleFailure} onHotspotPositionsChange={setHotspotPositions} />
           </Suspense>
         </ModelErrorBoundary>}
         </div>
@@ -269,12 +349,58 @@ function OrganLearning({ organ, setOrganId, relatedDiseases, selectDisease, loca
   const [retry, setRetry] = useState(0)
   const [selectedHotspot, setSelectedHotspot] = useState(null)
   const [modelReady, setModelReady] = useState(false)
+  const [modelFailed, setModelFailed] = useState(false)
+  const automaticRetryRef = useRef(false)
+  const { elementRef: viewerFrameRef, shouldLoad, active } = useViewportActivity('120px')
   const webglAvailable = canUseWebGL()
-  const hotspots = resource ? getAnatomyHotspots(resource.id) : []
+  const hotspots = useMemo(() => resource ? getAnatomyHotspots(resource.id) : [], [resource])
   const filteredOrgans = useMemo(() => ORGAN_TOPICS.filter((item) => (item.modelAvailability === 'AVAILABLE' || item.id === organ.id) && `${localized(item.name, locale)} ${localized(item.system, locale)}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())), [locale, organ.id, query])
 
-  const selectResource = (id) => {
+  useEffect(() => {
+    const delay = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 0 : 2800
+    const timer = window.setTimeout(() => setAutoRotate(false), delay)
+    return () => window.clearTimeout(timer)
+  }, [resource?.model])
+
+  const retryModel = useCallback(async () => {
+    setModelFailed(false)
     setModelReady(false)
+    try {
+      await clearModelCache(resource?.model)
+    } finally {
+      setRetry((value) => value + 1)
+    }
+  }, [resource?.model])
+
+  const handleFailure = useCallback(() => {
+    if (!automaticRetryRef.current) {
+      automaticRetryRef.current = true
+      void retryModel()
+      return
+    }
+    setModelFailed(true)
+  }, [retryModel])
+
+  const manualRetry = useCallback(() => {
+    automaticRetryRef.current = false
+    return retryModel()
+  }, [retryModel])
+
+  const handleReady = useCallback(() => {
+    setModelReady(true)
+    setModelFailed(false)
+  }, [])
+
+  useEffect(() => {
+    if (!resource?.model || !webglAvailable || !shouldLoad || modelReady || modelFailed) return undefined
+    const timer = window.setTimeout(handleFailure, 20_000)
+    return () => window.clearTimeout(timer)
+  }, [handleFailure, modelFailed, modelReady, resource?.model, retry, shouldLoad, webglAvailable])
+
+  const selectResource = (id) => {
+    automaticRetryRef.current = false
+    setModelReady(false)
+    setModelFailed(false)
     setSelectedHotspot(null)
     setAutoRotate(true)
     setIsolate(false)
@@ -302,8 +428,8 @@ function OrganLearning({ organ, setOrganId, relatedDiseases, selectDisease, loca
     }
   }
 
-  const viewerSettings = { autoRotate, isolate, crossSection, wireframe, zoomToken, resetToken, performanceMode }
-  const fallback = <div className="pediatric-model-fallback"><Box size={34} aria-hidden="true" /><span>{localized(organ.name, locale)} · {isEnglish ? 'Model unavailable' : '模型暂不可用'}</span></div>
+  const viewerSettings = useMemo(() => ({ autoRotate, isolate, crossSection, wireframe, zoomToken, resetToken, performanceMode }), [autoRotate, crossSection, isolate, performanceMode, resetToken, wireframe, zoomToken])
+  const fallback = <ModelFallback className="pediatric-model-fallback" locale={locale} title={organ.name} onRetry={modelFailed ? manualRetry : null} />
 
   return <div className="pediatric-workspace organ-learning-workspace">
     <aside className="pediatric-library" aria-label={isEnglish ? 'Organ library' : '器官资料库'}>
@@ -313,7 +439,7 @@ function OrganLearning({ organ, setOrganId, relatedDiseases, selectDisease, loca
         <div className="pediatric-disease-list pediatric-organ-list organ-topic-grid" role="tabpanel">
           {filteredOrgans.map((item) => {
             const itemResource = ANATOMY_RESOURCES.find((candidate) => candidate.id === item.id)
-            return <button key={item.id} className={`pediatric-disease-item ${item.id === organ.id ? 'active' : ''}`} onClick={() => selectResource(item.id)}>
+            return <button key={item.id} className={`pediatric-disease-item ${item.id === organ.id ? 'active' : ''}`} onClick={() => selectResource(item.id)} onPointerEnter={() => preloadModel(itemResource?.model)} onFocus={() => preloadModel(itemResource?.model)}>
               <span className="pediatric-disease-glyph"><AnatomyThumb id={item.id} /></span>
               <span><strong>{localized(item.name, locale)}</strong><small>{localized(item.system, locale)}</small></span>
               <span className="pediatric-disease-dot" style={{ background: itemResource?.accent || '#c6b8ac' }} />
@@ -328,14 +454,14 @@ function OrganLearning({ organ, setOrganId, relatedDiseases, selectDisease, loca
       <header className="pediatric-scene-header">
         <div><p className="eyebrow">{localized(organ.system, locale)} · {isEnglish ? 'Organ learning' : '器官与照护指南'}</p><h1>{localized(organ.name, locale)}</h1><p>{localized(organ.shortFunction, locale)}</p></div>
       </header>
-      <div className="pediatric-viewer-frame">
+      <div ref={viewerFrameRef} className="pediatric-viewer-frame">
         {!resource?.model || !webglAvailable ? fallback : <>
-          {!modelReady && fallback}
-          <ModelErrorBoundary resetKey={`${organ.id}-${retry}`} fallback={fallback}>
+          {(!modelReady || modelFailed) && fallback}
+          {shouldLoad && !modelFailed && <ModelErrorBoundary resetKey={`${resource.model}-${retry}`} onError={handleFailure} fallback={fallback}>
             <Suspense fallback={fallback}>
-              <AnatomyModelCanvas key={`${organ.id}-${retry}`} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspot?.id} onSelectHotspot={setSelectedHotspot} locale={locale} settings={viewerSettings} onReady={() => setModelReady(true)} />
+              <AnatomyModelCanvas key={retry} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspot?.id} onSelectHotspot={setSelectedHotspot} locale={locale} settings={viewerSettings} active={active} onReady={handleReady} onContextLost={handleFailure} onInteractionStart={() => setAutoRotate(false)} />
             </Suspense>
-          </ModelErrorBoundary>
+          </ModelErrorBoundary>}
         </>}
         <div className="pediatric-viewer-tools" aria-label={isEnglish ? 'Anatomy viewer tools' : '解剖查看工具'}>
           <ToolButton icon={RotateCcw} label={isEnglish ? 'Rotate' : '旋转'} active={autoRotate} disabled={!resource?.model || !webglAvailable} onClick={() => handleTool('rotate')} />

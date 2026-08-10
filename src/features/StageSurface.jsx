@@ -1,7 +1,8 @@
-import { Component, lazy, Suspense, useEffect, useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Box, ChevronLeft, ChevronRight, CirclePause, CirclePlay, Image, RefreshCcw, Rotate3d, RotateCcw, ZoomIn } from 'lucide-react'
 import { JAUNDICE_TOPIC } from '../content/jaundice.js'
 import { getSexLabel } from '../domain/baby.js'
+import { canUseWebGL } from '../viewer/webglSupport.js'
 
 const ViewerCanvas = lazy(() => import('../viewer/ViewerCanvas.jsx'))
 
@@ -15,17 +16,16 @@ class ViewerErrorBoundary extends Component {
     return { failed: true }
   }
 
+  componentDidCatch(error) {
+    this.props.onError?.(error)
+  }
+
+  componentDidUpdate(previous) {
+    if (previous.resetKey !== this.props.resetKey && this.state.failed) this.setState({ failed: false })
+  }
+
   render() {
     return this.state.failed ? this.props.fallback : this.props.children
-  }
-}
-
-function canUseWebGL() {
-  try {
-    const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'))
-  } catch {
-    return false
   }
 }
 
@@ -33,7 +33,7 @@ function nextViewerAction(type) {
   return { type, id: `${type}-${Date.now()}` }
 }
 
-function TwoDimensionalFallback({ step, sex, locale }) {
+function TwoDimensionalFallback({ step, sex, locale, onRetry }) {
   const sexLabel = getSexLabel(sex, locale)
   return (
     <div className="two-d-fallback" data-testid="2d-fallback" data-baby-sex={sex || 'unset'}>
@@ -42,6 +42,7 @@ function TwoDimensionalFallback({ step, sex, locale }) {
         <h3>{locale === 'en-US' ? (step.titleEn || step.title) : step.title}</h3>
         <p>{locale === 'en-US' ? (step.descriptionEn || step.description) : step.description}</p>
         <small>{locale === 'en-US' ? `${sexLabel} appearance model is not ready; the written structure guide remains available.` : `${sexLabel}外观模型暂未就绪，当前保留文字结构说明。`}</small>
+        {onRetry && <button type="button" onClick={onRetry}><RefreshCcw size={14} />{locale === 'en-US' ? 'Reload model' : '重新加载模型'}</button>}
       </div>
     </div>
   )
@@ -55,6 +56,9 @@ export function StageSurface({ topicMode, sex, sceneMode, onSceneModeChange, per
   const [playing, setPlaying] = useState(false)
   const [autoRotate, setAutoRotate] = useState(false)
   const [viewerAction, setViewerAction] = useState(null)
+  const [viewerRetry, setViewerRetry] = useState(0)
+  const [viewerFailed, setViewerFailed] = useState(false)
+  const automaticRetryRef = useRef(false)
   const step = steps[stepIndex]
   const webglAvailable = canUseWebGL()
   const use3d = sceneMode === '3d' && webglAvailable
@@ -73,7 +77,21 @@ export function StageSurface({ topicMode, sex, sceneMode, onSceneModeChange, per
     return () => window.clearInterval(timer)
   }, [playing, steps.length, topicMode])
 
-  const fallback = <TwoDimensionalFallback step={step} sex={sex} locale={locale} />
+  const retryViewer = () => {
+    automaticRetryRef.current = false
+    setViewerRetry((value) => value + 1)
+    setViewerFailed(false)
+  }
+  const handleViewerFailure = () => {
+    setViewerFailed(true)
+    if (automaticRetryRef.current) return
+    automaticRetryRef.current = true
+    window.setTimeout(() => {
+      setViewerRetry((value) => value + 1)
+      setViewerFailed(false)
+    }, 250)
+  }
+  const fallback = <TwoDimensionalFallback step={step} sex={sex} locale={locale} onRetry={viewerFailed ? retryViewer : null} />
 
   return (
     <section className="stage-surface" data-testid="stage-surface">
@@ -86,10 +104,10 @@ export function StageSurface({ topicMode, sex, sceneMode, onSceneModeChange, per
       </div>
 
       <div className="scene-frame">
-        {use3d ? (
-          <ViewerErrorBoundary fallback={fallback}>
+        {use3d && !viewerFailed ? (
+          <ViewerErrorBoundary resetKey={viewerRetry} onError={handleViewerFailure} fallback={fallback}>
               <Suspense fallback={<div className="scene-loading">正在准备 3D 结构…</div>}>
-              <ViewerCanvas stepIndex={topicMode ? stepIndex : 0} performanceMode={performanceMode} sex={sex} viewerAction={viewerAction} />
+              <ViewerCanvas key={viewerRetry} stepIndex={topicMode ? stepIndex : 0} performanceMode={performanceMode} sex={sex} viewerAction={viewerAction} onContextLost={handleViewerFailure} />
             </Suspense>
           </ViewerErrorBoundary>
         ) : fallback}

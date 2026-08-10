@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Float, OrbitControls, RoundedBox, useGLTF } from '@react-three/drei'
 import { ASSET_MANIFEST, resolveSexAsset } from '../content/assets.js'
 import { getSexLabel } from '../domain/baby.js'
+import { useReducedViewerQuality } from './webglSupport.js'
 
 function SoftBabyPreview({ stepIndex }) {
   const group = useRef(null)
@@ -88,8 +89,10 @@ function GeneratedLiver() {
   return <primitive object={model} position={[0.25, 0.1, 0.45]} scale={0.42} />
 }
 
-export default function ViewerCanvas({ stepIndex = 0, performanceMode = 'balanced', sex = null, viewerAction = null }) {
+export default function ViewerCanvas({ stepIndex = 0, performanceMode = 'balanced', sex = null, viewerAction = null, onContextLost }) {
   const controlsRef = useRef(null)
+  const contextCleanupRef = useRef(() => {})
+  const reducedQuality = useReducedViewerQuality(performanceMode)
   const newbornAsset = resolveSexAsset(ASSET_MANIFEST.models.newborn, sex)
   const newbornUrl = performanceMode === 'low'
     ? newbornAsset?.low
@@ -105,12 +108,27 @@ export default function ViewerCanvas({ stepIndex = 0, performanceMode = 'balance
     controls.update()
   }, [viewerAction])
 
+  const handleCreated = useCallback(({ gl }) => {
+    contextCleanupRef.current()
+    const canvas = gl.domElement
+    const handleLost = (event) => {
+      event.preventDefault()
+      onContextLost?.()
+    }
+    canvas.addEventListener('webglcontextlost', handleLost, false)
+    contextCleanupRef.current = () => canvas.removeEventListener('webglcontextlost', handleLost, false)
+  }, [onContextLost])
+
+  useEffect(() => () => contextCleanupRef.current(), [])
+
   return (
     <div className="viewer-canvas-wrap" data-asset-state={generatedReady ? 'ready' : 'pending'} data-baby-sex={sex || 'unset'}>
       <Canvas
-        dpr={performanceMode === 'low' ? 1 : [1, 1.6]}
+        dpr={reducedQuality ? 1 : [1, 1.5]}
+        frameloop={reducedQuality ? 'demand' : 'always'}
         camera={{ position: [0, 0.35, 6], fov: 36 }}
-        gl={{ antialias: performanceMode !== 'low', alpha: true }}
+        gl={{ antialias: !reducedQuality, alpha: true, powerPreference: reducedQuality ? 'low-power' : 'high-performance' }}
+        onCreated={handleCreated}
       >
         <ambientLight intensity={1.8} />
         <directionalLight position={[4, 5, 7]} intensity={2.4} color="#fff4d8" />
