@@ -4,7 +4,17 @@ import { JAUNDICE_TOPIC } from '../content/jaundice.js'
 import { getSexLabel } from '../domain/baby.js'
 import { canUseWebGL } from '../viewer/webglSupport.js'
 
-const ViewerCanvas = lazy(() => import('../viewer/ViewerCanvas.jsx'))
+let viewerModulePromise
+function loadViewerModule() {
+  viewerModulePromise ||= import('../viewer/ViewerCanvas.jsx')
+  return viewerModulePromise
+}
+
+const ViewerCanvas = lazy(loadViewerModule)
+
+function clearViewerCache({ performanceMode, sex }) {
+  return loadViewerModule().then(({ clearViewerModelCache }) => clearViewerModelCache({ performanceMode, sex }))
+}
 
 class ViewerErrorBoundary extends Component {
   constructor(props) {
@@ -77,18 +87,26 @@ export function StageSurface({ topicMode, sex, sceneMode, onSceneModeChange, per
     return () => window.clearInterval(timer)
   }, [playing, steps.length, topicMode])
 
-  const retryViewer = () => {
-    automaticRetryRef.current = false
+  const recoverViewer = async () => {
+    try {
+      await clearViewerCache({ performanceMode, sex })
+    } catch {
+      // The retry still rebuilds the viewer when cache clearing is unavailable.
+    }
     setViewerRetry((value) => value + 1)
     setViewerFailed(false)
+  }
+
+  const retryViewer = () => {
+    automaticRetryRef.current = false
+    void recoverViewer()
   }
   const handleViewerFailure = () => {
     setViewerFailed(true)
     if (automaticRetryRef.current) return
     automaticRetryRef.current = true
     window.setTimeout(() => {
-      setViewerRetry((value) => value + 1)
-      setViewerFailed(false)
+      void recoverViewer()
     }, 250)
   }
   const fallback = <TwoDimensionalFallback step={step} sex={sex} locale={locale} onRetry={viewerFailed ? retryViewer : null} />

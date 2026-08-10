@@ -89,6 +89,15 @@ function GeneratedLiver() {
   return <primitive object={model} position={[0.25, 0.1, 0.45]} scale={0.42} />
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function clearViewerModelCache({ performanceMode = 'balanced', sex = null } = {}) {
+  const newbornAsset = resolveSexAsset(ASSET_MANIFEST.models.newborn, sex)
+  const newbornUrl = performanceMode === 'low' ? newbornAsset?.low : newbornAsset?.high
+  for (const url of [newbornUrl, ASSET_MANIFEST.models.liver.high]) {
+    if (url) useGLTF.clear(url)
+  }
+}
+
 export default function ViewerCanvas({ stepIndex = 0, performanceMode = 'balanced', sex = null, viewerAction = null, onContextLost }) {
   const controlsRef = useRef(null)
   const contextCleanupRef = useRef(() => {})

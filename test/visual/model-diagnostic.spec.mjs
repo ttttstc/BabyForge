@@ -88,3 +88,29 @@ test('all anatomy models load without entering the 2D fallback', async ({ page }
   await expect(page.locator('.pediatric-model-fallback')).toHaveCount(0, { timeout: 10000 })
   expect(errors.filter((message) => /GLTF|WebGL|THREE|loader/i.test(message))).toEqual([])
 })
+
+test('newborn viewer retries after a GLTF loader rejection', async ({ page }) => {
+  let glbRequests = 0
+  await page.route('**/src/content/assets.js*', async (route) => {
+    const response = await route.fetch()
+    const source = await response.text()
+    const patched = source
+      .replace(/ready: false,\s+high: ["']\/assets\/models\/newborn-boy\.glb["'],\s+low: ["']\/assets\/models\/newborn-boy-low\.glb["']/, "ready: true,\n        high: '/assets/anatomy/models/skin.glb',\n        low: '/assets/anatomy/models/skin.glb'")
+      .replace(/ready: false,\s+high: ["']\/assets\/models\/liver\.glb["']/, "ready: true,\n      high: '/assets/anatomy/models/heart.glb'")
+    await route.fulfill({ response, body: patched })
+  })
+  await page.route('**/assets/anatomy/models/skin.glb', async (route) => {
+    glbRequests += 1
+    if (glbRequests === 1) {
+      await route.abort('failed')
+      return
+    }
+    await route.continue()
+  })
+
+  await createBaby(page)
+  await page.goto('/#/topic/jaundice')
+  await expect(page.locator('.scene-frame canvas')).toBeVisible({ timeout: 30000 })
+  await expect.poll(() => glbRequests, { timeout: 30000 }).toBeGreaterThanOrEqual(2)
+  await expect(page.locator('[data-testid="2d-fallback"]')).toHaveCount(0, { timeout: 30000 })
+})
