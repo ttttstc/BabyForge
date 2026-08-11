@@ -15,5 +15,5 @@ export async function onRequestPost({ request, env }) {
     INSERT INTO household_invites (id, household_id, token_hash, expires_at, created_by_user_id)
     VALUES (?, ?, ?, ?, ?)
   `).bind(id, household.id, tokenHash, expiresAt, principal.userId).run()
-  return json({ invite: { id, token, expiresAt, url: `/invite/${token}` } }, 201)
+  return json({ invite: { id, token, expiresAt, url: `/#/household/invite/${token}` } }, 201)
 }

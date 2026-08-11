@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 export const ROUTES = {
   login: '#/login',
+  household: '#/household',
   onboarding: '#/onboarding',
   today: '#/today',
   records: '#/records',
@@ -115,8 +116,21 @@ export function navigate(route) {
   window.location.hash = route.slice(1)
 }
 
+export function buildInviteRoute(token) {
+  return `${ROUTES.household}/invite/${encodeURIComponent(String(token || '').trim())}`
+}
+
+export function inviteTokenFromLocation(location) {
+  const prefix = `${ROUTES.household}/invite/`
+  if (!location?.route?.startsWith(prefix)) return ''
+  try { return decodeURIComponent(location.route.slice(prefix.length)) } catch { return '' }
+}
+
 function hashValue() {
-  return globalThis.window?.location?.hash || ROUTES.onboarding
+  const hash = globalThis.window?.location?.hash
+  if (hash) return hash
+  const legacyInvite = globalThis.window?.location?.pathname?.match(/^\/invite\/([^/]+)\/?$/)
+  return legacyInvite ? buildInviteRoute(legacyInvite[1]) : ROUTES.onboarding
 }
 
 export function parseHashLocation(value = hashValue()) {

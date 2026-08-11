@@ -21,16 +21,19 @@ async function loadBetterAuthSession(fetchImpl, storage = globalThis.localStorag
   if (meResponse.status === 401 || meResponse.status === 404) return null
   if (meResponse.status === 403) throw new Error('请先验证邮箱')
   if (!meResponse.ok) throw new Error('登录状态无法确认')
+  if (!meResponse.headers.get('content-type')?.includes('application/json')) return null
   const me = await meResponse.json()
   const householdResponse = await fetchImpl('/api/household', { credentials: 'include' })
-  const householdPayload = householdResponse.ok ? await householdResponse.json() : { household: null }
+  const householdPayload = householdResponse.ok && householdResponse.headers.get('content-type')?.includes('application/json')
+    ? await householdResponse.json()
+    : { household: null }
   const household = householdPayload.household || null
   return saveSession(storage, {
     userId: me.user.id,
-    username: me.user.username || '',
+    username: '',
     email: me.user.email,
-    displayName: me.user.displayName,
-    needsUsername: !me.user.username,
+    nickname: me.user.nickname || me.user.displayName || '家长',
+    displayName: me.user.nickname || me.user.displayName || '家长',
     role: household?.role || 'owner',
     household,
     babies: household?.baby ? [household.baby] : [],
@@ -108,7 +111,7 @@ export async function login(username, password, options = {}) {
   if (!response.ok) {
     const code = payload?.error?.code || payload?.code
     if (code === 'EMAIL_NOT_VERIFIED') throw new Error('请先验证邮箱')
-    throw new Error(payload?.error?.message || payload?.message || '账号或密码不正确')
+    throw new Error(payload?.error?.message || payload?.message || '邮箱或密码不正确')
   }
   return loadBetterAuthSession(fetchImpl, storage)
 }
@@ -119,27 +122,32 @@ export async function resumeSession(options = {}) {
   return loadBetterAuthSession(fetchImpl, options.storage || globalThis.localStorage)
 }
 
-export async function updateUsername(value, options = {}) {
+export async function updateNickname(value, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
   const response = await fetchImpl('/api/me', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ username: normalizeUsername(value) }),
+    body: JSON.stringify({ nickname: String(value || '').trim() }),
   })
   let payload = {}
   try { payload = await response.json() } catch { /* handled below */ }
-  if (!response.ok) throw new Error(payload?.error || '用户名不可用')
+  if (!response.ok) throw new Error(payload?.error || '昵称保存失败')
   return payload.user
 }
 
-export async function register({ email, username, password, name }, options = {}) {
+export async function register({ email, password }, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
   const response = await fetchImpl('/api/auth/sign-up/email', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email: String(email || '').trim().toLowerCase(), username: normalizeUsername(username), name: String(name || username || '').trim(), password }),
+    body: JSON.stringify({
+      email: String(email || '').trim().toLowerCase(),
+      name: '家长',
+      password,
+      ...(options.callbackURL ? { callbackURL: options.callbackURL } : {}),
+    }),
   })
   let payload = {}
   try { payload = await response.json() } catch { /* handled below */ }
@@ -165,7 +173,7 @@ export async function resendVerification(email, options = {}) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email: String(email || '').trim().toLowerCase(), callbackURL: `${globalThis.location?.origin || ''}/#/login` }),
+    body: JSON.stringify({ email: String(email || '').trim().toLowerCase(), callbackURL: options.callbackURL || `${globalThis.location?.origin || ''}/#/login` }),
   })
   if (!response.ok) throw new Error('验证邮件暂时无法发送，请稍后重试')
   return response.json().catch(() => ({}))

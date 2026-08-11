@@ -1,6 +1,27 @@
 import { json } from '../../../../_shared/auth.js'
 import { findHouseholdForPrincipal, hashToken, requireBetterAuthUser } from '../../../../_shared/principal.js'
 
+export async function onRequestGet({ request, env, params }) {
+  const principal = await requireBetterAuthUser(request, env)
+  if (principal.response) return principal.response
+  if (await findHouseholdForPrincipal(env, principal)) return json({ error: '当前账号已经加入家庭' }, 409)
+  const tokenHash = await hashToken(params.token)
+  const invite = await env.DB.prepare(`
+    SELECT i.expires_at, i.used_at, i.revoked_at,
+      h.name AS household_name, h.deleted_at,
+      b.nickname AS baby_nickname
+    FROM household_invites i
+    JOIN households h ON h.id = i.household_id
+    LEFT JOIN baby_profiles b ON b.household_id = h.id
+    WHERE i.token_hash = ?
+    LIMIT 1
+  `).bind(tokenHash).first()
+  if (!invite || invite.used_at || invite.revoked_at || invite.deleted_at || Date.parse(invite.expires_at) <= Date.now()) {
+    return json({ error: '邀请链接无效或已过期' }, 410)
+  }
+  return json({ invite: { householdName: invite.household_name, babyNickname: invite.baby_nickname || null, expiresAt: invite.expires_at } })
+}
+
 export async function onRequestPost({ request, env, params }) {
   const principal = await requireBetterAuthUser(request, env)
   if (principal.response) return principal.response

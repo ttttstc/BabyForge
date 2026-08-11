@@ -6,11 +6,12 @@ import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
 import { ExperienceView } from '../features/ExperienceView.jsx'
 import { SettingsView } from '../features/SettingsView.jsx'
 import { LoginView } from '../features/LoginView.jsx'
-import { UsernameSetup } from '../features/UsernameSetup.jsx'
+import { HouseholdGate } from '../features/HouseholdGate.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
-import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resumeSession, SESSION_KEY, startGoogleLogin, updateUsername } from '../domain/auth.js'
+import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
+import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
@@ -18,7 +19,7 @@ import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, ro
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
-import { navigate, resolveNaibaReturnTo, ROUTES, useHashLocation } from './router.js'
+import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation } from './router.js'
 
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
 
@@ -29,6 +30,7 @@ function sameValue(left, right) {
 export function App() {
   const location = useHashLocation()
   const route = location.route
+  const inviteToken = inviteTokenFromLocation(location)
   const [session, setSession] = useState(() => loadSession())
   const sessionOwner = (value) => value?.userId || value?.username
   const initialOwnerRef = useRef(sessionOwner(session))
@@ -219,12 +221,24 @@ export function App() {
   }
 
   useEffect(() => {
-    if (!session && route !== ROUTES.login) navigate(ROUTES.login)
-    if (session && route === ROUTES.login && state.baby) navigate(ROUTES.today)
-    if (session && route === ROUTES.login && !state.baby && canEdit(session)) navigate(ROUTES.onboarding)
+    if (!session) {
+      if (route !== ROUTES.login && !inviteToken) navigate(ROUTES.login)
+      return
+    }
+    if (session.mode === 'cloudflare' && !session.household) {
+      if (route === ROUTES.login) navigate(ROUTES.household)
+      else if (![ROUTES.household, ROUTES.onboarding].includes(route) && !inviteToken) navigate(ROUTES.household)
+      return
+    }
+    if (session.mode === 'cloudflare' && session.household && inviteToken) {
+      navigate(state.baby ? ROUTES.today : ROUTES.onboarding)
+      return
+    }
+    if (route === ROUTES.login && state.baby) navigate(ROUTES.today)
+    if (route === ROUTES.login && !state.baby && canEdit(session)) navigate(ROUTES.onboarding)
     if (!state.baby && route !== ROUTES.onboarding && route !== ROUTES.login) navigate(canEdit(session) ? ROUTES.onboarding : ROUTES.login)
     if (state.baby && route === ROUTES.onboarding) navigate(ROUTES.today)
-  }, [route, session, state.baby])
+  }, [inviteToken, route, session, state.baby])
 
   useEffect(() => {
     document.documentElement.lang = state.preferences.locale
@@ -365,9 +379,13 @@ export function App() {
           }
         }
       } catch (error) {
-        if ([401, 403].includes(error?.status)) handleAuthRevoked()
+        if ([401, 403].includes(error?.status)) {
+          handleAuthRevoked()
+          return
+        }
         setAuthError(error.message)
       }
+      if (!current.baby) current = { ...current, baby: remoteBaby }
     }
     current = applyCareEventsToLegacy(migrateLegacyState(current), current.careEvents || [])
     stateRef.current = current
@@ -378,7 +396,11 @@ export function App() {
       setAuthError('当前账号暂未关联宝宝档案，请联系管理员。')
       return
     }
-    navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
+    if (next.mode === 'cloudflare' && !next.household) {
+      navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
+    } else {
+      navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
+    }
   }
 
   useEffect(() => {
@@ -396,29 +418,42 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session])
 
-  async function handleLogin(username, password) {
+  async function handleLogin(email, password) {
     setAuthError('')
     try {
-      const next = await login(username, password)
+      const next = await login(email, password)
       await activateSession(next)
     } catch (error) {
-      setAuthError(error.message || '账号或密码不正确')
+      setAuthError(error.message || '邮箱或密码不正确')
       return null
     }
   }
 
-  async function handleUsernameSetup(username) {
-    setAuthError('')
+  async function handleNicknameChange(nickname) {
     try {
-      const user = await updateUsername(username)
-      const next = { ...sessionRef.current, userId: user.id, username: user.username, needsUsername: false }
+      const user = await updateNickname(nickname)
+      const next = { ...sessionRef.current, nickname: user.nickname, displayName: user.nickname }
       persistSession(next)
       sessionRef.current = next
       setSession(next)
+      return user
     } catch (error) {
-      setAuthError(error.message || '用户名不可用')
+      setAuthError(error.message || '昵称保存失败')
       throw error
     }
+  }
+
+  async function handleInviteAccepted(token) {
+    const payload = await acceptHouseholdInvite(token)
+    const household = payload.household
+    const next = {
+      ...sessionRef.current,
+      household,
+      role: household?.role || 'member',
+      babies: household?.baby ? [household.baby] : [],
+    }
+    persistSession(next)
+    await activateSession(next)
   }
 
   async function handleLogout() {
@@ -463,12 +498,14 @@ export function App() {
     return true
   }
 
-  if (session?.needsUsername) {
-    return <UsernameSetup locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onSubmit={handleUsernameSetup} error={authError} />
+  if (!session || route === ROUTES.login || (session?.role === 'guest' && !state.baby)) {
+    const returnTo = inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household
+    const callbackURL = `${globalThis.location?.origin || ''}/${returnTo}`
+    return <LoginView locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onForgotPassword={(email) => requestPasswordReset(email)} onResendVerification={(email) => resendVerification(email, { callbackURL })} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
   }
 
-  if (!session || route === ROUTES.login || (session?.role === 'guest' && !state.baby)) {
-    return <LoginView locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input) }} onGoogleLogin={() => startGoogleLogin(ROUTES.login)} onForgotPassword={(email) => requestPasswordReset(email)} onResendVerification={(email) => resendVerification(email)} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
+  if (session.mode === 'cloudflare' && !session.household && route !== ROUTES.onboarding) {
+    return <HouseholdGate key={inviteToken || 'household'} locale={state.preferences.locale} inviteToken={inviteToken} onCreate={() => navigate(ROUTES.onboarding)} onOpenInvite={(token) => navigate(token ? buildInviteRoute(token) : ROUTES.household)} onAccept={handleInviteAccepted} />
   }
 
   if (!state.baby || route === ROUTES.onboarding) {
@@ -476,7 +513,7 @@ export function App() {
   }
 
   if (route === ROUTES.settings) {
-    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} />
+    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} nickname={session?.nickname || session?.displayName || '家长'} onNicknameChange={handleNicknameChange} />
   }
 
   if (route === ROUTES.records) {

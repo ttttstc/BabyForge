@@ -15,6 +15,8 @@
 - Owner 可邀请和移除成员、删除家庭；Member 可查看/写入业务数据并主动退出；Owner 不能退出。
 - 删除家庭使用 `deleted_at` 软删除，7 天恢复窗口；删除后所有成员访问立即拒绝。
 - 删除与恢复要求 Better Auth 会话在最近 10 分钟内重新建立；过期会话必须先重新登录。
+- Google 与邮箱密码登录共用同一分流：已有家庭直接进入；携带邀请则确认加入；否则选择创建家庭或粘贴邀请链接。
+- 邀请 Token 保留在 URL hash 中，跨 Google 回调、邮箱验证和重新登录恢复；不提供可搜索家庭列表。
 
 ## API
 
@@ -26,6 +28,7 @@ DELETE /api/household
 POST   /api/household/restore
 POST   /api/household/invites
 DELETE /api/household/invites/:id
+GET    /api/household/invites/:token/accept
 POST   /api/household/invites/:token/accept
 DELETE /api/household/members/:userId
 POST   /api/household/leave

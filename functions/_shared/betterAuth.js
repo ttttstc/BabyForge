@@ -1,5 +1,4 @@
 import { betterAuth } from 'better-auth'
-import { username } from 'better-auth/plugins'
 
 const authByDatabase = new WeakMap()
 
@@ -62,11 +61,6 @@ export function getBetterAuth(env) {
         clientSecret: env.GOOGLE_CLIENT_SECRET,
       },
     } : {},
-    plugins: [username({
-      minUsernameLength: 3,
-      maxUsernameLength: 30,
-      usernameValidator: (value) => /^[a-zA-Z0-9_.]+$/.test(value),
-    })],
     account: {
       accountLinking: {
         enabled: false,

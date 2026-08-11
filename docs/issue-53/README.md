@@ -26,7 +26,8 @@ Issue #53 保留为总议题；认证、家庭、授权迁移、演示和敏感�
 - User 是个人稳定身份；Household 是业务隔离边界。
 - 一个 User 最多一条 active membership；一个 Household 一个 Baby。
 - Household 角色只有 `owner`、`member`。
-- 邮箱未验证时不能进入业务；Google 首次登录要求补充唯一 username。
+- 邮箱未验证时不能进入业务；Google 登录直接采用 provider 名称作为昵称，不增加资料补全页。
+- 普通用户仅通过邮箱或 Google 认证；昵称可重复并可在设置修改，唯一身份由 `user_id` 保证。
 - 邀请有效期 24 小时、一次性、Owner 可撤销。
 - Household 删除采用软删除，恢复窗口 7 天。
 - 限流使用 D1 持久化；首发不强制 Turnstile。

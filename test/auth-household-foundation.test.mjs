@@ -2,7 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { passwordPolicyError } from '../functions/_shared/betterAuth.js'
 import { hashToken, randomToken } from '../functions/_shared/principal.js'
-import { startGoogleLogin } from '../src/domain/auth.js'
+import { register, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
+import { parseInviteToken } from '../src/domain/householdAccess.js'
+import { buildInviteRoute, inviteTokenFromLocation, parseHashLocation } from '../src/app/router.js'
+import { nicknamePolicyError, normalizeNickname } from '../functions/api/me.js'
 
 test('formal password policy requires letters and numbers', () => {
   assert.equal(passwordPolicyError('abc123'), null)
@@ -34,4 +37,45 @@ test('Google sign-in posts to Better Auth before navigating to the provider', as
   assert.equal(requests[0].options.method, 'POST')
   assert.deepEqual(JSON.parse(requests[0].options.body), { provider: 'google', callbackURL: 'http://localhost:8788/#/login' })
   assert.equal(destinations[0], url)
+})
+
+test('email registration needs only email and password and preserves the return route', async () => {
+  let request
+  await register({ email: ' Parent@Example.com ', password: 'abc123' }, {
+    callbackURL: 'https://babyforge.bbroot.com/#/household/invite/token',
+    fetchImpl: async (path, options) => {
+      request = { path, options }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  assert.equal(request.path, '/api/auth/sign-up/email')
+  assert.deepEqual(JSON.parse(request.options.body), {
+    email: 'parent@example.com',
+    name: '家长',
+    password: 'abc123',
+    callbackURL: 'https://babyforge.bbroot.com/#/household/invite/token',
+  })
+})
+
+test('nickname updates are non-unique display data', async () => {
+  assert.equal(normalizeNickname('  泥巴   猪  '), '泥巴 猪')
+  assert.equal(nicknamePolicyError('妈妈'), null)
+  assert.match(nicknamePolicyError(''), /1–30/)
+  let body
+  const user = await updateNickname('泥巴猪', { fetchImpl: async (_path, options) => {
+    body = JSON.parse(options.body)
+    return new Response(JSON.stringify({ user: { nickname: '泥巴猪' } }), { status: 200, headers: { 'content-type': 'application/json' } })
+  } })
+  assert.deepEqual(body, { nickname: '泥巴猪' })
+  assert.equal(user.nickname, '泥巴猪')
+})
+
+test('new and legacy invite links resolve to the shared household route', () => {
+  const token = 'a'.repeat(43)
+  const route = buildInviteRoute(token)
+  assert.equal(route, `#/household/invite/${token}`)
+  assert.equal(inviteTokenFromLocation(parseHashLocation(route)), token)
+  assert.equal(parseInviteToken(`https://babyforge.bbroot.com/${route}`), token)
+  assert.equal(parseInviteToken(`https://babyforge.bbroot.com/invite/${token}`), token)
+  assert.equal(parseInviteToken('not-an-invite'), '')
 })

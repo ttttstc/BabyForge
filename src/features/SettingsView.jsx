@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardPlus, Globe2, LogOut, RotateCcw, Settings2, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowLeft, ClipboardPlus, Globe2, LogOut, RotateCcw, Settings2, ShieldCheck, Sparkles, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getCopy, LOCALE_OPTIONS } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
@@ -7,7 +7,7 @@ import { LLM_PROTOCOL_OPTIONS } from '../../functions/_shared/llmConfig.js'
 import { BasicInfoPanel } from './RecordCenter.jsx'
 import { GlobalAiEntry } from './GlobalAiEntry.jsx'
 
-export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false }) {
+export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false, nickname = '家长', onNicknameChange }) {
   const locale = state.preferences.locale
   const copy = getCopy(locale)
   const isEnglish = locale === 'en-US'
@@ -17,6 +17,10 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
   const [llmStatus, setLlmStatus] = useState('')
   const [llmError, setLlmError] = useState('')
   const [profileStatus, setProfileStatus] = useState('')
+  const [nicknameForm, setNicknameForm] = useState(nickname)
+  const [nicknameBusy, setNicknameBusy] = useState(false)
+  const [nicknameStatus, setNicknameStatus] = useState('')
+  const [nicknameError, setNicknameError] = useState('')
 
   useEffect(() => {
     if (!cloudMode) return undefined
@@ -92,6 +96,23 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
     return result
   }
 
+  async function saveNickname(event) {
+    event.preventDefault()
+    if (!cloudMode || nicknameBusy) return
+    setNicknameBusy(true)
+    setNicknameStatus('')
+    setNicknameError('')
+    try {
+      const user = await onNicknameChange(nicknameForm)
+      setNicknameForm(user.nickname)
+      setNicknameStatus(isEnglish ? 'Nickname saved.' : '昵称已保存。')
+    } catch (cause) {
+      setNicknameError(cause.message || (isEnglish ? 'Nickname could not be saved.' : '昵称保存失败。'))
+    } finally {
+      setNicknameBusy(false)
+    }
+  }
+
   return (
     <main className="settings-page">
       <header className="settings-header">
@@ -113,6 +134,15 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
             {LOCALE_OPTIONS.map((option) => <label key={option.value}><input disabled={readOnly} type="radio" name="locale" value={option.value} checked={locale === option.value} onChange={() => changeLocale(option.value)} /><span><strong>{option.nativeLabel}</strong><small>{option.value === 'zh-CN' ? '简体中文' : 'Interface and labels'}</small></span></label>)}
           </div>
         </section>
+        {cloudMode && <section className="settings-section">
+          <div className="settings-section-heading"><UserRound size={19} /><div><h2>{isEnglish ? 'Nickname' : '昵称'}</h2><p>{isEnglish ? 'Shown to your household. It does not change how you sign in.' : '用于家庭内展示，不影响登录方式。'}</p></div></div>
+          <form className="settings-llm-form" onSubmit={saveNickname}>
+            <label><span>{isEnglish ? 'Nickname' : '昵称'}</span><input value={nicknameForm} onChange={(event) => { setNicknameForm(event.target.value); setNicknameStatus(''); setNicknameError('') }} maxLength="30" autoComplete="name" required /></label>
+            {nicknameError && <p className="save-error" role="alert">{nicknameError}</p>}
+            {nicknameStatus && <p className="settings-llm-status" role="status">{nicknameStatus}</p>}
+            <div className="settings-llm-actions"><button className="primary-button compact" type="submit" disabled={nicknameBusy}>{nicknameBusy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save nickname' : '保存昵称')}</button></div>
+          </form>
+        </section>}
         <section className="settings-section settings-record-link-section">
           <div className="settings-section-heading"><ClipboardPlus size={19} /><div><h2>{locale === 'en-US' ? 'All baby facts live in Record center' : '宝宝信息统一在记录中心维护'}</h2><p>{locale === 'en-US' ? 'Profile, growth measurements, feeding, illness, medication, and care facts share one entry point.' : '基础信息、成长测量、喂奶、生病、用药和照护事实都从同一个入口录入。'}</p></div></div>
           <button className="secondary-button" type="button" onClick={() => navigate(ROUTES.records)}><ClipboardPlus size={16} />{locale === 'en-US' ? 'Open Record center' : '打开记录中心'}</button>

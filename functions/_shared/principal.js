@@ -20,9 +20,8 @@ export async function ensureLegacyAccount(env, user) {
   `).bind(user.id).first()
   if (link) return { id: link.account_id, username: link.username, role: link.role, displayName: link.display_name }
 
-  // Keep an existing legacy account's data when a user signs up with the
-  // same username. The link is one-to-one, so a second user can never
-  // silently take over the old account.
+  // Keep an existing legacy account's data only when an older Better Auth
+  // user already carries a username. New users authenticate by email.
   const legacyUsernameValue = String(user.username || '').trim().toLowerCase()
   if (legacyUsernameValue) {
     const legacy = await env.DB.prepare(`
@@ -55,7 +54,7 @@ export async function ensureLegacyAccount(env, user) {
 
   const accountId = `auth-${user.id}`
   const username = legacyUsername(user)
-  const displayName = String(user.name || user.username || user.email || 'BabyForge 用户').slice(0, 80)
+  const displayName = String(user.name || '家长').slice(0, 80)
   const salt = idToken()
   const hash = idToken().padEnd(64, '0').slice(0, 64)
   await env.DB.batch([
