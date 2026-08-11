@@ -74,7 +74,7 @@ export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegiste
       <section className="login-story">
         <div className="login-orbit" aria-hidden="true"><span /><span /><span /></div>
         <p className="eyebrow">BabyForge · {isEnglish ? 'A shared workspace for growing up' : '一个家庭，共同照护'}</p>
-        <h1>{isEnglish ? 'Turn everyday changes into a story your family can understand.' : '把宝宝每天的变化，连成看得懂的成长脉络。'}</h1>
+        <h1>{isEnglish ? 'Your workspace for every stage of your baby’s growth.' : '你的宝宝成长工作台。'}</h1>
         <p>{isEnglish ? 'Record care facts, understand growth, follow stage guidance, learn pediatric essentials, and prepare clear notes for professional conversations.' : '记录喂养、睡眠、体温与成长；结合阶段指南、疫苗安排、儿科知识和奶爸 AI，整理今天该做什么、复诊时该说什么。'}</p>
         <div className="login-feature-grid">
           <span><CalendarCheck2 size={17} /><strong>{isEnglish ? 'Today' : '今日照护'}</strong><small>{isEnglish ? 'Shared facts and priorities' : '共同记录与重点'}</small></span>
