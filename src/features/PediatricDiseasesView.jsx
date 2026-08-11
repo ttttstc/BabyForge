@@ -356,12 +356,6 @@ function OrganLearning({ organ, setOrganId, relatedDiseases, selectDisease, loca
   const hotspots = useMemo(() => resource ? getAnatomyHotspots(resource.id) : [], [resource])
   const filteredOrgans = useMemo(() => ORGAN_TOPICS.filter((item) => (item.modelAvailability === 'AVAILABLE' || item.id === organ.id) && `${localized(item.name, locale)} ${localized(item.system, locale)}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())), [locale, organ.id, query])
 
-  useEffect(() => {
-    const delay = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 0 : 2800
-    const timer = window.setTimeout(() => setAutoRotate(false), delay)
-    return () => window.clearTimeout(timer)
-  }, [resource?.model])
-
   const retryModel = useCallback(async () => {
     setModelFailed(false)
     setModelReady(false)

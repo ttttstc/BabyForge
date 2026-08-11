@@ -301,6 +301,7 @@ test('pediatric library exposes all anatomy models and opens a concrete case gui
   await expect(page.locator('.pediatric-organ-list .pediatric-disease-item')).toHaveCount(16)
   await page.getByRole('button', { name: /大脑.*神经系统/ }).click()
   await expect(page.getByLabel('大脑 3D viewer')).toBeVisible()
+  await expect(page.locator('.pediatric-auto-rotate')).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByRole('tab', { name: '常见儿科病', exact: true }).click()
   await expect(page.locator('.disease-selected').getByRole('heading', { name: '新生儿黄疸', exact: true })).toBeVisible()

@@ -49,6 +49,7 @@ test('all anatomy models load without entering the 2D fallback', async ({ page }
     await expect(page.getByRole('region', { name: `${organ} 3D viewer` }).getByRole('heading', { name: organ, exact: true, level: 1 })).toBeVisible()
     await expect(page.locator('.pediatric-model-fallback')).toHaveCount(0, { timeout: 30000 })
     await expect(page.locator('.pediatric-loading')).toHaveCount(0, { timeout: 30000 })
+    await expect(page.locator('.pediatric-auto-rotate')).toHaveAttribute('aria-pressed', 'true')
     const canvas = page.locator('.pediatric-viewer-frame canvas')
     await expect(canvas).toBeVisible()
     if (!markedCanvas) {
