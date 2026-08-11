@@ -29,8 +29,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await createBaby(page)
-  await page.getByRole('button', { name: '健康', exact: true }).click()
-  await page.getByRole('tab', { name: '常见儿科病' }).click()
+  await page.goto('/#/health/diseases')
+  await expect(page.getByRole('tab', { name: '常见儿科病' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('condition finder covers the five issue 14 acceptance paths', async ({ page }) => {
@@ -38,6 +38,7 @@ test('condition finder covers the five issue 14 acceptance paths', async ({ page
   await finder.fill('毛细支气管炎')
   await page.locator('.disease-topic-card').filter({ has: page.getByRole('heading', { name: '毛细支气管炎', exact: true }) }).click()
   await expect(page.locator('.disease-selected')).toContainText('末端细支气管')
+  await expect(page.locator('.disease-model-stage').first()).toBeVisible()
   await expect(page.locator('.disease-unit-canvas canvas')).toHaveCount(1)
   await expect(page.locator('.disease-selected')).toContainText('一般治疗与家庭护理')
 

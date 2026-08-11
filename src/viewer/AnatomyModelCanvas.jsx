@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useThree } from '@react-three/fiber'
 import { Html, OrbitControls, useGLTF } from '@react-three/drei'
+import { useReducedViewerQuality } from './webglSupport.js'
 
-function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHotspot, locale, onScreenPositionsChange }) {
+function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHotspot, locale, onScreenPositionsChange, projectionToken }) {
   const hotspotRefs = useRef(new Map())
   const projectedPoint = useRef(new THREE.Vector3())
   const lastPositions = useRef('')
+  const { camera, size } = useThree()
 
-  useFrame(({ camera, size }) => {
+  useLayoutEffect(() => {
     if (!onScreenPositionsChange) return
     const positions = {}
     hotspotRefs.current.forEach((object, id) => {
@@ -23,7 +25,7 @@ function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHot
     if (signature === lastPositions.current) return
     lastPositions.current = signature
     onScreenPositionsChange(positions)
-  })
+  }, [camera, hotspots, onScreenPositionsChange, projectionToken, size.height, size.width])
 
   return hotspots.map((hotspot) => {
     const selected = hotspot.id === selectedHotspotId
@@ -47,9 +49,10 @@ function AnatomyHotspots({ hotspots, markerScale, selectedHotspotId, onSelectHot
   })
 }
 
-function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, locale, settings, onReady, onHotspotPositionsChange }) {
+function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, locale, settings, onReady, onHotspotPositionsChange, onInteractionStart }) {
   const { scene } = useGLTF(resource.model)
   const controlsRef = useRef(null)
+  const [projectionToken, setProjectionToken] = useState(0)
   const fitted = useMemo(() => {
     const source = scene.clone(true)
     const clone = new THREE.Group()
@@ -57,10 +60,8 @@ function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, 
     source.children.forEach((child) => clone.add(child))
     clone.traverse((node) => {
       if (node.isMesh && node.material) {
-        // GLTFLoader caches scene geometry. Deep-clone geometry before R3F
-        // mounts/unmounts the specimen so StrictMode cannot dispose the cache.
-        node.geometry = node.geometry.clone()
-        node.frustumCulled = false
+        // Geometry is immutable and shared with GLTFLoader's cache. Materials
+        // remain local because viewer tools modify them.
         node.castShadow = false
         node.receiveShadow = false
         node.material = Array.isArray(node.material)
@@ -116,6 +117,14 @@ function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, 
 
   const { model, plinthY, markerScale } = fitted
 
+  useEffect(() => () => {
+    model.traverse((node) => {
+      if (!node.isMesh || !node.material) return
+      const materials = Array.isArray(node.material) ? node.material : [node.material]
+      materials.forEach((material) => material.dispose())
+    })
+  }, [model])
+
   useEffect(() => {
     onReady?.()
   }, [onReady, resource.id])
@@ -138,25 +147,27 @@ function AnatomyModel({ resource, hotspots, selectedHotspotId, onSelectHotspot, 
     if (!controlsRef.current || !settings.zoomToken) return
     controlsRef.current.dollyIn(1.18)
     controlsRef.current.update()
+    setProjectionToken((value) => value + 1)
   }, [settings.zoomToken])
 
   useEffect(() => {
     if (!controlsRef.current || !settings.resetToken) return
     controlsRef.current.reset()
     controlsRef.current.update()
+    setProjectionToken((value) => value + 1)
   }, [settings.resetToken])
 
   return (
     <>
       <group scale={settings.isolate ? 1.12 : 1} rotation={[0.05, -0.28, 0]}>
         <primitive object={model} dispose={null} />
-        <AnatomyHotspots hotspots={hotspots} markerScale={markerScale} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} onScreenPositionsChange={onHotspotPositionsChange} />
+        <AnatomyHotspots hotspots={hotspots} markerScale={markerScale} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} onScreenPositionsChange={onHotspotPositionsChange} projectionToken={projectionToken} />
       </group>
       <mesh position={[0, plinthY * (settings.isolate ? 1.12 : 1), 0]}>
         <cylinderGeometry args={[2.3, 2.48, 0.34, 56]} />
         <meshStandardMaterial color="#ead7c1" roughness={0.78} />
       </mesh>
-      <OrbitControls ref={controlsRef} enablePan={false} minDistance={4.2} maxDistance={10} autoRotate={settings.autoRotate} autoRotateSpeed={0.65} />
+      <OrbitControls ref={controlsRef} enablePan={false} minDistance={4.2} maxDistance={10} autoRotate={settings.autoRotate} autoRotateSpeed={0.65} onStart={onInteractionStart} onEnd={() => setProjectionToken((value) => value + 1)} />
     </>
   )
 }
@@ -166,12 +177,51 @@ export function preloadAnatomyModel(url) {
   if (url) useGLTF.preload(url)
 }
 
-export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId = null, onSelectHotspot = () => {}, locale = 'zh-CN', settings, onReady = () => {}, onHotspotPositionsChange }) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function clearAnatomyModel(url) {
+  if (url) useGLTF.clear(url)
+}
+
+export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId = null, onSelectHotspot = () => {}, locale = 'zh-CN', settings, active = true, onReady = () => {}, onHotspotPositionsChange, onContextLost, onInteractionStart }) {
+  const reducedQuality = useReducedViewerQuality(settings.performanceMode)
+  const contextCleanupRef = useRef(() => {})
+  const loadRef = useRef({ url: '', startedAt: 0 })
+
+  useLayoutEffect(() => {
+    loadRef.current = { url: resource.model, startedAt: globalThis.performance.now() }
+  }, [resource.model])
+
+  const handleReady = useCallback(() => {
+    const finishedAt = globalThis.performance.now()
+    const durationMs = Math.round(finishedAt - loadRef.current.startedAt)
+    try {
+      globalThis.performance.measure(`babyforge:3d-ready:${resource.id}`, { start: loadRef.current.startedAt, end: finishedAt, detail: { modelId: resource.id } })
+    } catch {
+      // Older Safari still receives duration through the callback.
+    }
+    onReady({ modelId: resource.id, durationMs })
+  }, [onReady, resource.id])
+
+  const handleCreated = useCallback(({ gl }) => {
+    contextCleanupRef.current()
+    const canvas = gl.domElement
+    const handleLost = (event) => {
+      event.preventDefault()
+      onContextLost?.()
+    }
+    canvas.addEventListener('webglcontextlost', handleLost, false)
+    contextCleanupRef.current = () => canvas.removeEventListener('webglcontextlost', handleLost, false)
+  }, [onContextLost])
+
+  useEffect(() => () => contextCleanupRef.current(), [])
+
   return (
     <Canvas
-      dpr={settings.performanceMode === 'low' ? 1 : [1, 1.6]}
+      dpr={reducedQuality ? 1 : [1, 1.5]}
+      frameloop={!active ? 'never' : settings.autoRotate ? 'always' : 'demand'}
       camera={{ position: [0, 1.05, 8.2], fov: 34 }}
-      gl={{ antialias: settings.performanceMode !== 'low', alpha: true, localClippingEnabled: settings.crossSection, preserveDrawingBuffer: true }}
+      gl={{ antialias: !reducedQuality, alpha: true, localClippingEnabled: settings.crossSection, powerPreference: reducedQuality ? 'low-power' : 'high-performance' }}
+      onCreated={handleCreated}
     >
       <ambientLight intensity={1.55} />
       <hemisphereLight args={['#fff8ee', '#33252d', 0.72]} />
@@ -179,7 +229,9 @@ export function AnatomyModelCanvas({ resource, hotspots = [], selectedHotspotId 
       <directionalLight position={[-4.5, 1.2, 5.2]} intensity={1.05} color="#e6ecff" />
       <directionalLight position={[-4, 3.5, -5.5]} intensity={1.18} color="#ffb7a5" />
       <pointLight position={[-3, -1.4, 3.5]} intensity={0.5} color="#ff8d70" />
-      <AnatomyModel key={resource.id} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} settings={settings} onReady={onReady} onHotspotPositionsChange={onHotspotPositionsChange} />
+      <Suspense fallback={null}>
+        <AnatomyModel key={resource.id} resource={resource} hotspots={hotspots} selectedHotspotId={selectedHotspotId} onSelectHotspot={onSelectHotspot} locale={locale} settings={settings} onReady={handleReady} onHotspotPositionsChange={onHotspotPositionsChange} onInteractionStart={onInteractionStart} />
+      </Suspense>
     </Canvas>
   )
 }

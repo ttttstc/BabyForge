@@ -1364,6 +1364,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .pediatric-hotspot-3d-callout strong { color: var(--ink); font-size: .65rem; }
 .pediatric-hotspot-3d-callout small { color: var(--muted); font-size: .57rem; line-height: 1.35; }
 .pediatric-model-fallback { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; align-content: center; gap: 9px; color: #756b63; font-size: .65rem; text-align: center; transition: opacity .18s ease; }
+.pediatric-model-fallback p { margin: 0; }
+.pediatric-model-fallback button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fffaf4; cursor: pointer; }
 .pediatric-model-fallback.is-hidden { opacity: 0; pointer-events: none; }
 .pediatric-loading { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; align-content: center; gap: 5px; color: var(--muted); font-size: .7rem; pointer-events: none; }
 .pediatric-loading small { color: #8e8176; font-size: .58rem; }
