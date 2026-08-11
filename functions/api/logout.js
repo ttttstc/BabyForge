@@ -18,7 +18,7 @@ export async function logoutRequest(request, env, { createAuth = getBetterAuth }
   const response = await createAuth(env).handler(signOutRequest)
   const responseHeaders = new Headers(response.headers)
   responseHeaders.append('set-cookie', clearSessionCookie())
-  responseHeaders.append('set-cookie', clearShowcaseCookie())
+  responseHeaders.append('set-cookie', clearShowcaseCookie(request))
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

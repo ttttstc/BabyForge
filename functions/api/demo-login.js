@@ -16,7 +16,7 @@ export async function onRequestPost({ request, env }) {
     if (!env.DB || !preset?.babyId) return json({ error: '演示资料暂不可用' }, 503, { 'cache-control': 'no-store' })
     const baby = await env.DB.prepare("SELECT id FROM baby_profiles WHERE id = ? AND COALESCE(status, 'active') <> 'detached'").bind(preset.babyId).first()
     if (!baby) return json({ error: '演示资料暂不可用' }, 503, { 'cache-control': 'no-store' })
-    const session = await createShowcaseSession(env, baby.id)
+    const session = await createShowcaseSession(env, baby.id, request)
     return json({ demo: { ...demo, showcase: true }, expiresAt: session.expiresAt }, 200, {
       'cache-control': 'no-store',
       'set-cookie': session.cookie,

@@ -21,7 +21,7 @@ function token() {
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
 }
 
-export async function createShowcaseSession(env, babyId) {
+export async function createShowcaseSession(env, babyId, request) {
   const value = token()
   const expiresAt = new Date(Date.now() + SESSION_SECONDS * 1000).toISOString()
   await env.DB.prepare(`
@@ -30,7 +30,7 @@ export async function createShowcaseSession(env, babyId) {
   `).bind(await hash(value), babyId, expiresAt).run()
   return {
     expiresAt,
-    cookie: `${COOKIE_NAME}=${encodeURIComponent(value)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_SECONDS}`,
+    cookie: `${COOKIE_NAME}=${encodeURIComponent(value)}; HttpOnly;${new URL(request.url).protocol === 'https:' ? ' Secure;' : ''} SameSite=Lax; Path=/; Max-Age=${SESSION_SECONDS}`,
   }
 }
 
@@ -51,6 +51,6 @@ export async function revokeShowcaseSession(request, env) {
   if (value && env.DB) await env.DB.prepare('DELETE FROM demo_showcase_sessions WHERE token_hash = ?').bind(await hash(value)).run()
 }
 
-export function clearShowcaseCookie() {
-  return `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
+export function clearShowcaseCookie(request) {
+  return `${COOKIE_NAME}=; HttpOnly;${new URL(request.url).protocol === 'https:' ? ' Secure;' : ''} SameSite=Lax; Path=/; Max-Age=0`
 }
