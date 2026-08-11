@@ -4,10 +4,12 @@ import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 
 import { isSessionFresh } from '../functions/_shared/principal.js'
+import { scheduleAuthEmailDelivery } from '../functions/_shared/betterAuth.js'
 import { onRequest as handleAuthRequest } from '../functions/api/auth/[[path]].js'
+import { acceptInviteMembership } from '../functions/api/household/invites/[token]/accept.js'
 import { restoreDeletedHousehold } from '../functions/api/household/restore.js'
 import { logoutRequest } from '../functions/api/logout.js'
-import { isOneBabyConstraintError } from '../functions/api/sync.js'
+import { isOneBabyConstraintError, onRequestPost as syncWorkspace } from '../functions/api/sync.js'
 
 function d1Database(database) {
   return {
@@ -16,8 +18,11 @@ function d1Database(database) {
         bind(...values) {
           return {
             async run() {
-              return database.prepare(sql).run(...values)
+              const result = database.prepare(sql).run(...values)
+              return { meta: { changes: Number(result.changes) } }
             },
+            async first() { return database.prepare(sql).get(...values) || null },
+            async all() { return { results: database.prepare(sql).all(...values) } },
           }
         },
       }
@@ -145,4 +150,107 @@ test('database enforces one baby per household', () => {
     /UNIQUE constraint failed: baby_profiles\.household_id/,
   )
   assert.equal(isOneBabyConstraintError(new Error('UNIQUE constraint failed: baby_profiles.household_id')), true)
+})
+
+test('sync cannot update a baby that belongs to another household', async () => {
+  const database = new DatabaseSync(':memory:')
+  database.exec(`
+    CREATE TABLE accounts (id TEXT PRIMARY KEY, username TEXT, role TEXT, display_name TEXT, active INTEGER);
+    CREATE TABLE auth_sessions (token TEXT PRIMARY KEY, account_id TEXT, expires_at TEXT);
+    CREATE TABLE households (id TEXT PRIMARY KEY, name TEXT, deleted_at TEXT);
+    CREATE TABLE household_members (household_id TEXT, account_id TEXT, user_id TEXT, role TEXT, active INTEGER);
+    CREATE TABLE baby_profiles (
+      id TEXT PRIMARY KEY, household_id TEXT NOT NULL, nickname TEXT NOT NULL, birth_date TEXT NOT NULL,
+      gestational_weeks INTEGER NOT NULL, gestational_days INTEGER NOT NULL DEFAULT 0,
+      growth_age_basis TEXT NOT NULL DEFAULT 'chronological', birth_multiplicity TEXT NOT NULL DEFAULT 'singleton',
+      sex TEXT, feeding_mode TEXT, locale TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+      updated_at TEXT NOT NULL, updated_by TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX idx_baby_profiles_one_per_household ON baby_profiles(household_id);
+    CREATE TABLE workspace_records (
+      baby_id TEXT, collection TEXT, record_id TEXT, payload_json TEXT, updated_at TEXT, updated_by TEXT,
+      PRIMARY KEY (baby_id, collection, record_id)
+    );
+  `)
+  database.prepare('INSERT INTO accounts VALUES (?, ?, ?, ?, 1)').run('attacker', 'attacker', 'caregiver', '攻击者')
+  database.prepare('INSERT INTO auth_sessions VALUES (?, ?, ?)').run('attacker-token', 'attacker', '2099-01-01T00:00:00.000Z')
+  database.prepare('INSERT INTO households VALUES (?, ?, NULL)').run('home-a', 'A')
+  database.prepare('INSERT INTO households VALUES (?, ?, NULL)').run('home-b', 'B')
+  database.prepare('INSERT INTO household_members VALUES (?, ?, NULL, ?, 1)').run('home-a', 'attacker', 'caregiver')
+  database.prepare(`
+    INSERT INTO baby_profiles
+    VALUES (?, ?, ?, ?, 40, 0, 'chronological', 'singleton', 'female', 'mixed', 'zh-CN', 'active', ?, ?)
+  `).run('victim-baby', 'home-b', '原始昵称', '2026-01-01', '2026-08-11T00:00:00.000Z', 'victim')
+
+  const response = await syncWorkspace({
+    env: { DB: d1Database(database) },
+    request: new Request('https://babyforge.test/api/sync', {
+      method: 'POST',
+      headers: { cookie: 'babyforge_session=attacker-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baby: { id: 'victim-baby', nickname: '被篡改', birthDate: '2026-02-02', gestationalWeeks: 39 },
+      }),
+    }),
+  })
+
+  assert.equal(response.status, 403)
+  assert.match((await response.json()).error, /无权/)
+  assert.deepEqual({ ...database.prepare('SELECT household_id, nickname, birth_date FROM baby_profiles WHERE id = ?').get('victim-baby') }, {
+    household_id: 'home-b', nickname: '原始昵称', birth_date: '2026-01-01',
+  })
+})
+
+test('deleted households cannot gain an active member through an invite race', async () => {
+  const database = new DatabaseSync(':memory:')
+  database.exec(`
+    CREATE TABLE households (id TEXT PRIMARY KEY, deleted_at TEXT);
+    CREATE TABLE household_invites (
+      id TEXT PRIMARY KEY, household_id TEXT, expires_at TEXT, used_at TEXT, revoked_at TEXT
+    );
+    CREATE TABLE household_members (
+      household_id TEXT, account_id TEXT, role TEXT, active INTEGER, user_id TEXT,
+      membership_role TEXT, created_at TEXT
+    );
+    CREATE UNIQUE INDEX idx_household_members_one_active_user
+      ON household_members(user_id) WHERE active = 1 AND user_id IS NOT NULL;
+  `)
+  database.prepare('INSERT INTO households VALUES (?, ?)').run('deleted-home', '2026-08-11T11:59:59.000Z')
+  database.prepare('INSERT INTO household_invites VALUES (?, ?, ?, NULL, NULL)').run('invite-1', 'deleted-home', '2099-01-01T00:00:00.000Z')
+
+  const results = await acceptInviteMembership(
+    { DB: d1Database(database) },
+    { id: 'invite-1', household_id: 'deleted-home' },
+    { accountId: 'account-new', userId: 'user-new' },
+    '2026-08-11T12:00:00.000Z',
+  )
+
+  assert.equal(results[0].meta.changes, 0)
+  assert.equal(results[1].meta.changes, 0)
+  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM household_members WHERE active = 1').get().count, 0)
+
+  database.prepare('INSERT INTO households VALUES (?, NULL)').run('active-home')
+  database.prepare('INSERT INTO household_invites VALUES (?, ?, ?, NULL, NULL)').run('invite-2', 'active-home', '2099-01-01T00:00:00.000Z')
+  const accepted = await acceptInviteMembership(
+    { DB: d1Database(database) },
+    { id: 'invite-2', household_id: 'active-home' },
+    { accountId: 'account-new', userId: 'user-new' },
+    '2026-08-11T12:00:00.000Z',
+  )
+  assert.equal(accepted[0].meta.changes, 1)
+  assert.equal(accepted[1].meta.changes, 1)
+  assert.deepEqual({ ...database.prepare('SELECT household_id, user_id, active FROM household_members').get() }, {
+    household_id: 'active-home', user_id: 'user-new', active: 1,
+  })
+})
+
+test('auth email delivery is attached to the request lifetime without delaying it', async () => {
+  let finishDelivery
+  const delivery = new Promise((resolve) => { finishDelivery = resolve })
+  let backgroundTask
+  const result = scheduleAuthEmailDelivery(delivery, (task) => { backgroundTask = task }, assert.fail)
+
+  assert.equal(result, undefined)
+  assert.ok(backgroundTask)
+  finishDelivery()
+  await backgroundTask
 })

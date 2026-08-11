@@ -129,7 +129,7 @@ export function saveState(storage = globalThis.localStorage, state, owner) {
 
 export function clearState(storage = globalThis.localStorage, owner) {
   storage?.removeItem(storageKey(owner))
-  void clearLocalWorkspace(owner).catch(() => {})
+  return clearLocalWorkspace(owner).catch(() => {})
 }
 
 export async function hydrateState(storage = globalThis.localStorage, owner) {

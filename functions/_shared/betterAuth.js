@@ -43,13 +43,21 @@ export function passwordPolicyError(password) {
   return passwordMeetsPolicy(password) ? null : '密码至少 6 位，并且同时包含字母和数字'
 }
 
-export function getBetterAuth(env) {
-  if (!env?.DB) throw new Error('D1 未配置')
-  const cached = authByDatabase.get(env.DB)
-  if (cached) return cached
+export function scheduleAuthEmailDelivery(delivery, waitUntil, reportError = (error) => {
+  console.error('[BabyForge] Auth email delivery failed', error?.message || error)
+}) {
+  if (typeof waitUntil !== 'function') return delivery
+  waitUntil(Promise.resolve(delivery).catch(reportError))
+}
 
+function createBetterAuth(env, waitUntil) {
+  if (!env?.DB) throw new Error('D1 未配置')
   const baseURL = env.BETTER_AUTH_URL || undefined
-  const auth = betterAuth({
+  const deliverEmail = (message) => {
+    const delivery = sendResend(env, message)
+    return scheduleAuthEmailDelivery(delivery, waitUntil)
+  }
+  return betterAuth({
     appName: 'BabyForge',
     baseURL,
     basePath: '/api/auth',
@@ -71,7 +79,7 @@ export function getBetterAuth(env) {
       sendOnSignUp: true,
       autoSignInAfterVerification: false,
       expiresIn: 60 * 60,
-      sendVerificationEmail: ({ user, url }) => sendResend(env, {
+      sendVerificationEmail: ({ user, url }) => deliverEmail({
         to: user.email,
         subject: '验证你的 BabyForge 邮箱',
         url,
@@ -85,7 +93,7 @@ export function getBetterAuth(env) {
       requireEmailVerification: true,
       autoSignIn: false,
       revokeSessionsOnPasswordReset: true,
-      sendResetPassword: ({ user, url }) => sendResend(env, {
+      sendResetPassword: ({ user, url }) => deliverEmail({
         to: user.email,
         subject: '重置你的 BabyForge 密码',
         url,
@@ -112,6 +120,13 @@ export function getBetterAuth(env) {
     },
     trustedOrigins: [baseURL, 'http://localhost:8788', 'http://localhost:5173'].filter(Boolean),
   })
+}
+
+export function getBetterAuth(env) {
+  if (!env?.DB) throw new Error('D1 未配置')
+  const cached = authByDatabase.get(env.DB)
+  if (cached) return cached
+  const auth = createBetterAuth(env)
   authByDatabase.set(env.DB, auth)
   return auth
 }
@@ -124,6 +139,7 @@ export async function getBetterAuthSession(request, env) {
   }
 }
 
-export async function handleBetterAuthRequest(request, env) {
-  return getBetterAuth(env).handler(request)
+export async function handleBetterAuthRequest(request, env, waitUntil) {
+  const auth = typeof waitUntil === 'function' ? createBetterAuth(env, waitUntil) : getBetterAuth(env)
+  return auth.handler(request)
 }

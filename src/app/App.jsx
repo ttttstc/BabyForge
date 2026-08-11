@@ -48,6 +48,8 @@ export function App() {
   const pendingSequenceRef = useRef(0)
   const localRevisionRef = useRef(0)
   const revokingRef = useRef(false)
+  const sessionRefreshStartedRef = useRef(false)
+  const hydrationCancelledRef = useRef(false)
   const readOnly = Boolean(session) && !canEdit(session)
 
   function hasPendingSync() {
@@ -251,7 +253,7 @@ export function App() {
     const initialSession = sessionRef.current
     const revisionAtEffectStart = localRevisionRef.current
     hydrateState(globalThis.localStorage, owner).then(async (next) => {
-      if (!active || !next?.version || sessionOwner(sessionRef.current) !== owner) return
+      if (!active || hydrationCancelledRef.current || !next?.version || sessionOwner(sessionRef.current) !== owner) return
       let hydrated = next
       const remoteBabyId = initialSession?.mode === 'cloudflare' ? initialSession.babies?.[0]?.id : null
       if (remoteBabyId) {
@@ -290,7 +292,7 @@ export function App() {
           if (localRevisionRef.current !== revisionAtEffectStart) hydrated = stateRef.current
         }
       }
-      if (!active || sessionOwner(sessionRef.current) !== owner) return
+      if (!active || hydrationCancelledRef.current || sessionOwner(sessionRef.current) !== owner) return
       stateRef.current = hydrated
       saveState(globalThis.localStorage, hydrated, owner)
       setState(hydrated)
@@ -363,6 +365,21 @@ export function App() {
     // flow mirrors the production household membership. Cloudflare always
     // uses the account-specific remote workspace returned by the API.
     const workspaceOwner = sessionOwner(next)
+    if (next.mode === 'cloudflare' && !next.household) {
+      hydrationCancelledRef.current = true
+      const current = stateRef.current
+      await Promise.all([
+        clearState(globalThis.localStorage, workspaceOwner),
+        next?.username && next?.userId ? clearState(globalThis.localStorage, next.username) : Promise.resolve(),
+        current.baby?.id ? clearLocalBabyAlbum(current.baby.id).catch(() => {}) : Promise.resolve(),
+      ])
+      clearExperienceCache({ storage: globalThis.localStorage })
+      const initial = createInitialState()
+      stateRef.current = initial
+      setState(initial)
+      navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
+      return
+    }
     let current = loadState(globalThis.localStorage, workspaceOwner)
     if (next.mode === 'demo' && next.username === 'guest' && !current.baby) {
       current = createDemoWorkspace()
@@ -405,10 +422,15 @@ export function App() {
   }
 
   useEffect(() => {
-    if (session) return undefined
+    if (sessionRefreshStartedRef.current || (session && session.mode !== 'cloudflare')) return undefined
+    sessionRefreshStartedRef.current = true
     let active = true
     resumeSession().then(async (next) => {
-      if (!active || !next) return
+      if (!active) return
+      if (!next) {
+        if (sessionRef.current?.mode === 'cloudflare') handleAuthRevoked()
+        return
+      }
       await activateSession(next)
     }).catch((error) => {
       if (active && error?.message) setAuthError(error.message)

@@ -92,11 +92,13 @@ export async function onRequestPost({ request, env }) {
   const growthAgeBasis = ['chronological', 'corrected', 'postmenstrual'].includes(baby.growthAgeBasis) ? baby.growthAgeBasis : 'chronological'
   const birthMultiplicity = baby.birthMultiplicity === 'multiple' ? 'multiple' : 'singleton'
   try {
-    await env.DB.prepare(`
+    const babyWrite = await env.DB.prepare(`
       INSERT INTO baby_profiles (id, household_id, nickname, birth_date, gestational_weeks, gestational_days, growth_age_basis, birth_multiplicity, sex, feeding_mode, locale, updated_at, updated_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, gestational_days=excluded.gestational_days, growth_age_basis=excluded.growth_age_basis, birth_multiplicity=excluded.birth_multiplicity, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+      WHERE baby_profiles.household_id = excluded.household_id
     `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, gestationalDays, growthAgeBasis, birthMultiplicity, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
+    if (!babyWrite?.meta?.changes) return json({ error: '无权修改该宝宝档案' }, 403)
   } catch (error) {
     if (isOneBabyConstraintError(error)) return json({ error: 'V1 一个家庭只能维护一个宝宝档案' }, 409)
     throw error

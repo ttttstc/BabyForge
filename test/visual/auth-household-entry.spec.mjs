@@ -72,3 +72,35 @@ test('authenticated users without a household share create and invite entry', as
   await page.getByRole('button', { name: '确认加入' }).click()
   await expect(page).toHaveURL(/#\/today$/)
 })
+
+test('removed members lose their cached household data on refresh', async ({ page }) => {
+  await page.route('**/api/me', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ user: { id: 'user-removed', email: 'removed@example.com', emailVerified: true, nickname: '家长' }, household: null }),
+  }))
+  await page.route('**/api/household', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: '{"household":null}',
+  }))
+  await page.addInitScript(() => {
+    localStorage.setItem('babyforge:session', JSON.stringify({
+      userId: 'user-removed', email: 'removed@example.com', role: 'member', mode: 'cloudflare',
+      household: { id: 'old-home', name: '旧家庭' }, babies: [{ id: 'old-baby', nickname: '旧宝宝' }],
+    }))
+    localStorage.setItem('babyforge:workspace:user-removed', JSON.stringify({
+      version: 4,
+      baby: { id: 'old-baby', nickname: '旧宝宝', birthDate: '2026-01-01' },
+      preferences: { locale: 'zh-CN' },
+      observations: [{ id: 'private-observation' }],
+    }))
+    localStorage.setItem('babyforge:experience:old-baby:0-3m:feeding:zh-CN', '{"items":["private"]}')
+  })
+
+  await page.goto('/#/today')
+  await expect(page.getByRole('heading', { name: '你想如何开始？' })).toBeVisible()
+  await expect(page).toHaveURL(/#\/household$/)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('babyforge:workspace:user-removed'))).toBeNull()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('babyforge:experience:old-baby:0-3m:feeding:zh-CN'))).toBeNull()
+})
