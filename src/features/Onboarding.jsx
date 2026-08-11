@@ -48,6 +48,7 @@ export function Onboarding({ onCreate, locale = 'zh-CN', onLocaleChange }) {
     onCreate({
       id: globalThis.crypto?.randomUUID?.() || `baby-${Date.now()}`,
       nickname: String(data.get('nickname')).trim(),
+      householdName: String(data.get('householdName') || '').trim(),
       birthDate,
       gestationalWeeks,
       gestationalDays,
@@ -87,6 +88,10 @@ export function Onboarding({ onCreate, locale = 'zh-CN', onLocaleChange }) {
           <p className="muted">{locale === 'en-US' ? 'A few details help us organize the right care reminders for this stage.' : '填写几项基本信息，我们就能为你整理当前阶段的照护重点。'}</p>
         </div>
         <form onSubmit={submit}>
+          <label>
+            {locale === 'en-US' ? 'Household name' : '家庭名称'}
+            <input name="householdName" maxLength="80" required placeholder={locale === 'en-US' ? 'e.g. River’s family' : '例如：小舟的家庭'} autoComplete="off" />
+          </label>
           <label>
             {locale === 'en-US' ? 'Baby nickname' : '宝宝昵称'}
             <input name="nickname" required maxLength="20" placeholder={locale === 'en-US' ? 'e.g. River' : '例如：小舟'} autoComplete="off" />

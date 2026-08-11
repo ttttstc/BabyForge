@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0.0] - 2026-08-11
+
+### Added
+
+- Add Better Auth personal users with email/password, username, Google OAuth configuration, email verification/reset delivery through Resend, D1 rate limiting, and stable `/api/me` identity summaries.
+- Add additive Household membership schema, one-active-membership enforcement, owner/member lifecycle APIs, one-time 24-hour invites, soft deletion and seven-day restore.
+- Add user-first authorization helpers and compatibility bridge from legacy accounts so BabyForge business APIs reject inactive or deleted Household access while old data remains available during migration.
+
+### Changed
+
+- Split Issue #53 into seven independently deployable child issues and documented the first four designs under `docs/issue-53/`.
+- Require a Household name and enforce the V1 one-Household/one-Baby rule at the sync boundary; clear user-scoped local caches on logout or 401/403 revocation.
+
+### Fixed
+
+- Preserve the existing Chinese `账号` accessibility locator while exposing the clearer email-or-username login label.
+
 ## [Unreleased] - 2026-08-07
 
 ### Changed

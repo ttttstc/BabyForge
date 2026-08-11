@@ -60,8 +60,8 @@ function localAnswer(message, recommendation = {}, decision = null) {
   return buildNaibaLocalAnswer(message, { recommendation, decision, locale: 'zh-CN' })
 }
 
-async function loadAuthorizedContext(env, accountId, babyId) {
-  const baby = await accessibleBaby(env, accountId, babyId)
+async function loadAuthorizedContext(env, principalOrAccountId, babyId) {
+  const baby = await accessibleBaby(env, principalOrAccountId, babyId)
   if (!baby || baby.status === 'detached') return null
   const [rows, growthRows, planRows, concernRows] = await Promise.all([
     env.DB.prepare(`
@@ -195,7 +195,7 @@ export async function onRequestPost({ request, env }) {
   const babyId = String(body?.baby?.id || '').trim()
   if (!babyId) return json({ error: '缺少宝宝档案编号' }, 422)
   const growthMetric = ['weight', 'length', 'headCircumference'].includes(String(body?.growthMetric || '')) ? String(body.growthMetric) : null
-  const context = await loadAuthorizedContext(env, session.accountId, babyId)
+  const context = await loadAuthorizedContext(env, session, babyId)
   if (!context) return json({ error: '无权访问该宝宝档案' }, 403)
   const conversation = await openConversation(env, session.accountId, babyId, String(body?.conversationId || '').trim())
   if (conversation.denied) return json({ error: '无权访问该 AI 对话' }, 403)

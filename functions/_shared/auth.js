@@ -3,6 +3,7 @@ export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30
 // Keep the demo login within Cloudflare Pages Functions' free CPU budget.
 // Replace the seeded demo credentials before treating this as production auth.
 export const PASSWORD_ITERATIONS = 10000
+import { getBetterAuthSession } from './betterAuth.js'
 
 function hexToBytes(value) {
   const clean = String(value || '').replace(/[^0-9a-f]/gi, '')
@@ -26,6 +27,10 @@ function parseCookies(request) {
   }))
 }
 
+export function getLegacySessionToken(request) {
+  return parseCookies(request)[SESSION_COOKIE] || null
+}
+
 export async function derivePasswordHash(password, saltHex, iterations = PASSWORD_ITERATIONS) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(password)), 'PBKDF2', false, ['deriveBits'])
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: hexToBytes(saltHex), iterations, hash: 'SHA-256' }, key, 256)
@@ -46,7 +51,23 @@ export async function createSession(env, account) {
 
 export async function getSession(request, env) {
   if (!env.DB) return null
-  const value = parseCookies(request)[SESSION_COOKIE]
+  const better = await getBetterAuthSession(request, env)
+  if (better?.user?.emailVerified) {
+    const { ensureLegacyAccount } = await import('./principal.js')
+    const account = await ensureLegacyAccount(env, better.user)
+    return {
+      token: null,
+      expiresAt: null,
+      accountId: account.id,
+      userId: better.user.id,
+      username: better.user.username || account.username,
+      role: 'member',
+      displayName: better.user.name || account.displayName,
+      email: better.user.email,
+      auth: 'better-auth',
+    }
+  }
+  const value = getLegacySessionToken(request)
   if (!value) return null
   const row = await env.DB.prepare(`
     SELECT s.token, s.expires_at, a.id, a.username, a.role, a.display_name

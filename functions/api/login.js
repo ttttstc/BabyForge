@@ -14,7 +14,8 @@ export async function onRequestPost({ request, env }) {
   const babies = await env.DB.prepare(`
     SELECT b.id, b.nickname, b.birth_date AS birthDate, b.gestational_weeks AS gestationalWeeks, b.gestational_days AS gestationalDays, b.growth_age_basis AS growthAgeBasis, b.birth_multiplicity AS birthMultiplicity, b.sex, b.feeding_mode AS feedingMode, b.locale
     FROM baby_profiles b JOIN household_members m ON m.household_id = b.household_id
-    WHERE m.account_id = ? AND m.active = 1
+    JOIN households h ON h.id = b.household_id
+    WHERE m.account_id = ? AND m.active = 1 AND h.deleted_at IS NULL
     ORDER BY b.updated_at DESC
   `).bind(account.id).all()
   return json({ username: account.username, role: account.role, displayName: account.display_name, expiresAt: session.expiresAt, babies: babies.results || [] }, 200, { 'set-cookie': session.cookie })

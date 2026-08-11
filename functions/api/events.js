@@ -53,7 +53,7 @@ export async function onRequestGet({ request, env }) {
   const url = new URL(request.url)
   const babyId = url.searchParams.get('babyId')
   if (!babyId) return json({ events: [], carePlanItems: [], concerns: [] })
-  const baby = await accessibleBaby(env, auth.session.accountId, babyId)
+  const baby = await accessibleBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const filters = {
     category: url.searchParams.get('category') || '',
@@ -79,7 +79,7 @@ export async function onRequestPost({ request, env }) {
   const raw = body?.event || body
   const babyId = raw?.babyId || body?.babyId
   if (!babyId) return json({ error: '缺少 babyId' }, 422)
-  const baby = await accessibleBaby(env, auth.session.accountId, babyId)
+  const baby = await accessibleBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   let event
   try {

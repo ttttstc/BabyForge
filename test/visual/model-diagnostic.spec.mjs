@@ -13,12 +13,13 @@ function dateDaysAgo(days) {
 
 async function createBaby(page) {
   await page.goto('/#/login')
-  await page.getByLabel('账号').fill('niwa')
+  await page.getByLabel('邮箱').fill('niwa')
   await page.getByLabel('密码').fill('niwaniwa')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/(onboarding|today)$/)
   if (page.url().endsWith('#/today')) return
   await page.goto('/#/onboarding')
+  await page.getByLabel('家庭名称').fill('模型检查家庭')
   await page.getByLabel('宝宝昵称').fill('模型检查')
   await page.getByLabel('出生日期').fill(dateDaysAgo(6))
   await page.getByLabel('出生孕周').fill('39')

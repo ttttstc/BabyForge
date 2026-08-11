@@ -1,6 +1,12 @@
 import { json, requireSession } from '../_shared/auth.js'
+import { accessibleBaby as accessibleBabyForPrincipal } from '../_shared/care.js'
 
 const COLLECTIONS = ['observations', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
+
+export function isOneBabyConstraintError(error) {
+  const message = String(error?.message || '')
+  return message.includes('idx_baby_profiles_one_per_household') || message.includes('baby_profiles.household_id')
+}
 
 function recordId(collection, value, index) {
   if (collection === 'questions') return 'questions'
@@ -15,16 +21,8 @@ function parseRecord(row) {
   }
 }
 
-async function accessibleBaby(env, accountId, babyId) {
-  return env.DB.prepare(`
-    SELECT b.id, b.household_id AS householdId, b.nickname, b.birth_date AS birthDate, b.gestational_weeks AS gestationalWeeks, b.gestational_days AS gestationalDays, b.growth_age_basis AS growthAgeBasis, b.birth_multiplicity AS birthMultiplicity, b.sex, b.feeding_mode AS feedingMode, b.locale
-    FROM baby_profiles b JOIN household_members m ON m.household_id = b.household_id
-    WHERE b.id = ? AND m.account_id = ? AND m.active = 1
-  `).bind(babyId, accountId).first()
-}
-
-async function loadWorkspace(env, accountId, babyId) {
-  const baby = await accessibleBaby(env, accountId, babyId)
+async function loadWorkspace(env, principal, babyId) {
+  const baby = await accessibleBabyForPrincipal(env, principal, babyId)
   if (!baby) return null
   const rows = await env.DB.prepare('SELECT collection, record_id, payload_json FROM workspace_records WHERE baby_id = ? ORDER BY updated_at').bind(baby.id).all()
   const state = { baby, observations: [], questions: [], taskLogs: [], adminTaskRecords: [], growthMeasurements: [], milestoneRecords: [] }
@@ -37,14 +35,22 @@ async function loadWorkspace(env, accountId, babyId) {
 }
 
 async function ensureHousehold(env, session, baby) {
-  const existing = await accessibleBaby(env, session.accountId, baby.id)
+  const existing = await accessibleBabyForPrincipal(env, session, baby.id)
   if (existing) return existing.householdId
+  const membership = await env.DB.prepare(`
+    SELECT m.household_id AS householdId
+    FROM household_members m JOIN households h ON h.id = m.household_id
+    WHERE (m.user_id = ? OR m.account_id = ?) AND m.active = 1 AND h.deleted_at IS NULL
+    LIMIT 1
+    `).bind(session.userId || null, session.accountId).first()
+  if (membership) return membership.householdId
+  if (session.auth === 'better-auth') throw new Error('请先创建家庭或接受邀请')
   const claimed = await env.DB.prepare('SELECT id, household_id AS householdId FROM baby_profiles WHERE id = ?').bind(baby.id).first()
   if (claimed) throw new Error('该宝宝档案已属于其他家庭')
   const householdId = `household-${session.accountId}`
   await env.DB.batch([
-    env.DB.prepare('INSERT OR IGNORE INTO households (id, name, owner_account_id) VALUES (?, ?, ?)').bind(householdId, `${baby.nickname} 的家庭`, session.accountId),
-    env.DB.prepare('INSERT OR IGNORE INTO household_members (household_id, account_id, role) VALUES (?, ?, ?)').bind(householdId, session.accountId, 'owner'),
+    env.DB.prepare('INSERT OR IGNORE INTO households (id, name, owner_account_id, owner_user_id, updated_at) VALUES (?, ?, ?, ?, ?)').bind(householdId, `${baby.nickname} 的家庭`, session.accountId, session.userId || null, new Date().toISOString()),
+    env.DB.prepare('INSERT OR IGNORE INTO household_members (household_id, account_id, role, user_id, membership_role) VALUES (?, ?, ?, ?, ?)').bind(householdId, session.accountId, 'owner', session.userId || null, 'owner'),
     env.DB.prepare('INSERT OR IGNORE INTO household_members (household_id, account_id, role) SELECT ?, id, ? FROM accounts WHERE username = ?').bind(householdId, 'guest', 'guest'),
   ])
   return householdId
@@ -56,7 +62,7 @@ export async function onRequestGet({ request, env }) {
   if (auth.response) return auth.response
   const babyId = new URL(request.url).searchParams.get('babyId')
   if (!babyId) return json({ baby: null })
-  const state = await loadWorkspace(env, auth.session.accountId, babyId)
+  const state = await loadWorkspace(env, auth.session, babyId)
   return state ? json(state) : json({ error: '无权访问该宝宝档案' }, 403)
 }
 
@@ -77,17 +83,26 @@ export async function onRequestPost({ request, env }) {
   try {
     householdId = await ensureHousehold(env, auth.session, baby)
   } catch (error) {
-    return json({ error: error.message }, 403)
+    return json({ error: error.message }, error.message.includes('请先创建家庭') ? 409 : 403)
   }
+  const anotherBaby = await env.DB.prepare('SELECT id FROM baby_profiles WHERE household_id = ? AND id != ? LIMIT 1').bind(householdId, baby.id).first()
+  if (anotherBaby) return json({ error: 'V1 一个家庭只能维护一个宝宝档案' }, 409)
   const now = new Date().toISOString()
   const gestationalDays = Number.isInteger(Number(baby.gestationalDays)) && Number(baby.gestationalDays) >= 0 && Number(baby.gestationalDays) <= 6 ? Number(baby.gestationalDays) : 0
   const growthAgeBasis = ['chronological', 'corrected', 'postmenstrual'].includes(baby.growthAgeBasis) ? baby.growthAgeBasis : 'chronological'
   const birthMultiplicity = baby.birthMultiplicity === 'multiple' ? 'multiple' : 'singleton'
-  await env.DB.prepare(`
-    INSERT INTO baby_profiles (id, household_id, nickname, birth_date, gestational_weeks, gestational_days, growth_age_basis, birth_multiplicity, sex, feeding_mode, locale, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, gestational_days=excluded.gestational_days, growth_age_basis=excluded.growth_age_basis, birth_multiplicity=excluded.birth_multiplicity, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-  `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, gestationalDays, growthAgeBasis, birthMultiplicity, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
+  try {
+    const babyWrite = await env.DB.prepare(`
+      INSERT INTO baby_profiles (id, household_id, nickname, birth_date, gestational_weeks, gestational_days, growth_age_basis, birth_multiplicity, sex, feeding_mode, locale, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, gestational_days=excluded.gestational_days, growth_age_basis=excluded.growth_age_basis, birth_multiplicity=excluded.birth_multiplicity, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+      WHERE baby_profiles.household_id = excluded.household_id
+    `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, gestationalDays, growthAgeBasis, birthMultiplicity, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
+    if (!babyWrite?.meta?.changes) return json({ error: '无权修改该宝宝档案' }, 403)
+  } catch (error) {
+    if (isOneBabyConstraintError(error)) return json({ error: 'V1 一个家庭只能维护一个宝宝档案' }, 409)
+    throw error
+  }
 
   const records = []
   const deletions = []
@@ -112,6 +127,6 @@ export async function onRequestPost({ request, env }) {
       WHERE excluded.updated_at >= workspace_records.updated_at
     `).bind(...record))])
   }
-  const state = await loadWorkspace(env, auth.session.accountId, baby.id)
+  const state = await loadWorkspace(env, auth.session, baby.id)
   return json(state)
 }

@@ -26,7 +26,7 @@ export async function onRequestGet({ request, env }) {
   if (auth.response) return auth.response
   const babyId = new URL(request.url).searchParams.get('babyId')
   if (!babyId) return json({ actors: [] })
-  const baby = await accessibleBaby(env, auth.session.accountId, babyId)
+  const baby = await accessibleBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   if (auth.session.role !== 'guest') await ensureDefaults(env, baby.householdId)
   const rows = await env.DB.prepare('SELECT id, display_name, preset_id, active FROM care_actors WHERE household_id = ? AND active = 1 ORDER BY created_at, display_name').bind(baby.householdId).all()
@@ -40,7 +40,7 @@ export async function onRequestPost({ request, env }) {
   if (auth.session.role === 'guest') return json({ error: '游客账号只读，不能写入' }, 403)
   let body
   try { body = await request.json() } catch { return json({ error: '请求格式不正确' }, 400) }
-  const baby = await accessibleBaby(env, auth.session.accountId, body?.babyId)
+  const baby = await accessibleBaby(env, auth.session, body?.babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const displayName = String(body?.actor?.displayName || '').trim()
   if (!displayName || displayName.length > 30) return json({ error: '记录人名称不正确' }, 422)
