@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { onRequestPost, SAFE_DECISION_FACT_KEYS, safeDecisionFacts } from '../functions/api/ai/chat.js'
 import { DECISION_REQUIRED_FACT_KEYS } from '../src/domain/decisionKernel.js'
 
-function apiFixture() {
+function apiFixture({ failLlmConfig = false } = {}) {
   const session = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-admin', username: 'niwa', role: 'admin', display_name: '管理员' }
   const baby = { id: 'baby-1', householdId: 'household-1', nickname: '小舟', birthDate: new Date().toISOString().slice(0, 10), gestationalWeeks: 39, gestationalDays: 0, growthAgeBasis: 'chronological', birthMultiplicity: 'singleton', sex: 'male', feedingMode: 'formula', locale: 'zh-CN', status: 'active' }
   const event = { id: 'event-1', baby_id: 'baby-1', kind: 'caregiver_observation', category: 'bottle_feeding', type: 'bottle_feeding', occurred_at: new Date().toISOString(), recorded_at: new Date().toISOString(), actor_id: 'parent', actor_display_name: '爸爸', event_source: 'caregiver', payload_json: JSON.stringify({ amountMl: 30 }), status: 'active', version: 1 }
@@ -15,6 +15,7 @@ function apiFixture() {
             async first() {
               if (sql.includes('FROM auth_sessions')) return session
               if (sql.includes('FROM baby_profiles')) return args[0] === baby.id ? baby : null
+              if (sql.includes('FROM account_llm_configs') && failLlmConfig) throw new Error('D1 schema unavailable')
               return null
             },
             async all() {
@@ -68,6 +69,17 @@ test('AI chat returns provider error metadata without a fabricated answer', asyn
   const body = await response.text()
   assert.match(body, /model_not_configured/)
   assert.doesNotMatch(body, /type":"message"/)
+})
+
+test('AI chat fails account configuration closed while preserving the local answer', async () => {
+  const fixture = apiFixture({ failLlmConfig: true })
+  fixture.OPENAI_API_KEY = 'global-provider-key-must-not-run'
+  const response = await onRequestPost({ request: request({ message: '请分析今天的照护记录。', skillId: 'detailed_care_analysis', baby: fixture.baby }), env: fixture })
+  assert.equal(response.status, 200)
+  const body = await response.text()
+  assert.match(body, /account_config_unavailable/)
+  assert.match(body, /type":"message"/)
+  assert.doesNotMatch(body, /global-provider-key-must-not-run/)
 })
 
 test('AI chat returns the scope boundary without calling a model for unrelated topics', async () => {

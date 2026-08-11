@@ -18,18 +18,23 @@ export const LLM_PROTOCOL_OPTIONS = Object.freeze([
 
 export async function loadAccountLlmConfig(env, accountId) {
   if (!env?.DB || !accountId) return null
-  let row
-  try {
-    row = await env.DB.prepare('SELECT base_url, model, api_key, ciphertext, nonce, key_version, protocol FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
-  } catch (error) {
-    // Keep AI available on deployments that have not applied the optional
-    // account configuration migration yet.
-    console.error('Account LLM configuration unavailable', error)
-    return null
-  }
+  const row = await env.DB.prepare('SELECT base_url, model, api_key, ciphertext, nonce, key_version, protocol FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
   if (!row || !row.model || !row.base_url) return null
   const apiKey = await readAccountLlmApiKey(env, accountId, row)
   return { baseUrl: row.base_url, model: row.model, apiKey, protocol: normalizeLlmProtocol(row.protocol) }
+}
+
+export async function migrateLegacyAccountLlmKeys(env, limit = 50) {
+  const batchSize = Math.max(1, Math.min(100, Number(limit) || 50))
+  const result = await env.DB.prepare(`
+    SELECT account_id, api_key, ciphertext, nonce, key_version
+    FROM account_llm_configs
+    WHERE api_key <> ''
+    LIMIT ?
+  `).bind(batchSize).all()
+  for (const row of result.results || []) await readAccountLlmApiKey(env, row.account_id, row)
+  const remaining = await env.DB.prepare("SELECT COUNT(*) AS count FROM account_llm_configs WHERE api_key <> ''").first()
+  return { migrated: result.results?.length || 0, remaining: Number(remaining?.count || 0) }
 }
 
 export async function readAccountLlmApiKey(env, accountId, row) {

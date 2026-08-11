@@ -1,9 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { DatabaseSync } from 'node:sqlite'
 
 import { onRequestDelete, onRequestGet, onRequestPut } from '../functions/api/ai/config.js'
+import { onRequestPost as migrateKeys } from '../functions/api/ai/key-migration.js'
 import { LLM_PROTOCOLS, loadAccountLlmConfig, maskLlmApiKey, normalizeLlmBaseUrl, normalizeLlmProtocol, resolvedLlmConfig } from '../functions/_shared/llmConfig.js'
-import { decryptLlmApiKey, encryptLlmApiKey } from '../functions/_shared/llmKeyCrypto.js'
+import { decryptLlmApiKey, encryptLlmApiKey, validateLlmKeyring } from '../functions/_shared/llmKeyCrypto.js'
 
 const encryptionKey = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, index) => index)))
 
@@ -31,7 +34,7 @@ function fixture({ role = 'admin', config = null } = {}) {
       }
     },
   }
-  return { DB, LLM_KEY_ENCRYPTION_KEY: encryptionKey, LLM_KEY_ENCRYPTION_KEY_VERSION: '1', get row() { return row } }
+  return { DB, LLM_KEY_ENCRYPTION_KEYS: JSON.stringify({ 1: encryptionKey }), LLM_KEY_ENCRYPTION_KEY_VERSION: '1', get row() { return row } }
 }
 
 function request(method = 'GET', body) {
@@ -90,8 +93,7 @@ test('legacy plaintext keys migrate on first server read and encrypted rows fail
 
   const oldCiphertext = legacy.row.ciphertext
   const rotatedKey = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, index) => 255 - index)))
-  legacy.LLM_KEY_ENCRYPTION_KEY_V1 = legacy.LLM_KEY_ENCRYPTION_KEY
-  legacy.LLM_KEY_ENCRYPTION_KEY = rotatedKey
+  legacy.LLM_KEY_ENCRYPTION_KEYS = JSON.stringify({ 1: encryptionKey, 2: rotatedKey })
   legacy.LLM_KEY_ENCRYPTION_KEY_VERSION = '2'
   assert.equal((await loadAccountLlmConfig(legacy, 'account-1')).apiKey, 'legacy-secret-key')
   assert.equal(legacy.row.key_version, 2)
@@ -100,7 +102,7 @@ test('legacy plaintext keys migrate on first server read and encrypted rows fail
   const encrypted = await encryptLlmApiKey(legacy, 'account-1', 'bound-secret-key')
   await assert.rejects(() => decryptLlmApiKey(legacy, 'account-2', encrypted), /解密失败/)
   const missingKey = fixture({ config: { ...legacy.row } })
-  delete missingKey.LLM_KEY_ENCRYPTION_KEY
+  delete missingKey.LLM_KEY_ENCRYPTION_KEYS
   const response = await onRequestGet({ request: request(), env: missingKey })
   assert.equal(response.status, 503)
   assert.doesNotMatch(await response.text(), /bound-secret-key|legacy-secret-key/)
@@ -108,6 +110,46 @@ test('legacy plaintext keys migrate on first server read and encrypted rows fail
   const partial = fixture({ config: { ...legacy.row, nonce: null } })
   const partialResponse = await onRequestGet({ request: request(), env: partial })
   assert.equal(partialResponse.status, 503)
+})
+
+test('LLM encryption keyring rejects invalid deployment configuration', () => {
+  assert.deepEqual(validateLlmKeyring({ LLM_KEY_ENCRYPTION_KEYS: JSON.stringify({ 1: encryptionKey }), LLM_KEY_ENCRYPTION_KEY_VERSION: '1' }), { activeVersion: 1, versions: [1] })
+  assert.throws(() => validateLlmKeyring({ LLM_KEY_ENCRYPTION_KEYS: '{', LLM_KEY_ENCRYPTION_KEY_VERSION: '1' }), /JSON 对象/)
+  assert.throws(() => validateLlmKeyring({ LLM_KEY_ENCRYPTION_KEYS: JSON.stringify({ 1: btoa('short') }), LLM_KEY_ENCRYPTION_KEY_VERSION: '1' }), /32 字节/)
+  assert.throws(() => validateLlmKeyring({ LLM_KEY_ENCRYPTION_KEYS: JSON.stringify({ 1: encryptionKey }), LLM_KEY_ENCRYPTION_KEY_VERSION: '2' }), /缺少当前版本 2/)
+  assert.throws(() => validateLlmKeyring({ LLM_KEY_ENCRYPTION_KEYS: JSON.stringify({ 1: encryptionKey }), LLM_KEY_ENCRYPTION_KEY_VERSION: 'not-a-version' }), /版本配置无效/)
+})
+
+test('protected migration endpoint removes all remaining plaintext keys', async () => {
+  const env = fixture({ config: { account_id: 'account-1', base_url: 'https://provider.test/v1', model: 'baby-model', api_key: 'legacy-secret-key', protocol: LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS } })
+  env.AI_HEALTH_TOKEN = 'migration-token'
+  const denied = await migrateKeys({ request: new Request('https://babyforge.test/api/ai/key-migration', { method: 'POST', headers: { authorization: 'Bearer wrong-token' } }), env })
+  assert.equal(denied.status, 404)
+  const originalPrepare = env.DB.prepare
+  env.DB.prepare = function prepare(sql) {
+    if (sql.includes('WHERE api_key <>') && sql.includes('LIMIT')) return { bind: () => ({ all: async () => ({ results: env.row?.api_key ? [{ ...env.row, account_id: 'account-1' }] : [] }) }) }
+    if (sql.includes('COUNT(*)')) return { first: async () => ({ count: env.row?.api_key ? 1 : 0 }) }
+    return originalPrepare.call(this, sql)
+  }
+  const response = await migrateKeys({ request: new Request('https://babyforge.test/api/ai/key-migration', { method: 'POST', headers: { authorization: 'Bearer migration-token' } }), env })
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { ok: true, migrated: 1, remaining: 0 })
+  assert.equal(env.row.api_key, '')
+  assert.ok(env.row.ciphertext)
+})
+
+test('D1 migration keeps legacy rows readable but rejects new plaintext writes', async () => {
+  const database = new DatabaseSync(':memory:')
+  database.exec('CREATE TABLE accounts (id TEXT PRIMARY KEY)')
+  database.exec("INSERT INTO accounts (id) VALUES ('legacy'), ('plaintext'), ('encrypted')")
+  database.exec(await readFile(new URL('../migrations/0010_account_llm_config.sql', import.meta.url), 'utf8'))
+  database.prepare("INSERT INTO account_llm_configs (account_id, base_url, model, api_key, updated_at) VALUES (?, ?, ?, ?, ?)").run('legacy', 'https://provider.test/v1', 'model', 'legacy-key', '2026-08-01')
+  database.exec(await readFile(new URL('../migrations/0016_encrypt_account_llm_keys.sql', import.meta.url), 'utf8'))
+  assert.equal(database.prepare('SELECT api_key FROM account_llm_configs WHERE account_id = ?').get('legacy').api_key, 'legacy-key')
+  assert.throws(() => database.prepare("INSERT INTO account_llm_configs (account_id, base_url, model, api_key, updated_at) VALUES (?, ?, ?, ?, ?)").run('plaintext', 'https://provider.test/v1', 'model', 'new-key', '2026-08-01'), /plaintext LLM API keys are forbidden/)
+  database.prepare("INSERT INTO account_llm_configs (account_id, base_url, model, api_key, ciphertext, nonce, key_version, updated_at) VALUES (?, ?, ?, '', ?, ?, ?, ?)").run('encrypted', 'https://provider.test/v1', 'model', 'ciphertext', 'nonce', 1, '2026-08-01')
+  assert.equal(database.prepare('SELECT api_key FROM account_llm_configs WHERE account_id = ?').get('encrypted').api_key, '')
+  database.close()
 })
 
 test('LLM config API validates URLs and keeps guest accounts read-only', async () => {

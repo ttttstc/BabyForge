@@ -65,7 +65,7 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           OPENAI_USE_RESPONSES: ${{ secrets.OPENAI_USE_RESPONSES }}
-          LLM_KEY_ENCRYPTION_KEY: ${{ secrets.LLM_KEY_ENCRYPTION_KEY }}
+          LLM_KEY_ENCRYPTION_KEYS: ${{ secrets.LLM_KEY_ENCRYPTION_KEYS }}
           LLM_KEY_ENCRYPTION_KEY_VERSION: ${{ secrets.LLM_KEY_ENCRYPTION_KEY_VERSION }}
           AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
         run: |
@@ -73,14 +73,15 @@ jobs:
           test -n "$OPENAI_BASE_URL"
           test -n "$OPENAI_MODEL"
           test -n "$OPENAI_USE_RESPONSES"
-          test -n "$LLM_KEY_ENCRYPTION_KEY"
+          test -n "$LLM_KEY_ENCRYPTION_KEYS"
           test -n "$LLM_KEY_ENCRYPTION_KEY_VERSION"
           test -n "$AI_HEALTH_TOKEN"
+          node scripts/validate-llm-keyring.mjs
           printf '%s' "$OPENAI_API_KEY" | npx wrangler pages secret put OPENAI_API_KEY --project-name babyforge
           printf '%s' "$OPENAI_BASE_URL" | npx wrangler pages secret put OPENAI_BASE_URL --project-name babyforge
           printf '%s' "$OPENAI_MODEL" | npx wrangler pages secret put OPENAI_MODEL --project-name babyforge
           printf '%s' "$OPENAI_USE_RESPONSES" | npx wrangler pages secret put OPENAI_USE_RESPONSES --project-name babyforge
-          printf '%s' "$LLM_KEY_ENCRYPTION_KEY" | npx wrangler pages secret put LLM_KEY_ENCRYPTION_KEY --project-name babyforge
+          printf '%s' "$LLM_KEY_ENCRYPTION_KEYS" | npx wrangler pages secret put LLM_KEY_ENCRYPTION_KEYS --project-name babyforge
           printf '%s' "$LLM_KEY_ENCRYPTION_KEY_VERSION" | npx wrangler pages secret put LLM_KEY_ENCRYPTION_KEY_VERSION --project-name babyforge
           printf '%s' "$AI_HEALTH_TOKEN" | npx wrangler pages secret put AI_HEALTH_TOKEN --project-name babyforge
 
@@ -92,6 +93,19 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name babyforge --branch main --commit-hash ${{ github.sha }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Encrypt legacy account API keys
+        env:
+          AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          remaining=1
+          for attempt in {1..100}; do
+            response="$(curl --fail-with-body --silent --show-error --retry 5 --retry-all-errors --retry-delay 2 --max-time 30 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" "$DEPLOYMENT_URL/api/ai/key-migration")"
+            remaining="$(RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); if (!result.ok || !Number.isSafeInteger(result.remaining)) process.exit(1); process.stdout.write(String(result.remaining))")"
+            if [ "$remaining" = "0" ]; then break; fi
+          done
+          test "$remaining" = "0"
 
       - name: Verify production model call
         env:

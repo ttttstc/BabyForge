@@ -4,7 +4,7 @@ param(
   [string]$Repository = 'ttttstc/BabyForge'
 )
 
-$requiredNames = @('OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_USE_RESPONSES', 'LLM_KEY_ENCRYPTION_KEY', 'LLM_KEY_ENCRYPTION_KEY_VERSION')
+$requiredNames = @('OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_USE_RESPONSES', 'LLM_KEY_ENCRYPTION_KEYS', 'LLM_KEY_ENCRYPTION_KEY_VERSION')
 $configLines = Get-Content -LiteralPath $EnvFile
 
 foreach ($secretName in $requiredNames) {

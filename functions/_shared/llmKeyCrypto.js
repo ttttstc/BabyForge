@@ -16,6 +16,13 @@ function base64ToBytes(value, label) {
   }
 }
 
+function encryptionKeyring(env) {
+  let parsed
+  try { parsed = JSON.parse(String(env?.LLM_KEY_ENCRYPTION_KEYS || '')) } catch { throw new Error('LLM_KEY_ENCRYPTION_KEYS 必须是 JSON 对象') }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('LLM_KEY_ENCRYPTION_KEYS 必须是 JSON 对象')
+  return parsed
+}
+
 export function activeLlmKeyVersion(env) {
   const version = Number(env?.LLM_KEY_ENCRYPTION_KEY_VERSION || DEFAULT_KEY_VERSION)
   if (!Number.isSafeInteger(version) || version < 1) throw new Error('LLM Key 加密版本配置无效')
@@ -23,15 +30,27 @@ export function activeLlmKeyVersion(env) {
 }
 
 function encodedKey(env, version) {
-  const activeVersion = activeLlmKeyVersion(env)
-  if (version === activeVersion) return env?.LLM_KEY_ENCRYPTION_KEY
-  return env?.[`LLM_KEY_ENCRYPTION_KEY_V${version}`]
+  return encryptionKeyring(env)[String(version)]
 }
 
 async function importKey(env, version) {
   const raw = base64ToBytes(encodedKey(env, version), `LLM_KEY_ENCRYPTION_KEY_V${version}`)
   if (raw.byteLength !== 32) throw new Error(`LLM_KEY_ENCRYPTION_KEY_V${version} 必须是 32 字节 Base64 密钥`)
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, version === activeLlmKeyVersion(env) ? ['encrypt', 'decrypt'] : ['decrypt'])
+}
+
+export function validateLlmKeyring(env) {
+  const activeVersion = activeLlmKeyVersion(env)
+  const keyring = encryptionKeyring(env)
+  const versions = Object.keys(keyring)
+  if (!versions.length) throw new Error('LLM_KEY_ENCRYPTION_KEYS 不能为空')
+  for (const version of versions) {
+    if (!Number.isSafeInteger(Number(version)) || Number(version) < 1 || String(Number(version)) !== version) throw new Error(`LLM Key 版本 ${version} 无效`)
+    const raw = base64ToBytes(keyring[version], `LLM Key 版本 ${version}`)
+    if (raw.byteLength !== 32) throw new Error(`LLM Key 版本 ${version} 必须是 32 字节 Base64 密钥`)
+  }
+  if (!keyring[String(activeVersion)]) throw new Error(`LLM Keyring 缺少当前版本 ${activeVersion}`)
+  return { activeVersion, versions: versions.map(Number).sort((left, right) => left - right) }
 }
 
 function algorithm(nonce, accountId) {
@@ -60,7 +79,7 @@ export async function decryptLlmApiKey(env, accountId, encrypted) {
     const plaintext = await crypto.subtle.decrypt(algorithm(nonce, accountId), await importKey(env, version), ciphertext)
     return new TextDecoder().decode(plaintext)
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('LLM_KEY_ENCRYPTION_KEY_')) throw error
+    if (error instanceof Error && error.message.startsWith('LLM_KEY_ENCRYPTION_KEY')) throw error
     throw new Error('LLM API Key 解密失败', { cause: error })
   }
 }

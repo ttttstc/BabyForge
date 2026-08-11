@@ -217,13 +217,21 @@ export async function onRequestPost({ request, env }) {
   const decisionResultId = await persistDecision(env, session.accountId, context.baby.id, decision)
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
   const fallback = localAnswer(message, recommendation, decision)
-  const llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
+  let llmConfig
+  let configUnavailable = false
+  try {
+    llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
+  } catch (error) {
+    configUnavailable = true
+    console.error('Account LLM configuration failed closed', error)
+  }
   async function respond(events, assistantText = '') {
     if (assistantText) await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
     return sse([{ type: 'meta', conversationId: conversation.id }, ...events])
   }
 
   if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([{ type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }], fallback)
+  if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), { type: 'done' }], fallback)
   if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, { type: 'done' }])
 
   const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, message)
