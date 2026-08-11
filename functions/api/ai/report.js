@@ -27,7 +27,13 @@ export async function onRequestPost({ request, env }) {
   const rows = await env.DB.prepare('SELECT * FROM care_events WHERE baby_id = ? AND status != \'voided\' ORDER BY occurred_at DESC LIMIT 30').bind(baby.id).all()
   const careEvents = (rows.results || []).map(eventFromRow).filter(Boolean).reverse()
   if (mimeType === 'text/plain') return json({ report: parseMedicalReportText(text, { name }) })
-  const llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
+  let llmConfig
+  try {
+    llmConfig = resolvedLlmConfig(env, await loadAccountLlmConfig(env, session.accountId))
+  } catch (error) {
+    console.error('Account LLM configuration failed closed', error)
+    return json({ error: '自定义模型配置暂不可用，请检查加密密钥配置。' }, 503)
+  }
   if (!llmConfig.apiKey) return json({ error: '当前账号未配置报告识别模型；可改用纯文本粘贴或在设置中配置自定义模型。' }, 503)
   try {
     const report = await runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents, locale: baby.locale || 'zh-CN', model: llmConfig.model, apiKey: llmConfig.apiKey, baseURL: llmConfig.baseUrl, protocol: llmConfig.protocol, useResponses: llmConfig.useResponses })

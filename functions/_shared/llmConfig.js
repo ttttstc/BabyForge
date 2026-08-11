@@ -1,3 +1,5 @@
+import { activeLlmKeyVersion, decryptLlmApiKey, encryptLlmApiKey } from './llmKeyCrypto.js'
+
 export const LLM_PROTOCOLS = Object.freeze({
   ANTHROPIC_MESSAGES: 'anthropic_messages',
   OPENAI_CHAT_COMPLETIONS: 'openai_chat_completions',
@@ -16,16 +18,49 @@ export const LLM_PROTOCOL_OPTIONS = Object.freeze([
 
 export async function loadAccountLlmConfig(env, accountId) {
   if (!env?.DB || !accountId) return null
-  try {
-    const row = await env.DB.prepare('SELECT base_url, model, api_key, protocol FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
-    if (!row?.api_key || !row?.model || !row?.base_url) return null
-    return { baseUrl: row.base_url, model: row.model, apiKey: row.api_key, protocol: normalizeLlmProtocol(row.protocol) }
-  } catch (error) {
-    // Keep AI available on deployments that have not applied the optional
-    // account configuration migration yet.
-    console.error('Account LLM configuration unavailable', error)
-    return null
+  const row = await env.DB.prepare('SELECT base_url, model, api_key, ciphertext, nonce, key_version, protocol FROM account_llm_configs WHERE account_id = ?').bind(accountId).first()
+  if (!row || !row.model || !row.base_url) return null
+  const apiKey = await readAccountLlmApiKey(env, accountId, row)
+  return { baseUrl: row.base_url, model: row.model, apiKey, protocol: normalizeLlmProtocol(row.protocol) }
+}
+
+export async function migrateLegacyAccountLlmKeys(env, limit = 50) {
+  const batchSize = Math.max(1, Math.min(100, Number(limit) || 50))
+  const result = await env.DB.prepare(`
+    SELECT account_id, api_key, ciphertext, nonce, key_version
+    FROM account_llm_configs
+    WHERE api_key <> ''
+    LIMIT ?
+  `).bind(batchSize).all()
+  for (const row of result.results || []) await readAccountLlmApiKey(env, row.account_id, row)
+  const remaining = await env.DB.prepare("SELECT COUNT(*) AS count FROM account_llm_configs WHERE api_key <> ''").first()
+  return { migrated: result.results?.length || 0, remaining: Number(remaining?.count || 0) }
+}
+
+export async function readAccountLlmApiKey(env, accountId, row) {
+  const hasEncryptedFields = row?.ciphertext != null || row?.nonce != null || row?.key_version != null
+  if (hasEncryptedFields) {
+    if (!row.ciphertext || !row.nonce || !row.key_version) throw new Error('LLM API Key 密文不完整')
+    const apiKey = await decryptLlmApiKey(env, accountId, { ciphertext: row.ciphertext, nonce: row.nonce, keyVersion: row.key_version })
+    if (Number(row.key_version) !== activeLlmKeyVersion(env)) {
+      const encrypted = await encryptLlmApiKey(env, accountId, apiKey)
+      await env.DB.prepare(`
+        UPDATE account_llm_configs
+        SET ciphertext = ?, nonce = ?, key_version = ?
+        WHERE account_id = ? AND ciphertext = ? AND key_version = ?
+      `).bind(encrypted.ciphertext, encrypted.nonce, encrypted.keyVersion, accountId, row.ciphertext, row.key_version).run()
+    }
+    return apiKey
   }
+  if (!row?.api_key) throw new Error('LLM API Key 密文不完整')
+  const apiKey = normalizeLlmApiKey(row.api_key)
+  const encrypted = await encryptLlmApiKey(env, accountId, apiKey)
+  await env.DB.prepare(`
+    UPDATE account_llm_configs
+    SET api_key = '', ciphertext = ?, nonce = ?, key_version = ?
+    WHERE account_id = ? AND api_key = ? AND ciphertext IS NULL
+  `).bind(encrypted.ciphertext, encrypted.nonce, encrypted.keyVersion, accountId, row.api_key).run()
+  return apiKey
 }
 
 function optionalBoolean(value) {
