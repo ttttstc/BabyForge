@@ -11,8 +11,8 @@ test('mobile entry uses the vertical artwork and keeps the care workspace within
   await expect(page.locator('.login-shell')).toHaveCSS('background-image', /login-hero-mobile/)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
 
-  await page.getByLabel('邮箱').fill('niwa')
-  await page.getByLabel('密码').fill('niwaniwa')
+  await page.getByLabel('账号').fill('test-admin')
+  await page.getByLabel('密码').fill('test-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/onboarding$/)
   await expect(page.locator('.onboarding-shell')).toHaveCSS('background-image', /login-hero-mobile/)

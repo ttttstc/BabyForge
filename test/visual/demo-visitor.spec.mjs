@@ -4,12 +4,27 @@ test('demo workspace is browser-only and resets on refresh', async ({ page }) =>
   const apiRequests = []
   await page.route('**/api/**', (route) => {
     apiRequests.push(new URL(route.request().url()).pathname)
+    if (new URL(route.request().url()).pathname === '/api/demo-login') {
+      const { username } = route.request().postDataJSON()
+      const variant = username === 'neutral-sandbox' ? 'mock' : 'niwa'
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ demo: { username, variant, displayName: '测试演示' } }),
+      })
+    }
     return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"not signed in"}' })
   })
   await page.goto('/#/login')
-  await page.getByRole('button', { name: '体验演示工作台' }).click()
+  const passwordBox = await page.getByLabel('密码').boundingBox()
+  const googleBox = await page.getByRole('button', { name: '使用 Google 账号继续' }).boundingBox()
+  expect(passwordBox.y + passwordBox.height).toBeLessThan(googleBox.y)
+  await page.getByLabel('账号').fill('neutral-sandbox')
+  await page.getByLabel('密码').fill('test-password')
+  await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/today$/)
-  await expect(page.getByText('泥蛙').first()).toBeVisible()
+  await expect(page.getByText('小满').first()).toBeVisible()
+  await expect(page.getByText('泥蛙')).toHaveCount(0)
 
   apiRequests.length = 0
   await page.goto('/#/experience')
@@ -23,15 +38,25 @@ test('demo workspace is browser-only and resets on refresh', async ({ page }) =>
   expect(apiRequests).toEqual([])
 
   await page.evaluate(() => {
-    const key = 'babyforge:workspace:demo'
+    const key = 'babyforge:workspace:neutral-sandbox'
     const workspace = JSON.parse(localStorage.getItem(key))
     workspace.baby.nickname = '被污染的名字'
     localStorage.setItem(key, JSON.stringify(workspace))
   })
   await page.reload()
   await expect(page.getByText('被污染的名字')).toHaveCount(0)
-  await expect(page.getByText('泥蛙').first()).toBeVisible()
+  await expect(page.getByText('小满').first()).toBeVisible()
   expect(apiRequests).toEqual([])
+
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page).toHaveURL(/#\/login$/)
+  expect(apiRequests).toEqual([])
+  await page.getByLabel('账号').fill('branded-sandbox')
+  await page.getByLabel('密码').fill('test-password')
+  await page.getByRole('button', { name: '登录' }).click()
+  await expect(page.getByText('泥蛙').first()).toBeVisible()
+  await expect(page.getByText('小满')).toHaveCount(0)
+  expect(apiRequests).toEqual(['/api/demo-login'])
 })
 
 test('temporary visitor route renders only the redacted summary', async ({ page }) => {

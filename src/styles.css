@@ -1546,6 +1546,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .google-mark { width: 19px; height: 19px; flex: 0 0 auto; }
 .login-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 0; color: #a0948a; font-size: .64rem; }
 .login-divider::before, .login-divider::after { content: ''; height: 1px; flex: 1; background: rgba(117, 91, 70, .14); }
+.login-divider + .login-google { margin-top: 14px; }
 .login-form { display: grid; gap: 14px; margin-top: 18px; }
 .login-form label { gap: 7px; font-size: .76rem; }
 .login-input { display: flex; align-items: center; gap: 8px; min-height: 47px; padding: 0 13px; border: 1px solid rgba(41, 79, 101, .18); border-radius: 13px; background: rgba(255, 255, 255, .68); }
@@ -1560,9 +1561,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .login-links button { padding: 0; color: var(--aqua); border: 0; background: transparent; cursor: pointer; font-size: .72rem; }
 .login-links-single { justify-content: flex-start; }
 .login-trust { display: flex; align-items: flex-start; gap: 6px; margin: 24px 0 0; padding-top: 18px; color: #9a8e84; border-top: 1px solid rgba(117, 91, 70, .12); font-size: .64rem; line-height: 1.55; }
-.login-demo-entry { margin-top: 18px; padding: 14px; border: 1px dashed color-mix(in srgb, var(--violet) 42%, var(--line)); border-radius: 16px; background: color-mix(in srgb, var(--violet-soft) 44%, white); display: grid; gap: 8px; }
-.login-demo-entry .secondary-button { width: 100%; justify-content: center; }
-.login-demo-entry small { color: var(--muted); line-height: 1.5; text-align: center; }
 .visitor-page { min-height: 100vh; padding: 32px 18px; display: grid; place-items: center; background: radial-gradient(circle at top left, rgba(130, 110, 200, .16), transparent 34%), #f7efe7; }
 .visitor-card { width: min(620px, 100%); padding: clamp(24px, 5vw, 44px); border: 1px solid rgba(117, 91, 70, .14); border-radius: 28px; background: rgba(255, 252, 248, .96); box-shadow: 0 24px 70px rgba(78, 58, 43, .12); }
 .visitor-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 34px; }

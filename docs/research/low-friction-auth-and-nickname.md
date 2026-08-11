@@ -23,7 +23,7 @@ Better Auth 的内置能力是邮箱密码和社交登录；username 是用于�
 
 Better Auth 核心 user schema 已有 `name`，官方定义为用户选择的展示名称；`email` 则用于通信和登录。[Better Auth 核心数据库 schema](https://better-auth.com/docs/concepts/database)
 
-**产品推导**：普通用户只保留邮箱/Google 登录，界面不再出现“账号”或“用户名”。现有 `demo / 123456` 可以作为内部兼容的特殊演示入口，但不应反向塑造普通用户注册模型。
+**产品推导**：普通用户只保留邮箱/Google 登录，界面不再出现“账号”或“用户名”。特殊演示入口不应反向塑造普通用户注册模型，其凭据也只应存在于服务端运行时配置。
 
 ### 2. 注册首屏只收认证必需信息，昵称渐进补全
 

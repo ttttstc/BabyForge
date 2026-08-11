@@ -44,12 +44,14 @@ function dateAt(now, offsetDays = 0) {
   return isoAt(now, offsetDays * DAY_MS).slice(0, 10)
 }
 
-export function createDemoWorkspace(now = new Date()) {
+export function createDemoWorkspace(now = new Date(), variant = 'niwa') {
   const current = now instanceof Date ? now : new Date(now)
   const nowIso = current.toISOString()
+  const isMock = variant === 'mock'
+  const idPrefix = isMock ? 'mock-demo' : 'guest-demo'
   const baby = {
-    id: 'baby-guest-demo',
-    nickname: '泥蛙',
+    id: `baby-${idPrefix}`,
+    nickname: isMock ? '小满' : '泥蛙',
     birthDate: dateAt(current, -8),
     sex: 'male',
     gestationalWeeks: 40,
@@ -61,16 +63,16 @@ export function createDemoWorkspace(now = new Date()) {
   }
   const initial = createInitialState()
   const actor = initial.careActors[0]
-  const weight = createEvaluatedGrowthMeasurement({ id: 'guest-demo-weight', type: 'weight', value: '3', unit: 'kg', measuredAt: baby.birthDate, source: 'birth_record', method: 'weight_scale' }, baby, [], { now: nowIso })
-  const length = createEvaluatedGrowthMeasurement({ id: 'guest-demo-length', type: 'length', value: '50', unit: 'cm', measuredAt: baby.birthDate, source: 'birth_record', method: 'lying_length' }, baby, [weight], { now: nowIso })
+  const weight = createEvaluatedGrowthMeasurement({ id: `${idPrefix}-weight`, type: 'weight', value: '3', unit: 'kg', measuredAt: baby.birthDate, source: 'birth_record', method: 'weight_scale' }, baby, [], { now: nowIso })
+  const length = createEvaluatedGrowthMeasurement({ id: `${idPrefix}-length`, type: 'length', value: '50', unit: 'cm', measuredAt: baby.birthDate, source: 'birth_record', method: 'lying_length' }, baby, [weight], { now: nowIso })
   const careEvents = [
     createCareEvent({ id: weight.id, babyId: baby.id, kind: 'measurement', category: 'growth_measurement', occurredAt: `${baby.birthDate}T12:00:00.000Z`, actor, source: 'caregiver', payload: weight }, { now: nowIso }),
     createCareEvent({ id: length.id, babyId: baby.id, kind: 'measurement', category: 'growth_measurement', occurredAt: `${baby.birthDate}T12:00:00.000Z`, actor, source: 'caregiver', payload: length }, { now: nowIso }),
-    createCareEvent({ id: 'guest-demo-breastfeeding', babyId: baby.id, category: 'breastfeeding', occurredAt: isoAt(current, -4 * 60 * 60 * 1000), actor, source: 'caregiver', payload: {} }, { now: nowIso }),
-    createCareEvent({ id: 'guest-demo-bottle', babyId: baby.id, category: 'bottle_feeding', occurredAt: isoAt(current, -2 * 60 * 60 * 1000), actor, source: 'caregiver', payload: { milkType: 'formula', amountMl: 60, unit: 'mL' } }, { now: nowIso }),
-    createCareEvent({ id: 'guest-demo-sleep', babyId: baby.id, category: 'sleep', occurredAt: isoAt(current, -7 * 60 * 60 * 1000), actor, source: 'caregiver', payload: { endedAt: isoAt(current, -5 * 60 * 60 * 1000) } }, { now: nowIso }),
-    createCareEvent({ id: 'guest-demo-diaper', babyId: baby.id, category: 'diaper', occurredAt: isoAt(current, -60 * 60 * 1000), actor, source: 'caregiver', payload: { kind: 'urine' } }, { now: nowIso }),
-    createCareEvent({ id: 'guest-demo-temperature', babyId: baby.id, kind: 'measurement', category: 'temperature', occurredAt: isoAt(current, -30 * 60 * 1000), actor, source: 'caregiver', payload: { value: 36.8, unit: '°C' } }, { now: nowIso }),
+    createCareEvent({ id: `${idPrefix}-breastfeeding`, babyId: baby.id, category: 'breastfeeding', occurredAt: isoAt(current, -4 * 60 * 60 * 1000), actor, source: 'caregiver', payload: {} }, { now: nowIso }),
+    createCareEvent({ id: `${idPrefix}-bottle`, babyId: baby.id, category: 'bottle_feeding', occurredAt: isoAt(current, -2 * 60 * 60 * 1000), actor, source: 'caregiver', payload: { milkType: 'formula', amountMl: 60, unit: 'mL' } }, { now: nowIso }),
+    createCareEvent({ id: `${idPrefix}-sleep`, babyId: baby.id, category: 'sleep', occurredAt: isoAt(current, -7 * 60 * 60 * 1000), actor, source: 'caregiver', payload: { endedAt: isoAt(current, -5 * 60 * 60 * 1000) } }, { now: nowIso }),
+    createCareEvent({ id: `${idPrefix}-diaper`, babyId: baby.id, category: 'diaper', occurredAt: isoAt(current, -60 * 60 * 1000), actor, source: 'caregiver', payload: { kind: 'urine' } }, { now: nowIso }),
+    createCareEvent({ id: `${idPrefix}-temperature`, babyId: baby.id, kind: 'measurement', category: 'temperature', occurredAt: isoAt(current, -30 * 60 * 1000), actor, source: 'caregiver', payload: { value: 36.8, unit: '°C' } }, { now: nowIso }),
   ]
   return { ...initial, baby, growthMeasurements: [weight, length], careEvents }
 }

@@ -12,8 +12,8 @@ function dateDaysAgo(days) {
 
 async function createBaby(page) {
   await page.goto('/#/login')
-  await page.getByLabel('邮箱').fill('niwa')
-  await page.getByLabel('密码').fill('niwaniwa')
+  await page.getByLabel('账号').fill('test-admin')
+  await page.getByLabel('密码').fill('test-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/(onboarding|today)$/)
   if (page.url().endsWith('#/today')) return

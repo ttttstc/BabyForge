@@ -20,15 +20,16 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. Local development includes an isolated demo login and does not require D1, R2, or a model provider:
+Open the local URL printed by the server. Full local sign-in is provided by Pages Functions, while preset identities are configured only through the uncommitted `BABYFORGE_PRESET_ACCOUNTS` runtime secret:
 
-- Username: `demo`
-- Password: `123456`
-- Boundary: fictional browser-only data; no production D1, R2, email, Google, or AI secret access. Refreshing resets the sandbox.
+- Neutral mock demo: no specific family identity appears in the baby profile.
+- Branded demo: uses an isolated fictional showcase profile.
+- Formal admin: account, email, and existing household-resource mapping are all supplied by the server-side secret.
+- Demo boundary: fictional browser-only data; no production D1, R2, email, Google, or AI secret access. Refreshing or signing out resets the sandbox.
 
 ## Demo use-case data
 
-After signing in with `demo / 123456`, use this fictional profile to browse the product. It is for interface showcase only, not medical advice, and contains no real family information:
+After signing in with the configured branded demo account, use this fictional profile to browse the product. The neutral mock account offers the same feature depth without a specific family identity. It is for interface showcase only, not medical advice, and contains no real family information:
 
 - Baby profile: 泥蛙; example length `50 cm` and weight `3 kg`; mixed feeding; review the birth profile, growth age, and recorder details.
 - Today: review daily summaries for breastfeeding, bottle feeding, sleep, diapers, and temperature, then open the matching record from a summary card.

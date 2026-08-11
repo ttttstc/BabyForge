@@ -1,19 +1,5 @@
 export const SESSION_KEY = 'babyforge:session'
 
-export const DEMO_MODE_ENABLED = Boolean(import.meta.env?.DEV || import.meta.env?.VITE_ENABLE_DEMO === 'true')
-export const DEMO_CREDENTIALS = DEMO_MODE_ENABLED ? { username: 'demo', password: '123456' } : null
-
-const LOCAL_TEST_ACCOUNTS = import.meta.env?.DEV ? {
-  niwa: { username: 'niwa', password: 'niwaniwa', role: 'admin', displayName: '管理员' },
-  baby: { username: 'baby', password: '0729', role: 'guest', displayName: '游客' },
-  guest: { username: 'guest', password: '123', role: 'guest', displayName: '只读演示账号' },
-} : {}
-
-const DEMO_ACCOUNTS = DEMO_MODE_ENABLED ? {
-  ...LOCAL_TEST_ACCOUNTS,
-  demo: { ...DEMO_CREDENTIALS, role: 'admin', displayName: '演示账号' },
-} : null
-
 function normalizeUsername(value) {
   return String(value || '').trim().toLowerCase()
 }
@@ -88,32 +74,28 @@ export async function login(username, password, options = {}) {
   const secret = String(password || '')
   const storage = options.storage || globalThis.localStorage
 
-  // Demo credentials create a browser-only sandbox. Production builds include
-  // them only when VITE_ENABLE_DEMO explicitly marks that build as a showcase.
-  const demo = (options.demoAccounts || DEMO_ACCOUNTS)?.[normalized]
-  if (demo && demo.password === secret) {
-    return saveSession(storage, {
-      username: demo.username,
-      role: demo.role,
-      displayName: demo.displayName,
-      mode: 'demo',
-      issuedAt: new Date().toISOString(),
-    })
-  }
-
   const fetchImpl = options.fetchImpl || globalThis.fetch
   if (typeof fetchImpl !== 'function') throw new Error('登录服务不可用')
-  const endpoint = normalized.includes('@') ? '/api/auth/sign-in/email' : '/api/auth/sign-in/username'
-  const body = normalized.includes('@')
-    ? { email: normalized, password: secret, rememberMe: false }
-    : { username: normalized, password: secret, rememberMe: false }
-  const response = await authFetch(fetchImpl, endpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(body),
-  })
-  if (response.status === 404 || response.status === 405 || response.status === 503) {
+
+  if (!normalized.includes('@')) {
+    const demoResponse = await authFetch(fetchImpl, '/api/demo-login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: normalized, password: secret }),
+    })
+    if (demoResponse.ok) {
+      const { demo } = await demoResponse.json()
+      if (!demo?.username || !['mock', 'niwa'].includes(demo?.variant)) throw new Error('演示账号配置不可用')
+      return saveSession(storage, {
+        username: demo.username,
+        role: 'admin',
+        displayName: demo.displayName || '演示账号',
+        demoVariant: demo.variant,
+        mode: 'demo',
+        issuedAt: new Date().toISOString(),
+      })
+    }
+
     const legacyResponse = await authFetch(fetchImpl, '/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -124,6 +106,13 @@ export async function login(username, password, options = {}) {
     const payload = await legacyResponse.json()
     return saveSession(storage, { ...payload, mode: 'cloudflare', auth: 'legacy' })
   }
+
+  const response = await authFetch(fetchImpl, '/api/auth/sign-in/email', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email: normalized, password: secret, rememberMe: false }),
+  })
   let payload = {}
   try { payload = await response.json() } catch { /* handled below */ }
   if (!response.ok) {
@@ -233,6 +222,7 @@ export async function startGoogleLogin(callbackURL = '/', options = {}) {
 export async function logout(options = {}) {
   const storage = options.storage || globalThis.localStorage
   storage?.removeItem(SESSION_KEY)
+  if (options.remote === false) return
   const fetchImpl = options.fetchImpl || globalThis.fetch
   if (typeof fetchImpl !== 'function') return
   try {

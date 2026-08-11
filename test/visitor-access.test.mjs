@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 
-import { hashToken } from '../functions/_shared/principal.js'
+import { ensureConfiguredAdminAccount, hashToken } from '../functions/_shared/principal.js'
 import { createTemporaryVisitorLink } from '../functions/api/visitor-links.js'
 import { onRequestPost as viewVisitorSummary } from '../functions/api/visitor.js'
 
@@ -21,6 +21,18 @@ function d1Database(database) {
             async all() { return { results: database.prepare(sql).all(...values) } },
           }
         },
+      }
+    },
+    async batch(statements) {
+      database.exec('BEGIN')
+      try {
+        const results = []
+        for (const statement of statements) results.push(await statement.run())
+        database.exec('COMMIT')
+        return results
+      } catch (error) {
+        database.exec('ROLLBACK')
+        throw error
       }
     },
   }
@@ -116,4 +128,40 @@ test('public seeded guest credentials are disabled without touching other accoun
   ])
   assert.deepEqual(database.prepare('SELECT token FROM auth_sessions').all().map((row) => row.token), ['owner-session'])
   assert.equal(database.prepare("SELECT COUNT(*) AS count FROM household_members WHERE account_id LIKE 'account-%' AND active = 1").get().count, 0)
+})
+
+test('configured admin email is rebound to the configured existing household', async () => {
+  const database = new DatabaseSync(':memory:')
+  database.exec(`
+    CREATE TABLE accounts (id TEXT PRIMARY KEY, username TEXT, role TEXT, display_name TEXT, active INTEGER);
+    CREATE TABLE households (id TEXT PRIMARY KEY, owner_account_id TEXT, owner_user_id TEXT, deleted_at TEXT);
+    CREATE TABLE baby_profiles (id TEXT PRIMARY KEY, household_id TEXT, updated_by TEXT);
+    CREATE TABLE household_members (
+      household_id TEXT, account_id TEXT, role TEXT, active INTEGER,
+      user_id TEXT, membership_role TEXT, inactive_at TEXT,
+      PRIMARY KEY (household_id, account_id)
+    );
+    CREATE TABLE auth_user_account_links (user_id TEXT PRIMARY KEY, account_id TEXT UNIQUE);
+    INSERT INTO accounts VALUES ('account-owner', 'ops-user', 'caregiver', '管理员', 1), ('account-old', 'old-user', 'caregiver', '旧账号', 1);
+    INSERT INTO households VALUES ('home-owner', 'account-owner', NULL, NULL), ('home-old', 'account-old', 'user-1', NULL);
+    INSERT INTO baby_profiles VALUES ('baby-owner', 'home-owner', 'account-owner');
+    INSERT INTO household_members VALUES ('home-owner', 'account-owner', 'owner', 1, NULL, 'owner', NULL);
+    INSERT INTO household_members VALUES ('home-old', 'account-old', 'owner', 1, 'user-1', 'owner', NULL);
+    INSERT INTO auth_user_account_links VALUES ('user-1', 'account-old');
+  `)
+  const env = {
+    DB: d1Database(database),
+    BABYFORGE_PRESET_ACCOUNTS: JSON.stringify({ admin: {
+      username: 'ops-user', password: 'test-password', email: 'owner@example.test',
+      accountId: 'account-owner', householdId: 'home-owner', babyId: 'baby-owner',
+    } }),
+  }
+  const account = await ensureConfiguredAdminAccount(env, { id: 'user-1', email: 'owner@example.test' })
+  assert.equal(account.id, 'account-owner')
+  assert.deepEqual({ ...database.prepare('SELECT account_id FROM auth_user_account_links WHERE user_id = ?').get('user-1') }, { account_id: 'account-owner' })
+  assert.deepEqual({ ...database.prepare('SELECT user_id, membership_role, active FROM household_members WHERE household_id = ?').get('home-owner') }, {
+    user_id: 'user-1', membership_role: 'owner', active: 1,
+  })
+  assert.equal(database.prepare('SELECT active FROM household_members WHERE household_id = ?').get('home-old').active, 0)
+  assert.equal(database.prepare('SELECT owner_user_id FROM households WHERE id = ?').get('home-owner').owner_user_id, 'user-1')
 })

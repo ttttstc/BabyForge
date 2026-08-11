@@ -14,8 +14,8 @@ test.beforeEach(async ({ page }) => {
 
 test('record center keeps six P0 facts and secondary records together', async ({ page }) => {
   await page.goto('/#/login')
-  await page.getByLabel('邮箱').fill('niwa')
-  await page.getByLabel('密码').fill('niwaniwa')
+  await page.getByLabel('账号').fill('test-admin')
+  await page.getByLabel('密码').fill('test-password')
   await page.getByRole('button', { name: '登录' }).click()
   await page.getByLabel('家庭名称').fill('小舟的家庭')
   await page.getByLabel('宝宝昵称').fill('小舟')

@@ -11,7 +11,7 @@ import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
 import { VisitorView } from '../features/VisitorView.jsx'
-import { canEdit, DEMO_CREDENTIALS, DEMO_MODE_ENABLED, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
+import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
@@ -23,6 +23,10 @@ import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
 import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation, visitorTokenFromLocation } from './router.js'
 
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
+
+function demoWorkspace(session) {
+  return createDemoWorkspace(new Date(), session?.demoVariant === 'mock' ? 'mock' : 'niwa')
+}
 
 function sameValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
@@ -41,7 +45,7 @@ export function App() {
   const [state, setState] = useState(() => {
     if (visitorToken) return createInitialState()
     const currentSession = loadSession()
-    if (currentSession?.mode === 'demo' && currentSession.username === 'demo') return createDemoWorkspace()
+    if (currentSession?.mode === 'demo') return demoWorkspace(currentSession)
     const owner = sessionOwner(currentSession)
     return loadState(globalThis.localStorage, owner)
   })
@@ -178,6 +182,12 @@ export function App() {
       } catch {
         // Actor sync is best effort; event sync remains useful without it.
       }
+      const currentSession = sessionRef.current
+      const stillAuthorized = currentSession?.mode === 'cloudflare'
+        && Boolean(currentSession.household)
+        && sessionOwner(currentSession) === owner
+        && currentSession.babies?.some((baby) => baby.id === babyId)
+      if (!stillAuthorized) return
       // Both requests can overlap with optimistic local writes. Build the
       // merged snapshot only after every remote read resolves, using the
       // latest local state so stale responses never roll back a new event.
@@ -193,6 +203,12 @@ export function App() {
       saveState(globalThis.localStorage, next, owner)
       setState(next)
     } catch (error) {
+      const currentSession = sessionRef.current
+      const stillAuthorized = currentSession?.mode === 'cloudflare'
+        && Boolean(currentSession.household)
+        && sessionOwner(currentSession) === owner
+        && currentSession.babies?.some((baby) => baby.id === babyId)
+      if (!stillAuthorized) return
       if ([401, 403].includes(error?.status)) {
         handleAuthRevoked()
         return
@@ -257,10 +273,10 @@ export function App() {
   useEffect(() => {
     if (initialVisitorTokenRef.current) return undefined
     const initialSession = sessionRef.current
-    if (initialSession?.mode === 'demo' && initialSession.username === 'demo') {
+    if (initialSession?.mode === 'demo') {
       void Promise.all([
-        clearState(globalThis.localStorage, 'demo'),
-        clearLocalBabyAlbum('baby-guest-demo').catch(() => {}),
+        clearState(globalThis.localStorage, initialSession.username),
+        stateRef.current.baby?.id ? clearLocalBabyAlbum(stateRef.current.baby.id).catch(() => {}) : Promise.resolve(),
       ])
       clearExperienceCache({ storage: globalThis.localStorage })
       return undefined
@@ -397,11 +413,7 @@ export function App() {
       return
     }
     let current = loadState(globalThis.localStorage, workspaceOwner)
-    if (next.mode === 'demo' && next.username === 'demo') current = createDemoWorkspace()
-    if (next.mode === 'demo' && next.username === 'guest' && !current.baby) {
-      current = createDemoWorkspace()
-      saveState(globalThis.localStorage, current, workspaceOwner)
-    }
+    if (next.mode === 'demo') current = demoWorkspace(next)
     const remoteBaby = next.babies?.[0]
     if (next.mode === 'cloudflare' && remoteBaby?.id) {
       try {
@@ -501,7 +513,8 @@ export function App() {
     const current = sessionRef.current
     const owner = sessionOwner(current)
     const babyId = stateRef.current.baby?.id
-    await logout()
+    await logout({ remote: current?.mode === 'cloudflare' })
+    if (current?.mode === 'demo') sessionRefreshStartedRef.current = true
     clearState(globalThis.localStorage, owner)
     if (current?.userId && current?.username) clearState(globalThis.localStorage, current.username)
     if (babyId) void clearLocalBabyAlbum(babyId).catch(() => {})
@@ -547,7 +560,7 @@ export function App() {
     const resetParams = new URLSearchParams(globalThis.location?.search || '')
     const resetToken = route === ROUTES.resetPassword ? resetParams.get('token') || '' : ''
     const resetError = route === ROUTES.resetPassword ? resetParams.get('error') || '' : ''
-    return <LoginView key={route} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onDemoLogin={DEMO_MODE_ENABLED ? () => handleLogin(DEMO_CREDENTIALS.username, DEMO_CREDENTIALS.password) : undefined} demoCredentials={DEMO_CREDENTIALS} onForgotPassword={(email) => requestPasswordReset(email)} onResetPassword={({ token, password }) => resetPassword({ token, password })} onResetComplete={() => { globalThis.history?.replaceState(null, '', `${globalThis.location?.pathname || '/'}${ROUTES.login}`); navigate(ROUTES.login) }} onResendVerification={(email) => resendVerification(email, { callbackURL })} resetMode={route === ROUTES.resetPassword} resetToken={resetToken} resetError={resetError} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
+    return <LoginView key={route} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onForgotPassword={(email) => requestPasswordReset(email)} onResetPassword={({ token, password }) => resetPassword({ token, password })} onResetComplete={() => { globalThis.history?.replaceState(null, '', `${globalThis.location?.pathname || '/'}${ROUTES.login}`); navigate(ROUTES.login) }} onResendVerification={(email) => resendVerification(email, { callbackURL })} resetMode={route === ROUTES.resetPassword} resetToken={resetToken} resetError={resetError} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
   }
 
   if (session.mode === 'cloudflare' && !session.household && route !== ROUTES.onboarding) {
