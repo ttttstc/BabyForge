@@ -12,6 +12,20 @@
 - Token 一旦撤销、过期或家庭删除，立即拒绝。
 - 访问审计记录时间、资源范围和结果，不记录 Token 明文。
 
+## 接口与数据
+
+- `GET /api/visitor-links`：Owner 查看当前家庭的链接及状态。
+- `POST /api/visitor-links`：Owner 创建固定 2 小时有效的链接，明文 Token 只在创建响应中出现一次。
+- `DELETE /api/visitor-links/:id`：Owner 撤销本家庭链接。
+- `POST /api/visitor`：访客在请求体提交 Token；固定路径避免 Token 出现在服务器访问日志 URL 中，且不携带正式登录 Cookie。
+- `temporary_visitor_links` 只保存 SHA-256 hash；`visitor_link_access_logs` 记录已识别链接的访问结果，不记录明文 Token。
+
+访客响应是独立的聚合模型，只包含通用称呼、年龄阶段、最近 24 小时喂养/睡眠/尿布次数、过期时间及脱敏说明。查询本身只聚合允许公开的事件类型，不先读取完整家庭工作区再做字段删除。
+
 ## 非目标
 
 将访客伪装成 Guest 成员、复用正式登录 Session、展示照片、复杂分享权限编辑。
+
+## 验收
+
+Owner 可创建、复制和撤销链接；访客无需登录即可看到脱敏摘要；照片、姓名、精确生日、健康细节和 AI 内容不会出现在响应中；撤销、过期或家庭软删除后统一失败关闭；数据库与审计中均无 Token 明文。

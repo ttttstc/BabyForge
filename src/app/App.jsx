@@ -10,7 +10,8 @@ import { HouseholdGate } from '../features/HouseholdGate.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
-import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
+import { VisitorView } from '../features/VisitorView.jsx'
+import { canEdit, DEMO_CREDENTIALS, DEMO_MODE_ENABLED, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
@@ -19,7 +20,7 @@ import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, ro
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
-import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation } from './router.js'
+import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation, visitorTokenFromLocation } from './router.js'
 
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
 
@@ -31,12 +32,17 @@ export function App() {
   const location = useHashLocation()
   const route = location.route
   const inviteToken = inviteTokenFromLocation(location)
-  const [session, setSession] = useState(() => loadSession())
+  const visitorToken = visitorTokenFromLocation(location)
+  const [session, setSession] = useState(() => visitorToken ? null : loadSession())
   const sessionOwner = (value) => value?.userId || value?.username
   const initialOwnerRef = useRef(sessionOwner(session))
+  const initialVisitorTokenRef = useRef(visitorToken)
   const sessionRef = useRef(session)
   const [state, setState] = useState(() => {
-    const owner = sessionOwner(loadSession())
+    if (visitorToken) return createInitialState()
+    const currentSession = loadSession()
+    if (currentSession?.mode === 'demo' && currentSession.username === 'demo') return createDemoWorkspace()
+    const owner = sessionOwner(currentSession)
     return loadState(globalThis.localStorage, owner)
   })
   const [authError, setAuthError] = useState('')
@@ -224,6 +230,7 @@ export function App() {
 
   useEffect(() => {
     if (route === ROUTES.resetPassword) return
+    if (visitorToken) return
     if (!session) {
       if (route !== ROUTES.login && !inviteToken) navigate(ROUTES.login)
       return
@@ -241,16 +248,25 @@ export function App() {
     if (route === ROUTES.login && !state.baby && canEdit(session)) navigate(ROUTES.onboarding)
     if (!state.baby && route !== ROUTES.onboarding && route !== ROUTES.login) navigate(canEdit(session) ? ROUTES.onboarding : ROUTES.login)
     if (state.baby && route === ROUTES.onboarding) navigate(ROUTES.today)
-  }, [inviteToken, route, session, state.baby])
+  }, [inviteToken, route, session, state.baby, visitorToken])
 
   useEffect(() => {
     document.documentElement.lang = state.preferences.locale
   }, [state.preferences.locale])
 
   useEffect(() => {
+    if (initialVisitorTokenRef.current) return undefined
+    const initialSession = sessionRef.current
+    if (initialSession?.mode === 'demo' && initialSession.username === 'demo') {
+      void Promise.all([
+        clearState(globalThis.localStorage, 'demo'),
+        clearLocalBabyAlbum('baby-guest-demo').catch(() => {}),
+      ])
+      clearExperienceCache({ storage: globalThis.localStorage })
+      return undefined
+    }
     let active = true
     const owner = initialOwnerRef.current
-    const initialSession = sessionRef.current
     const revisionAtEffectStart = localRevisionRef.current
     hydrateState(globalThis.localStorage, owner).then(async (next) => {
       if (!active || hydrationCancelledRef.current || !next?.version || sessionOwner(sessionRef.current) !== owner) return
@@ -381,6 +397,7 @@ export function App() {
       return
     }
     let current = loadState(globalThis.localStorage, workspaceOwner)
+    if (next.mode === 'demo' && next.username === 'demo') current = createDemoWorkspace()
     if (next.mode === 'demo' && next.username === 'guest' && !current.baby) {
       current = createDemoWorkspace()
       saveState(globalThis.localStorage, current, workspaceOwner)
@@ -422,6 +439,7 @@ export function App() {
   }
 
   useEffect(() => {
+    if (visitorToken) return undefined
     if (sessionRefreshStartedRef.current || (session && session.mode !== 'cloudflare')) return undefined
     sessionRefreshStartedRef.current = true
     let active = true
@@ -439,7 +457,7 @@ export function App() {
     // activateSession intentionally remains a stable-in-practice component
     // helper; the effect only needs to rerun when the auth state changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session])
+  }, [session, visitorToken])
 
   async function handleLogin(email, password) {
     setAuthError('')
@@ -521,13 +539,15 @@ export function App() {
     return true
   }
 
+  if (visitorToken) return <VisitorView token={visitorToken} locale={state.preferences.locale} />
+
   if (!session || route === ROUTES.login || route === ROUTES.resetPassword || (session?.role === 'guest' && !state.baby)) {
     const returnTo = inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household
     const callbackURL = `${globalThis.location?.origin || ''}/${returnTo}`
     const resetParams = new URLSearchParams(globalThis.location?.search || '')
     const resetToken = route === ROUTES.resetPassword ? resetParams.get('token') || '' : ''
     const resetError = route === ROUTES.resetPassword ? resetParams.get('error') || '' : ''
-    return <LoginView key={route} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onForgotPassword={(email) => requestPasswordReset(email)} onResetPassword={({ token, password }) => resetPassword({ token, password })} onResetComplete={() => { globalThis.history?.replaceState(null, '', `${globalThis.location?.pathname || '/'}${ROUTES.login}`); navigate(ROUTES.login) }} onResendVerification={(email) => resendVerification(email, { callbackURL })} resetMode={route === ROUTES.resetPassword} resetToken={resetToken} resetError={resetError} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
+    return <LoginView key={route} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onDemoLogin={DEMO_MODE_ENABLED ? () => handleLogin(DEMO_CREDENTIALS.username, DEMO_CREDENTIALS.password) : undefined} demoCredentials={DEMO_CREDENTIALS} onForgotPassword={(email) => requestPasswordReset(email)} onResetPassword={({ token, password }) => resetPassword({ token, password })} onResetComplete={() => { globalThis.history?.replaceState(null, '', `${globalThis.location?.pathname || '/'}${ROUTES.login}`); navigate(ROUTES.login) }} onResendVerification={(email) => resendVerification(email, { callbackURL })} resetMode={route === ROUTES.resetPassword} resetToken={resetToken} resetError={resetError} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
   }
 
   if (session.mode === 'cloudflare' && !session.household && route !== ROUTES.onboarding) {
@@ -539,7 +559,7 @@ export function App() {
   }
 
   if (route === ROUTES.settings) {
-    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} nickname={session?.nickname || session?.displayName || '家长'} onNicknameChange={handleNicknameChange} />
+    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} householdRole={session?.household?.role || session?.role} nickname={session?.nickname || session?.displayName || '家长'} onNicknameChange={handleNicknameChange} />
   }
 
   if (route === ROUTES.records) {
@@ -555,12 +575,12 @@ export function App() {
   }
 
   if (route === ROUTES.experience) {
-    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} remote={session?.mode === 'cloudflare'} />
   }
 
   if (route === ROUTES.naibaAi) {
     const returnTo = resolveNaibaReturnTo(location.params.get('returnTo')) || ROUTES.today
-    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} demoMode={session?.username === 'demo'} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.healthVaccines) {

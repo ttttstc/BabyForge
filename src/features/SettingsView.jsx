@@ -6,8 +6,9 @@ import { updateBabyProfileState } from '../domain/babyProfile.js'
 import { LLM_PROTOCOL_OPTIONS } from '../../functions/_shared/llmConfig.js'
 import { BasicInfoPanel } from './RecordCenter.jsx'
 import { GlobalAiEntry } from './GlobalAiEntry.jsx'
+import { VisitorLinkSettings } from './VisitorLinkSettings.jsx'
 
-export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false, nickname = '家长', onNicknameChange }) {
+export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false, householdRole = 'member', nickname = '家长', onNicknameChange }) {
   const locale = state.preferences.locale
   const copy = getCopy(locale)
   const isEnglish = locale === 'en-US'
@@ -143,6 +144,7 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
             <div className="settings-llm-actions"><button className="primary-button compact" type="submit" disabled={nicknameBusy}>{nicknameBusy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save nickname' : '保存昵称')}</button></div>
           </form>
         </section>}
+        {cloudMode && householdRole === 'owner' && <section className="settings-section"><VisitorLinkSettings locale={locale} /></section>}
         <section className="settings-section settings-record-link-section">
           <div className="settings-section-heading"><ClipboardPlus size={19} /><div><h2>{locale === 'en-US' ? 'All baby facts live in Record center' : '宝宝信息统一在记录中心维护'}</h2><p>{locale === 'en-US' ? 'Profile, growth measurements, feeding, illness, medication, and care facts share one entry point.' : '基础信息、成长测量、喂奶、生病、用药和照护事实都从同一个入口录入。'}</p></div></div>
           <button className="secondary-button" type="button" onClick={() => navigate(ROUTES.records)}><ClipboardPlus size={16} />{locale === 'en-US' ? 'Open Record center' : '打开记录中心'}</button>

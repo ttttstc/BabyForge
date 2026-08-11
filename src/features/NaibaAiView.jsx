@@ -57,7 +57,7 @@ async function remoteAnswer(message, state, recommendation, skillId, decision, c
   return result
 }
 
-export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onClear, onLogout, readOnly = false, role = 'admin' }) {
+export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = false, onBack, onClear, onLogout, readOnly = false, role = 'admin' }) {
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
   const topic = new URLSearchParams(window.location.hash.split('?')[1] || '').get('topic')
@@ -243,6 +243,11 @@ export function NaibaAiView({ state, commitState, cloudMode = false, onBack, onC
         setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer, ...(parsedDraft?.status === 'draft_ready' ? { draft: parsedDraft } : {}) }])
       }
       else {
+        if (demoMode) {
+          answer = localAnswer(message, recommendation, locale, decision)
+          setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer }])
+          return
+        }
         const requestController = new AbortController()
         activeRequestRef.current = requestController
         setGenerating(true)

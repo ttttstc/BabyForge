@@ -6,7 +6,7 @@ function GoogleMark() {
   return <svg className="google-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z"/><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.6 0-4.81-1.76-5.6-4.12H3.05v2.62A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.4 13.94A6 6 0 0 1 6.08 12c0-.67.11-1.32.32-1.94V7.44H3.05A10 10 0 0 0 2 12c0 1.64.39 3.2 1.05 4.56l3.35-2.62Z"/><path fill="#EA4335" d="M12 5.94c1.47 0 2.79.5 3.82 1.5l2.87-2.87A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.95 5.44l3.35 2.62C7.19 7.7 9.4 5.94 12 5.94Z"/></svg>
 }
 
-export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegister, onGoogleLogin, onForgotPassword, onResetPassword, onResetComplete, onResendVerification, resetMode = false, resetToken = '', resetError = '', error = '', noProfile = false }) {
+export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegister, onGoogleLogin, onDemoLogin, demoCredentials, onForgotPassword, onResetPassword, onResetComplete, onResendVerification, resetMode = false, resetToken = '', resetError = '', error = '', noProfile = false }) {
   const copy = getCopy(locale)
   const isEnglish = locale === 'en-US'
   const [email, setEmail] = useState('')
@@ -111,6 +111,10 @@ export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegiste
         </form>
 
         {mode === 'login' && <div className="login-links"><button type="button" onClick={() => switchMode('register')}>{isEnglish ? 'Create an account' : '创建账号'}</button><button type="button" onClick={() => switchMode('forgot')}>{isEnglish ? 'Forgot password?' : '忘记密码？'}</button></div>}
+        {mode === 'login' && onDemoLogin && demoCredentials && <div className="login-demo-entry">
+          <button className="secondary-button" type="button" disabled={busy} onClick={async () => { setBusy(true); setNotice(''); try { await onDemoLogin() } catch (demoError) { setNotice(demoError.message || (isEnglish ? 'Demo mode is unavailable.' : '演示模式暂不可用。')) } finally { setBusy(false) } }}>{isEnglish ? 'Explore the demo workspace' : '体验演示工作台'}</button>
+          <small>{isEnglish ? `Browser-only fictional data · ${demoCredentials.username} / ${demoCredentials.password} · resets on refresh` : `仅使用浏览器内虚构数据 · ${demoCredentials.username} / ${demoCredentials.password} · 刷新即重置`}</small>
+        </div>}
         {mode !== 'login' && <div className="login-links login-links-single"><button type="button" onClick={() => switchMode('login')}>{isEnglish ? 'Back to sign in' : '返回登录'}</button></div>}
         <p className="login-trust"><LockKeyhole size={13} />{isEnglish ? 'Personal accounts, one shared household, traceable care facts.' : '个人账号登录，同一家庭协作，照护事实保留来源。'}</p>
       </section>

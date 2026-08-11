@@ -20,15 +20,15 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. Local development includes a read-only demo login and does not require D1, R2, or a model provider:
+Open the local URL printed by Vite. Local development includes an isolated demo login and does not require D1, R2, or a model provider:
 
-- Username: `guest`
-- Password: `123`
-- Permission: read-only, for product showcase only; it cannot create, edit, or delete family records.
+- Username: `demo`
+- Password: `123456`
+- Boundary: fictional browser-only data; no production D1, R2, email, Google, or AI secret access. Refreshing resets the sandbox.
 
 ## Demo use-case data
 
-After signing in with `guest / 123`, use this fictional profile to browse the product. It is for interface showcase only, not medical advice, and contains no real family information:
+After signing in with `demo / 123456`, use this fictional profile to browse the product. It is for interface showcase only, not medical advice, and contains no real family information:
 
 - Baby profile: 泥蛙; example length `50 cm` and weight `3 kg`; mixed feeding; review the birth profile, growth age, and recorder details.
 - Today: review daily summaries for breastfeeding, bottle feeding, sleep, diapers, and temperature, then open the matching record from a summary card.

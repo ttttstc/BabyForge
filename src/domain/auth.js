@@ -1,10 +1,17 @@
 export const SESSION_KEY = 'babyforge:session'
 
-const DEMO_ACCOUNTS = import.meta.env?.DEV ? {
+export const DEMO_MODE_ENABLED = Boolean(import.meta.env?.DEV || import.meta.env?.VITE_ENABLE_DEMO === 'true')
+export const DEMO_CREDENTIALS = DEMO_MODE_ENABLED ? { username: 'demo', password: '123456' } : null
+
+const LOCAL_TEST_ACCOUNTS = import.meta.env?.DEV ? {
   niwa: { username: 'niwa', password: 'niwaniwa', role: 'admin', displayName: '管理员' },
   baby: { username: 'baby', password: '0729', role: 'guest', displayName: '游客' },
   guest: { username: 'guest', password: '123', role: 'guest', displayName: '只读演示账号' },
-  demo: { username: 'demo', password: '123456', role: 'admin', displayName: '演示账号' },
+} : {}
+
+const DEMO_ACCOUNTS = DEMO_MODE_ENABLED ? {
+  ...LOCAL_TEST_ACCOUNTS,
+  demo: { ...DEMO_CREDENTIALS, role: 'admin', displayName: '演示账号' },
 } : null
 
 function normalizeUsername(value) {
@@ -81,9 +88,9 @@ export async function login(username, password, options = {}) {
   const secret = String(password || '')
   const storage = options.storage || globalThis.localStorage
 
-  // Demo credentials are compiled only into Vite development builds. The
-  // production bundle must use the Cloudflare Pages Function below.
-  const demo = DEMO_ACCOUNTS?.[normalized]
+  // Demo credentials create a browser-only sandbox. Production builds include
+  // them only when VITE_ENABLE_DEMO explicitly marks that build as a showcase.
+  const demo = (options.demoAccounts || DEMO_ACCOUNTS)?.[normalized]
   if (demo && demo.password === secret) {
     return saveSession(storage, {
       username: demo.username,

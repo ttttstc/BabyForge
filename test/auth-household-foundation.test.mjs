@@ -4,7 +4,7 @@ import { passwordPolicyError } from '../functions/_shared/betterAuth.js'
 import { hashToken, randomToken } from '../functions/_shared/principal.js'
 import { login, register, resetPassword, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
 import { parseInviteToken } from '../src/domain/householdAccess.js'
-import { buildInviteRoute, inviteTokenFromLocation, parseHashLocation } from '../src/app/router.js'
+import { buildInviteRoute, buildVisitorRoute, inviteTokenFromLocation, parseHashLocation, visitorTokenFromLocation } from '../src/app/router.js'
 import { nicknamePolicyError, normalizeNickname } from '../functions/api/me.js'
 
 test('formal password policy requires letters and numbers', () => {
@@ -97,4 +97,25 @@ test('new and legacy invite links resolve to the shared household route', () => 
   assert.equal(parseInviteToken(`https://babyforge.bbroot.com/${route}`), token)
   assert.equal(parseInviteToken(`https://babyforge.bbroot.com/invite/${token}`), token)
   assert.equal(parseInviteToken('not-an-invite'), '')
+})
+
+test('demo login stays inside the injected browser sandbox', async () => {
+  const values = new Map()
+  const storage = { setItem: (key, value) => values.set(key, value), getItem: (key) => values.get(key) || null }
+  const session = await login('demo', '123456', {
+    storage,
+    demoAccounts: { demo: { username: 'demo', password: '123456', role: 'admin', displayName: '演示账号' } },
+    fetchImpl: async () => assert.fail('demo login must not call a server'),
+  })
+  assert.equal(session.mode, 'demo')
+  assert.equal(session.username, 'demo')
+  assert.equal(JSON.parse(values.get('babyforge:session')).mode, 'demo')
+})
+
+test('temporary visitor links have their own public route', () => {
+  const token = 'v'.repeat(43)
+  const route = buildVisitorRoute(token)
+  assert.equal(route, `#/visit/${token}`)
+  assert.equal(visitorTokenFromLocation(parseHashLocation(route)), token)
+  assert.equal(visitorTokenFromLocation(parseHashLocation('#/today')), '')
 })
