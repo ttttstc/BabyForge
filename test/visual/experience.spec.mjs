@@ -9,9 +9,28 @@ function dateDaysAgo(days) {
 
 async function createBaby(page, ageDays = 6) {
   await page.goto('/#/login')
-  await page.getByLabel('账号').fill('test-admin')
-  await page.getByLabel('密码').fill('test-password')
-  await page.getByRole('button', { name: '登录' }).click()
+  await page.route('**/api/me', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ user: { id: 'visual-test-user', email: 'visual@example.test', nickname: '视觉测试' } }),
+  }))
+  await page.route('**/api/household', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ household: { id: 'visual-test-household', role: 'owner', baby: null } }),
+  }))
+  await page.route('**/api/sync', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+  await page.evaluate(() => localStorage.setItem('babyforge:session', JSON.stringify({
+    userId: 'visual-test-user',
+    email: 'visual@example.test',
+    role: 'owner',
+    displayName: '视觉测试',
+    household: { id: 'visual-test-household', role: 'owner' },
+    babies: [],
+    mode: 'cloudflare',
+    auth: 'better-auth',
+  })))
+  await page.reload()
   await expect(page).toHaveURL(/#\/(onboarding|today)$/)
   if (page.url().endsWith('#/today')) return
   await page.goto('/#/onboarding')
