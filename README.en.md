@@ -23,13 +23,13 @@ npm run dev
 Open the local URL printed by the server. Full local sign-in is provided by Pages Functions, while preset identities are configured only through the uncommitted `BABYFORGE_PRESET_ACCOUNTS` runtime secret:
 
 - Neutral mock demo: no specific family identity appears in the baby profile.
-- Branded demo: uses an isolated fictional showcase profile.
+- Branded demo: read-only access to filtered data and real photos for the baby selected by the runtime secret.
 - Formal admin: account, email, and existing household-resource mapping are all supplied by the server-side secret.
-- Demo boundary: fictional browser-only data; no production D1, R2, email, Google, or AI secret access. Refreshing or signing out resets the sandbox.
+- Demo boundary: the neutral mock stays browser-only; the branded demo uses a dedicated short session that can read only allowlisted profile data and photos. Neither demo can write or access email, Google, AI conversations, or configuration.
 
 ## Demo use-case data
 
-After signing in with the configured branded demo account, use this fictional profile to browse the product. The neutral mock account offers the same feature depth without a specific family identity. It is for interface showcase only, not medical advice, and contains no real family information:
+After signing in with the configured branded demo account, browse the filtered showcase profile and photos in read-only mode. The neutral mock account provides a fictional profile without a specific family identity. Showcase content is not medical advice:
 
 - Baby profile: 泥蛙; example length `50 cm` and weight `3 kg`; mixed feeding; review the birth profile, growth age, and recorder details.
 - Today: review daily summaries for breastfeeding, bottle feeding, sleep, diapers, and temperature, then open the matching record from a summary card.

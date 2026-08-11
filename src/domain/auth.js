@@ -81,17 +81,19 @@ export async function login(username, password, options = {}) {
     const demoResponse = await authFetch(fetchImpl, '/api/demo-login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ username: normalized, password: secret }),
     })
     if (demoResponse.ok) {
-      const { demo } = await demoResponse.json()
+      const { demo, expiresAt } = await demoResponse.json()
       if (!demo?.username || !['mock', 'niwa'].includes(demo?.variant)) throw new Error('演示账号配置不可用')
       return saveSession(storage, {
         username: demo.username,
-        role: 'admin',
+        role: 'guest',
         displayName: demo.displayName || '演示账号',
         demoVariant: demo.variant,
-        mode: 'demo',
+        mode: demo.showcase ? 'showcase' : 'demo',
+        ...(expiresAt ? { expiresAt } : {}),
         issuedAt: new Date().toISOString(),
       })
     }

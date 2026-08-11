@@ -1,30 +1,45 @@
 import { expect, test } from '@playwright/test'
 
-test('demo workspace is browser-only and resets on refresh', async ({ page }) => {
+test('both demos are read-only and branded demo loads the filtered real showcase', async ({ page }) => {
   const apiRequests = []
   await page.route('**/api/**', (route) => {
-    apiRequests.push(new URL(route.request().url()).pathname)
-    if (new URL(route.request().url()).pathname === '/api/demo-login') {
+    const path = new URL(route.request().url()).pathname
+    apiRequests.push(path)
+    if (path === '/api/demo-login') {
       const { username } = route.request().postDataJSON()
       const variant = username === 'neutral-sandbox' ? 'mock' : 'niwa'
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ demo: { username, variant, displayName: '测试演示' } }),
+        body: JSON.stringify({ demo: { username, variant, displayName: '测试演示', showcase: variant === 'niwa' }, expiresAt: variant === 'niwa' ? '2099-01-01T00:00:00.000Z' : undefined }),
       })
     }
+    if (path === '/api/demo-showcase') return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        baby: { id: 'baby-showcase', nickname: '真实展示宝宝', birthDate: '2026-07-01', birthDatePrecision: 'month', gestationalWeeks: 39, gestationalDays: 2, sex: 'female', feedingMode: 'mixed', locale: 'zh-CN' },
+        observations: [], questions: [], taskLogs: [], adminTaskRecords: [], growthMeasurements: [], milestoneRecords: [], careEvents: [], readOnly: true,
+      }),
+    })
+    if (path === '/api/demo-showcase/photos') return route.fulfill({ status: 200, contentType: 'application/json', body: '{"photos":[]}' })
+    if (path === '/api/logout') return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
     return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"not signed in"}' })
   })
   await page.goto('/#/login')
   const passwordBox = await page.getByLabel('密码').boundingBox()
+  const createAccountBox = await page.getByRole('button', { name: '创建账号' }).boundingBox()
+  const dividerBox = await page.locator('.login-divider').boundingBox()
   const googleBox = await page.getByRole('button', { name: '使用 Google 账号继续' }).boundingBox()
   expect(passwordBox.y + passwordBox.height).toBeLessThan(googleBox.y)
+  expect(createAccountBox.y + createAccountBox.height).toBeLessThan(dividerBox.y)
   await page.getByLabel('账号').fill('neutral-sandbox')
   await page.getByLabel('密码').fill('test-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/today$/)
   await expect(page.getByText('小满').first()).toBeVisible()
   await expect(page.getByText('泥蛙')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '只读查看' }).first()).toBeDisabled()
 
   apiRequests.length = 0
   await page.goto('/#/experience')
@@ -54,9 +69,10 @@ test('demo workspace is browser-only and resets on refresh', async ({ page }) =>
   await page.getByLabel('账号').fill('branded-sandbox')
   await page.getByLabel('密码').fill('test-password')
   await page.getByRole('button', { name: '登录' }).click()
-  await expect(page.getByText('泥蛙').first()).toBeVisible()
+  await expect(page.getByText('真实展示宝宝').first()).toBeVisible()
   await expect(page.getByText('小满')).toHaveCount(0)
-  expect(apiRequests).toEqual(['/api/demo-login'])
+  await expect(page.getByRole('button', { name: '只读查看' }).first()).toBeDisabled()
+  expect(apiRequests).toEqual(['/api/demo-login', '/api/demo-showcase', '/api/demo-showcase/photos'])
 })
 
 test('temporary visitor route renders only the redacted summary', async ({ page }) => {

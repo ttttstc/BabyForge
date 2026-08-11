@@ -118,6 +118,7 @@ test('demo login uses server-side authentication then stays in the browser sandb
   })
   assert.equal(session.mode, 'demo')
   assert.equal(session.username, 'sandbox-user')
+  assert.equal(session.role, 'guest')
   assert.equal(session.demoVariant, 'mock')
   assert.deepEqual(paths, ['/api/demo-login'])
   assert.equal(JSON.parse(values.get('babyforge:session')).mode, 'demo')

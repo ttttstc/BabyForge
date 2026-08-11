@@ -14,7 +14,7 @@ import { VisitorView } from '../features/VisitorView.jsx'
 import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
-import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
+import { pullShowcaseWorkspace, pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
@@ -288,7 +288,20 @@ export function App() {
       if (!active || hydrationCancelledRef.current || !next?.version || sessionOwner(sessionRef.current) !== owner) return
       let hydrated = next
       const remoteBabyId = initialSession?.mode === 'cloudflare' ? initialSession.babies?.[0]?.id : null
-      if (remoteBabyId) {
+      if (initialSession?.mode === 'showcase') {
+        try {
+          const remote = await pullShowcaseWorkspace()
+          if (remote?.baby && sessionOwner(sessionRef.current) === owner) {
+            hydrated = {
+              ...createInitialState(),
+              ...remote,
+              preferences: { ...next.preferences, locale: remote.baby.locale || next.preferences.locale },
+            }
+          }
+        } catch (error) {
+          if ([401, 403].includes(error?.status)) handleAuthRevoked()
+        }
+      } else if (remoteBabyId) {
         const revisionBeforeRemote = localRevisionRef.current
         const stateBeforeRemote = stateRef.current
         try {
@@ -415,7 +428,24 @@ export function App() {
     let current = loadState(globalThis.localStorage, workspaceOwner)
     if (next.mode === 'demo') current = demoWorkspace(next)
     const remoteBaby = next.babies?.[0]
-    if (next.mode === 'cloudflare' && remoteBaby?.id) {
+    if (next.mode === 'showcase') {
+      try {
+        const remote = await pullShowcaseWorkspace()
+        if (remote?.baby) {
+          current = {
+            ...createInitialState(),
+            ...remote,
+            preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
+          }
+        }
+      } catch (error) {
+        if ([401, 403].includes(error?.status)) {
+          handleAuthRevoked()
+          return
+        }
+        setAuthError(error.message)
+      }
+    } else if (next.mode === 'cloudflare' && remoteBaby?.id) {
       try {
         const remote = await pullWorkspace(remoteBaby.id)
         if (remote?.baby) {
@@ -513,8 +543,8 @@ export function App() {
     const current = sessionRef.current
     const owner = sessionOwner(current)
     const babyId = stateRef.current.baby?.id
-    await logout({ remote: current?.mode === 'cloudflare' })
-    if (current?.mode === 'demo') sessionRefreshStartedRef.current = true
+    await logout({ remote: ['cloudflare', 'showcase'].includes(current?.mode) })
+    if (['demo', 'showcase'].includes(current?.mode)) sessionRefreshStartedRef.current = true
     clearState(globalThis.localStorage, owner)
     if (current?.userId && current?.username) clearState(globalThis.localStorage, current.username)
     if (babyId) void clearLocalBabyAlbum(babyId).catch(() => {})
@@ -593,12 +623,12 @@ export function App() {
 
   if (route === ROUTES.naibaAi) {
     const returnTo = resolveNaibaReturnTo(location.params.get('returnTo')) || ROUTES.today
-    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} demoMode={session?.username === 'demo'} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} demoMode={['demo', 'showcase'].includes(session?.mode)} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.healthVaccines) {
     return <VaccineView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
-  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />
+  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} showcaseMode={session?.mode === 'showcase'} />
 }

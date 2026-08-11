@@ -11,7 +11,7 @@ import { BabyAlbum } from './BabyAlbum.jsx'
 import { ContextInspector } from './ContextInspector.jsx'
 import { GrowthDashboard } from './GrowthDashboard.jsx'
 
-export function Workspace({ route, state, setState, onClear, onLogout, readOnly = false, role = 'admin', cloudMode = false }) {
+export function Workspace({ route, state, setState, onClear, onLogout, readOnly = false, role = 'admin', cloudMode = false, showcaseMode = false }) {
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
   const topicMode = route === ROUTES.jaundice
   const healthReminders = useMemo(() => getDailyHealthReminders(state.taskLogs, ageDays), [state.taskLogs, ageDays])
@@ -79,7 +79,7 @@ export function Workspace({ route, state, setState, onClear, onLogout, readOnly 
         <LeftRail baby={state.baby} ageDays={ageDays} careEvents={state.careEvents} locale={state.preferences.locale} readOnly={readOnly} />
         {route === ROUTES.today ? (
           <div className="today-middle-column">
-            <BabyAlbum key={state.baby.id} baby={state.baby} locale={state.preferences.locale} readOnly={readOnly} remote={cloudMode} />
+            <BabyAlbum key={state.baby.id} baby={state.baby} locale={state.preferences.locale} readOnly={readOnly} remote={cloudMode || showcaseMode} showcase={showcaseMode} />
           </div>
         ) : (
           <StageSurface

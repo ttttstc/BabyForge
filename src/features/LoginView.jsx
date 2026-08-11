@@ -105,12 +105,12 @@ export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegiste
           <button className="primary-button login-submit" type="submit" disabled={busy || (mode === 'reset' && (!resetToken || Boolean(resetError)))}>{busy ? (isEnglish ? 'Working…' : '处理中…') : mode === 'register' ? (isEnglish ? 'Create account' : '创建账号') : mode === 'forgot' ? (isEnglish ? 'Send reset link' : '发送重置邮件') : mode === 'reset' ? (isEnglish ? 'Update password' : '更新密码') : (isEnglish ? 'Sign in' : '登录')}<LogIn size={17} /></button>
         </form>
 
+        {mode === 'login' && <div className="login-links"><button type="button" onClick={() => switchMode('register')}>{isEnglish ? 'Create an account' : '创建账号'}</button><button type="button" onClick={() => switchMode('forgot')}>{isEnglish ? 'Forgot password?' : '忘记密码？'}</button></div>}
         {(mode === 'login' || mode === 'register') && <>
           <div className="login-divider"><span>{isEnglish ? 'or' : '或'}</span></div>
           <button className="login-google" type="button" disabled={busy} onClick={async () => { setBusy(true); setNotice(''); try { await onGoogleLogin?.() } catch (googleError) { setNotice(googleError.message || (isEnglish ? 'Google sign-in is unavailable.' : 'Google 登录暂时不可用。')) } finally { setBusy(false) } }}><GoogleMark />{isEnglish ? 'Continue with Google' : '使用 Google 账号继续'}</button>
         </>}
 
-        {mode === 'login' && <div className="login-links"><button type="button" onClick={() => switchMode('register')}>{isEnglish ? 'Create an account' : '创建账号'}</button><button type="button" onClick={() => switchMode('forgot')}>{isEnglish ? 'Forgot password?' : '忘记密码？'}</button></div>}
         {mode !== 'login' && <div className="login-links login-links-single"><button type="button" onClick={() => switchMode('login')}>{isEnglish ? 'Back to sign in' : '返回登录'}</button></div>}
         <p className="login-trust"><LockKeyhole size={13} />{isEnglish ? 'Personal accounts, one shared household, traceable care facts.' : '个人账号登录，同一家庭协作，照护事实保留来源。'}</p>
       </section>
