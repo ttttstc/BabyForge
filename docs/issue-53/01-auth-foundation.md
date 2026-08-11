@@ -17,6 +17,7 @@
 - `/api/me` 是前端唯一需要理解的账号摘要接口，返回 User、验证状态和当前 Household（本阶段可为 null）。
 - 普通用户不启用 username 登录插件；`user.name` 作为可重复昵称，可通过 `PATCH /api/me` 修改。
 - 注册和登录不强制补昵称；Google 与邮箱密码认证完成后复用同一家庭分流。
+- 忘记密码由 Resend 发送一小时有效的单次 Token；`#/reset-password` 接收 Token、提交新密码，成功后撤销旧 Session 并返回登录页。
 
 ## API 验收面
 

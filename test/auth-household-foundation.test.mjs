@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { passwordPolicyError } from '../functions/_shared/betterAuth.js'
 import { hashToken, randomToken } from '../functions/_shared/principal.js'
-import { register, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
+import { login, register, resetPassword, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
 import { parseInviteToken } from '../src/domain/householdAccess.js'
 import { buildInviteRoute, inviteTokenFromLocation, parseHashLocation } from '../src/app/router.js'
 import { nicknamePolicyError, normalizeNickname } from '../functions/api/me.js'
@@ -55,6 +55,25 @@ test('email registration needs only email and password and preserves the return 
     password: 'abc123',
     callbackURL: 'https://babyforge.bbroot.com/#/household/invite/token',
   })
+})
+
+test('password reset submits the link token and new password', async () => {
+  let request
+  await resetPassword({ token: 'reset-token', password: 'newpass1' }, {
+    fetchImpl: async (path, options) => {
+      request = { path, options }
+      return new Response('{"status":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  assert.equal(request.path, '/api/auth/reset-password')
+  assert.deepEqual(JSON.parse(request.options.body), { token: 'reset-token', newPassword: 'newpass1' })
+})
+
+test('network failures become an actionable auth message', async () => {
+  await assert.rejects(
+    login('parent@example.com', 'abc123', { fetchImpl: async () => { throw new TypeError('Failed to fetch') } }),
+    /无法连接登录服务，请确认网络连接后重试/,
+  )
 })
 
 test('nickname updates are non-unique display data', async () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 export const ROUTES = {
   login: '#/login',
+  resetPassword: '#/reset-password',
   household: '#/household',
   onboarding: '#/onboarding',
   today: '#/today',

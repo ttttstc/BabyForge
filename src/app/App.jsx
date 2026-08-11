@@ -10,7 +10,7 @@ import { HouseholdGate } from '../features/HouseholdGate.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
-import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
+import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
@@ -221,6 +221,7 @@ export function App() {
   }
 
   useEffect(() => {
+    if (route === ROUTES.resetPassword) return
     if (!session) {
       if (route !== ROUTES.login && !inviteToken) navigate(ROUTES.login)
       return
@@ -498,10 +499,13 @@ export function App() {
     return true
   }
 
-  if (!session || route === ROUTES.login || (session?.role === 'guest' && !state.baby)) {
+  if (!session || route === ROUTES.login || route === ROUTES.resetPassword || (session?.role === 'guest' && !state.baby)) {
     const returnTo = inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household
     const callbackURL = `${globalThis.location?.origin || ''}/${returnTo}`
-    return <LoginView locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onForgotPassword={(email) => requestPasswordReset(email)} onResendVerification={(email) => resendVerification(email, { callbackURL })} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
+    const resetParams = new URLSearchParams(globalThis.location?.search || '')
+    const resetToken = route === ROUTES.resetPassword ? resetParams.get('token') || '' : ''
+    const resetError = route === ROUTES.resetPassword ? resetParams.get('error') || '' : ''
+    return <LoginView key={route} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onForgotPassword={(email) => requestPasswordReset(email)} onResetPassword={({ token, password }) => resetPassword({ token, password })} onResetComplete={() => { globalThis.history?.replaceState(null, '', `${globalThis.location?.pathname || '/'}${ROUTES.login}`); navigate(ROUTES.login) }} onResendVerification={(email) => resendVerification(email, { callbackURL })} resetMode={route === ROUTES.resetPassword} resetToken={resetToken} resetError={resetError} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
   }
 
   if (session.mode === 'cloudflare' && !session.household && route !== ROUTES.onboarding) {

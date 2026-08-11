@@ -16,14 +16,25 @@ function saveSession(storage, session) {
   return session
 }
 
+async function authFetch(fetchImpl, input, init) {
+  try {
+    return await fetchImpl(input, init)
+  } catch (error) {
+    if (error instanceof TypeError || /failed to fetch|networkerror|fetch failed/i.test(String(error?.message || ''))) {
+      throw new Error('无法连接登录服务，请确认网络连接后重试。', { cause: error })
+    }
+    throw error
+  }
+}
+
 async function loadBetterAuthSession(fetchImpl, storage = globalThis.localStorage) {
-  const meResponse = await fetchImpl('/api/me', { credentials: 'include' })
+  const meResponse = await authFetch(fetchImpl, '/api/me', { credentials: 'include' })
   if (meResponse.status === 401 || meResponse.status === 404) return null
   if (meResponse.status === 403) throw new Error('请先验证邮箱')
   if (!meResponse.ok) throw new Error('登录状态无法确认')
   if (!meResponse.headers.get('content-type')?.includes('application/json')) return null
   const me = await meResponse.json()
-  const householdResponse = await fetchImpl('/api/household', { credentials: 'include' })
+  const householdResponse = await authFetch(fetchImpl, '/api/household', { credentials: 'include' })
   const householdPayload = householdResponse.ok && householdResponse.headers.get('content-type')?.includes('application/json')
     ? await householdResponse.json()
     : { household: null }
@@ -89,14 +100,14 @@ export async function login(username, password, options = {}) {
   const body = normalized.includes('@')
     ? { email: normalized, password: secret, rememberMe: false }
     : { username: normalized, password: secret, rememberMe: false }
-  const response = await fetchImpl(endpoint, {
+  const response = await authFetch(fetchImpl, endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify(body),
   })
   if (response.status === 404 || response.status === 405 || response.status === 503) {
-    const legacyResponse = await fetchImpl('/api/login', {
+    const legacyResponse = await authFetch(fetchImpl, '/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
@@ -124,7 +135,7 @@ export async function resumeSession(options = {}) {
 
 export async function updateNickname(value, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
-  const response = await fetchImpl('/api/me', {
+  const response = await authFetch(fetchImpl, '/api/me', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -138,7 +149,7 @@ export async function updateNickname(value, options = {}) {
 
 export async function register({ email, password }, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
-  const response = await fetchImpl('/api/auth/sign-up/email', {
+  const response = await authFetch(fetchImpl, '/api/auth/sign-up/email', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -157,7 +168,7 @@ export async function register({ email, password }, options = {}) {
 
 export async function requestPasswordReset(email, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
-  const response = await fetchImpl('/api/auth/request-password-reset', {
+  const response = await authFetch(fetchImpl, '/api/auth/request-password-reset', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -167,9 +178,23 @@ export async function requestPasswordReset(email, options = {}) {
   return response.json().catch(() => ({}))
 }
 
+export async function resetPassword({ token, password }, options = {}) {
+  const fetchImpl = options.fetchImpl || globalThis.fetch
+  const response = await authFetch(fetchImpl, '/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token: String(token || '').trim(), newPassword: password }),
+  })
+  let payload = {}
+  try { payload = await response.json() } catch { /* handled below */ }
+  if (!response.ok) throw new Error(payload?.error?.message || payload?.message || '重置链接无效或已过期')
+  return payload
+}
+
 export async function resendVerification(email, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
-  const response = await fetchImpl('/api/auth/send-verification-email', {
+  const response = await authFetch(fetchImpl, '/api/auth/send-verification-email', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -184,7 +209,7 @@ export async function startGoogleLogin(callbackURL = '/', options = {}) {
   const locationImpl = options.location || globalThis.location
   if (typeof fetchImpl !== 'function' || !locationImpl?.origin || typeof locationImpl.assign !== 'function') throw new Error('Google 登录服务不可用')
   const absoluteCallbackURL = new URL(callbackURL, `${locationImpl.origin}/`).toString()
-  const response = await fetchImpl('/api/auth/sign-in/social', {
+  const response = await authFetch(fetchImpl, '/api/auth/sign-in/social', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
