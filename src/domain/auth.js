@@ -171,13 +171,23 @@ export async function resendVerification(email, options = {}) {
   return response.json().catch(() => ({}))
 }
 
-export function startGoogleLogin(callbackURL = '/') {
-  if (typeof globalThis.location !== 'undefined') {
-    const target = new URL('/api/auth/sign-in/social', globalThis.location.origin)
-    target.searchParams.set('provider', 'google')
-    target.searchParams.set('callbackURL', callbackURL)
-    globalThis.location.assign(target.toString())
-  }
+export async function startGoogleLogin(callbackURL = '/', options = {}) {
+  const fetchImpl = options.fetchImpl || globalThis.fetch
+  const locationImpl = options.location || globalThis.location
+  if (typeof fetchImpl !== 'function' || !locationImpl?.origin || typeof locationImpl.assign !== 'function') throw new Error('Google 登录服务不可用')
+  const absoluteCallbackURL = new URL(callbackURL, `${locationImpl.origin}/`).toString()
+  const response = await fetchImpl('/api/auth/sign-in/social', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ provider: 'google', callbackURL: absoluteCallbackURL }),
+  })
+  let payload = {}
+  try { payload = await response.json() } catch { /* handled below */ }
+  if (!response.ok) throw new Error(payload?.error?.message || payload?.message || 'Google 登录暂时不可用')
+  if (!payload?.url) throw new Error('Google 登录未返回跳转地址')
+  locationImpl.assign(payload.url)
+  return payload.url
 }
 
 export async function logout(options = {}) {

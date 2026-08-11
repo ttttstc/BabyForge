@@ -15,6 +15,10 @@ async function validatePasswordBody(request) {
   return error ? json({ error: { message: error, code: 'INVALID_PASSWORD' } }, 400) : null
 }
 export async function onRequest({ request, env }) {
+  const path = new URL(request.url).pathname.replace(/^\/api\/auth/, '')
+  if (request.method === 'POST' && path === '/sign-in/social' && (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET)) {
+    return json({ error: { code: 'GOOGLE_OAUTH_NOT_CONFIGURED', message: 'Google 登录尚未配置' } }, 503)
+  }
   const validation = await validatePasswordBody(request)
   if (validation) return validation
   try {
