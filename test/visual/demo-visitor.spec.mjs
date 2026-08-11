@@ -18,7 +18,7 @@ test('both demos are read-only and branded demo loads the filtered real showcase
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        baby: { id: 'baby-showcase', nickname: '真实展示宝宝', birthDate: '2026-07-01', birthDatePrecision: 'month', gestationalWeeks: 39, gestationalDays: 2, sex: 'female', feedingMode: 'mixed', locale: 'zh-CN' },
+        baby: { id: 'baby-showcase', nickname: '真实展示宝宝', birthDate: '2026-07-29', gestationalWeeks: 39, gestationalDays: 2, sex: 'female', feedingMode: 'mixed', locale: 'zh-CN' },
         observations: [], questions: [], taskLogs: [], adminTaskRecords: [], growthMeasurements: [], milestoneRecords: [], careEvents: [], readOnly: true,
       }),
     })

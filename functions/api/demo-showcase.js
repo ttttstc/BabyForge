@@ -5,11 +5,6 @@ import { json } from '../_shared/auth.js'
 const SHOWCASE_COLLECTIONS = new Set(['growthMeasurements', 'milestoneRecords'])
 const SHOWCASE_CATEGORIES = ['breastfeeding', 'bottle_feeding', 'sleep', 'diaper']
 
-function monthOnly(value) {
-  const month = /^\d{4}-\d{2}/.exec(String(value || ''))?.[0]
-  return month ? `${month}-01` : ''
-}
-
 function parseRecord(row) {
   try { return JSON.parse(row.payload_json) } catch { return null }
 }
@@ -44,7 +39,7 @@ export async function onRequestGet({ request, env }) {
     baby: {
       id: baby.id,
       nickname: baby.nickname,
-      birthDate: monthOnly(baby.birth_date),
+      birthDate: baby.birth_date,
       gestationalWeeks: Number(baby.gestational_weeks) || 0,
       gestationalDays: Number(baby.gestational_days) || 0,
       growthAgeBasis: baby.growth_age_basis,
@@ -52,7 +47,6 @@ export async function onRequestGet({ request, env }) {
       sex: baby.sex,
       feedingMode: baby.feeding_mode,
       locale: baby.locale || 'zh-CN',
-      birthDatePrecision: 'month',
     },
     observations: [], questions: [], taskLogs: [], adminTaskRecords: [],
     growthMeasurements: [], milestoneRecords: [],
