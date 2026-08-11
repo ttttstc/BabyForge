@@ -3,6 +3,11 @@ import { accessibleBaby as accessibleBabyForPrincipal } from '../_shared/care.js
 
 const COLLECTIONS = ['observations', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
 
+export function isOneBabyConstraintError(error) {
+  const message = String(error?.message || '')
+  return message.includes('idx_baby_profiles_one_per_household') || message.includes('baby_profiles.household_id')
+}
+
 function recordId(collection, value, index) {
   if (collection === 'questions') return 'questions'
   return String(value?.id || `${collection}-${index}`)
@@ -86,11 +91,16 @@ export async function onRequestPost({ request, env }) {
   const gestationalDays = Number.isInteger(Number(baby.gestationalDays)) && Number(baby.gestationalDays) >= 0 && Number(baby.gestationalDays) <= 6 ? Number(baby.gestationalDays) : 0
   const growthAgeBasis = ['chronological', 'corrected', 'postmenstrual'].includes(baby.growthAgeBasis) ? baby.growthAgeBasis : 'chronological'
   const birthMultiplicity = baby.birthMultiplicity === 'multiple' ? 'multiple' : 'singleton'
-  await env.DB.prepare(`
-    INSERT INTO baby_profiles (id, household_id, nickname, birth_date, gestational_weeks, gestational_days, growth_age_basis, birth_multiplicity, sex, feeding_mode, locale, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, gestational_days=excluded.gestational_days, growth_age_basis=excluded.growth_age_basis, birth_multiplicity=excluded.birth_multiplicity, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-  `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, gestationalDays, growthAgeBasis, birthMultiplicity, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
+  try {
+    await env.DB.prepare(`
+      INSERT INTO baby_profiles (id, household_id, nickname, birth_date, gestational_weeks, gestational_days, growth_age_basis, birth_multiplicity, sex, feeding_mode, locale, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, birth_date=excluded.birth_date, gestational_weeks=excluded.gestational_weeks, gestational_days=excluded.gestational_days, growth_age_basis=excluded.growth_age_basis, birth_multiplicity=excluded.birth_multiplicity, sex=excluded.sex, feeding_mode=excluded.feeding_mode, locale=excluded.locale, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+    `).bind(baby.id, householdId, baby.nickname, baby.birthDate, Number(baby.gestationalWeeks) || 0, gestationalDays, growthAgeBasis, birthMultiplicity, baby.sex || null, baby.feedingMode || null, baby.locale || 'zh-CN', now, auth.session.accountId).run()
+  } catch (error) {
+    if (isOneBabyConstraintError(error)) return json({ error: 'V1 一个家庭只能维护一个宝宝档案' }, 409)
+    throw error
+  }
 
   const records = []
   const deletions = []

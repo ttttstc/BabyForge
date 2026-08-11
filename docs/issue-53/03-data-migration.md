@@ -20,6 +20,7 @@
 - `created_by` / `updated_by` 的历史值保留；V1 不做账号删除。
 - `CREATE IF NOT EXISTS` 和桥接写入可重复运行；`ALTER TABLE` 由 D1 migration ledger 保证只执行一次，避免在旧 Functions 仍在线时重复改表。
 - D1 唯一索引保障 active membership 一人一户。
+- D1 唯一索引保障一个 Household 最多一个 Baby；应用层把约束冲突转换为 `409`。
 - 旧 guest 演示数据不转换为正式 Household Member；演示沙盒另行处理。
 
 ## 部署约束

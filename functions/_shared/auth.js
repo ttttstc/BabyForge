@@ -27,6 +27,10 @@ function parseCookies(request) {
   }))
 }
 
+export function getLegacySessionToken(request) {
+  return parseCookies(request)[SESSION_COOKIE] || null
+}
+
 export async function derivePasswordHash(password, saltHex, iterations = PASSWORD_ITERATIONS) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(password)), 'PBKDF2', false, ['deriveBits'])
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: hexToBytes(saltHex), iterations, hash: 'SHA-256' }, key, 256)
@@ -63,7 +67,7 @@ export async function getSession(request, env) {
       auth: 'better-auth',
     }
   }
-  const value = parseCookies(request)[SESSION_COOKIE]
+  const value = getLegacySessionToken(request)
   if (!value) return null
   const row = await env.DB.prepare(`
     SELECT s.token, s.expires_at, a.id, a.username, a.role, a.display_name

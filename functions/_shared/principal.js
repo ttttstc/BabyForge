@@ -100,8 +100,7 @@ export async function requireBetterAuthUser(request, env, options = {}) {
   if (!current?.user) return { response: json({ error: '未登录或登录已过期' }, 401) }
   if (!current.user.emailVerified) return { response: json({ error: '请先验证邮箱' }, 403) }
   if (options.maxAgeSeconds) {
-    const sessionTimestamp = Date.parse(current.session?.updatedAt || current.session?.createdAt || '')
-    if (!sessionTimestamp || Date.now() - sessionTimestamp > Number(options.maxAgeSeconds) * 1000) {
+    if (!isSessionFresh(current.session, options.maxAgeSeconds)) {
       return { response: json({ error: '请重新登录后再执行此敏感操作' }, 403) }
     }
   }
@@ -115,6 +114,11 @@ export async function requireBetterAuthUser(request, env, options = {}) {
     user: current.user,
     auth: 'better-auth',
   }
+}
+
+export function isSessionFresh(session, maxAgeSeconds, now = Date.now()) {
+  const createdAt = Date.parse(session?.createdAt || '')
+  return Boolean(createdAt && now - createdAt <= Number(maxAgeSeconds) * 1000)
 }
 
 // Formal authorization primitives. Legacy account sessions still carry

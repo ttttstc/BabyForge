@@ -7,13 +7,13 @@
 ## 设计
 
 - `households.owner_user_id` 指向 Better Auth User；`household_members.user_id` 指向 User。
-- Household V1 只允许一个 Baby；创建家庭时可同时创建宝宝，受邀成员加入后看到已有宝宝或空家庭状态。
+- Household V1 只允许一个 Baby；由 `baby_profiles(household_id)` 唯一索引保证。创建家庭时可同时创建宝宝，受邀成员加入后看到已有宝宝或空家庭状态。
 - active membership 由 D1 唯一索引保证一个 User 最多一条；历史 membership 使用 `active=0` 保留。
 - Household 名称创建时必填，允许 Owner 后续编辑；长度和空白规则由服务端统一校验。
 - 邀请 Token 使用高熵随机值，D1 只保存 hash；有效期固定 24 小时，一次性消费，Owner 可撤销。
 - 接受邀请必须在事务内验证：Token 未过期/未使用、邀请家庭未删除、User 无其他 active membership。
 - Owner 可邀请和移除成员、删除家庭；Member 可查看/写入业务数据并主动退出；Owner 不能退出。
-- 删除家庭使用 `deleted_at` 软删除，7 天恢复窗口；删除后所有成员访问立即拒绝。
+- 删除家庭使用 `deleted_at` 软删除，7 天恢复窗口；删除后所有成员访问立即拒绝。恢复时只自动恢复 Owner，原 Member 需重新邀请，避免其已加入其他家庭时阻断恢复。
 - 删除与恢复要求 Better Auth 会话在最近 10 分钟内重新建立；过期会话必须先重新登录。
 - Google 与邮箱密码登录共用同一分流：已有家庭直接进入；携带邀请则确认加入；否则选择创建家庭或粘贴邀请链接。
 - 邀请 Token 保留在 URL hash 中，跨 Google 回调、邮箱验证和重新登录恢复；不提供可搜索家庭列表。
