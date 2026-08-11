@@ -85,6 +85,8 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 - `OPENAI_MODEL`：可选，模型 ID；默认 `gpt-4o-mini`。
 - `OPENAI_USE_RESPONSES`：可选。兼容服务只支持 `/chat/completions` 时设为 `false`；未设置时使用 Agents SDK 默认 Responses 行为。
 - `OPENAI_PROTOCOL`：可选，默认部署协议，可设为 `anthropic_messages`、`openai_chat_completions` 或 `openai_responses`。账号在设置页保存自定义模型后，账号协议选择优先于部署默认值；旧的 `OPENAI_USE_RESPONSES` 仍兼容并映射到 Chat/Responses。
+- `LLM_KEY_ENCRYPTION_KEY`：必填加密 Secret，32 字节随机值的 Base64，用于加密账号自定义 API Key。可用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"` 生成。
+- `LLM_KEY_ENCRYPTION_KEY_VERSION`：必填正整数，初始设为 `1`。轮换时先把旧密钥保存为 `LLM_KEY_ENCRYPTION_KEY_V1`（数字按旧版本调整），再更新当前密钥和版本；旧密钥需保留到所有记录完成惰性重加密。
 
 GitHub Actions 发布会从同名 Repository Secrets 同步模型配置到 Cloudflare Pages，并在必填项缺失时停止发布，避免生产环境静默退回固定本地回答。更新模型配置时应修改 GitHub Repository Secrets，再运行发布工作流；不要只修改本地 `.env.local`。
 
@@ -99,6 +101,8 @@ OPENAI_API_KEY="replace-me"
 OPENAI_BASE_URL="https://your-provider.example/v1"
 OPENAI_MODEL="your-model-id"
 OPENAI_USE_RESPONSES="false"
+LLM_KEY_ENCRYPTION_KEY="replace-with-32-byte-base64-key"
+LLM_KEY_ENCRYPTION_KEY_VERSION="1"
 # 可选：也可以直接使用 OPENAI_PROTOCOL=anthropic_messages|openai_chat_completions|openai_responses
 ```
 
