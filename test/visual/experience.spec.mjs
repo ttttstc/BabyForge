@@ -116,8 +116,9 @@ test('Cui Yutao column is locally curated and shows every 0–12 month stage', a
     })
   })
   await createBaby(page)
-  await page.goto('/#/experience?category=cui-yutao')
+  await page.getByRole('button', { name: '查看崔玉涛育儿专栏' }).click()
 
+  await expect(page).toHaveURL(/#\/experience\?category=cui-yutao$/)
   await expect(page.getByText('0–12个月五阶段核心方法论', { exact: true })).toBeVisible()
   await expect(page.getByText('未经崔玉涛本人审核或授权')).toBeVisible()
   await expect(page.locator('.experience-card.curated')).toHaveCount(5)
