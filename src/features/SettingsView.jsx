@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardPlus, Globe2, LogOut, RotateCcw, Settings2, ShieldCheck, Sparkles, UserRound } from 'lucide-react'
+import { ArrowLeft, ClipboardPlus, Globe2, LogOut, Mail, RotateCcw, Settings2, ShieldCheck, Sparkles, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getCopy, LOCALE_OPTIONS } from '../domain/i18n.js'
 import { navigate, ROUTES } from '../app/router.js'
@@ -8,7 +8,7 @@ import { BasicInfoPanel } from './RecordCenter.jsx'
 import { GlobalAiEntry } from './GlobalAiEntry.jsx'
 import { VisitorLinkSettings } from './VisitorLinkSettings.jsx'
 
-export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false, householdRole = 'member', nickname = '家长', onNicknameChange }) {
+export function SettingsView({ state, setState, onClear, onLogout, readOnly = false, cloudMode = false, householdRole = 'member', nickname = '家长', accountEmail = '', onNicknameChange }) {
   const locale = state.preferences.locale
   const copy = getCopy(locale)
   const isEnglish = locale === 'en-US'
@@ -22,6 +22,10 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
   const [nicknameBusy, setNicknameBusy] = useState(false)
   const [nicknameStatus, setNicknameStatus] = useState('')
   const [nicknameError, setNicknameError] = useState('')
+  const [emailSubscription, setEmailSubscription] = useState({ email: accountEmail, enabled: false })
+  const [emailBusy, setEmailBusy] = useState(Boolean(accountEmail))
+  const [emailStatus, setEmailStatus] = useState('')
+  const [emailError, setEmailError] = useState('')
 
   useEffect(() => {
     if (!cloudMode) return undefined
@@ -40,6 +44,20 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
       .finally(() => { if (active) setLlmBusy(false) })
     return () => { active = false }
   }, [cloudMode, isEnglish])
+
+  useEffect(() => {
+    if (!accountEmail) return undefined
+    let active = true
+    fetch('/api/email-subscription', { credentials: 'include' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Email subscription is unavailable.' : '邮件订阅暂不可用。'))
+        if (active) setEmailSubscription(payload.subscription || { email: accountEmail, enabled: false })
+      })
+      .catch((cause) => { if (active) setEmailError(cause?.message || (isEnglish ? 'Email subscription is unavailable.' : '邮件订阅暂不可用。')) })
+      .finally(() => { if (active) setEmailBusy(false) })
+    return () => { active = false }
+  }, [accountEmail, isEnglish])
 
   function changeLocale(value) {
     setState((current) => ({ ...current, preferences: { ...current.preferences, locale: value } }))
@@ -114,6 +132,25 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
     }
   }
 
+  async function saveEmailSubscription(event) {
+    event.preventDefault()
+    if (readOnly || emailBusy) return
+    setEmailBusy(true)
+    setEmailStatus('')
+    setEmailError('')
+    try {
+      const response = await fetch('/api/email-subscription', { method: 'PUT', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ enabled: emailSubscription.enabled }) })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Email subscription could not be saved.' : '邮件订阅保存失败。'))
+      setEmailSubscription(payload.subscription)
+      setEmailStatus(payload.subscription.enabled ? (isEnglish ? 'Email alerts enabled.' : '邮件提醒已开启。') : (isEnglish ? 'Email alerts disabled.' : '邮件提醒已关闭。'))
+    } catch (cause) {
+      setEmailError(cause?.message || (isEnglish ? 'Email subscription could not be saved.' : '邮件订阅保存失败。'))
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
   return (
     <main className="settings-page">
       <header className="settings-header">
@@ -142,6 +179,16 @@ export function SettingsView({ state, setState, onClear, onLogout, readOnly = fa
             {nicknameError && <p className="save-error" role="alert">{nicknameError}</p>}
             {nicknameStatus && <p className="settings-llm-status" role="status">{nicknameStatus}</p>}
             <div className="settings-llm-actions"><button className="primary-button compact" type="submit" disabled={nicknameBusy}>{nicknameBusy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save nickname' : '保存昵称')}</button></div>
+          </form>
+        </section>}
+        {accountEmail && <section className="settings-section settings-email-section">
+          <div className="settings-section-heading"><Mail size={19} /><div><h2>{isEnglish ? 'Key update emails' : '关键更新邮件'}</h2><p>{isEnglish ? 'Notify this account when another household member changes growth, temperature, symptoms, visits, medication, vaccines, or photos.' : '其他家庭成员更新成长、体温、症状、就诊、用药、疫苗或照片时，提醒当前账号。'}</p></div></div>
+          <form className="settings-email-form" onSubmit={saveEmailSubscription}>
+            <div className="settings-email-address"><span>{isEnglish ? 'Recipient' : '接收邮箱'}</span><strong>{emailSubscription.email || accountEmail}</strong></div>
+            <label className="settings-email-toggle"><input type="checkbox" checked={emailSubscription.enabled} onChange={(event) => { setEmailSubscription((current) => ({ ...current, enabled: event.target.checked })); setEmailStatus(''); setEmailError('') }} disabled={readOnly || emailBusy} /><span><strong>{isEnglish ? 'Send key update alerts' : '接收关键更新提醒'}</strong><small>{isEnglish ? 'Your own changes will not trigger email. Photo content is never embedded.' : '本人操作不发邮件；照片邮件只提示新增或删除，不展示照片内容。'}</small></span></label>
+            {emailError && <p className="save-error" role="alert">{emailError}</p>}
+            {emailStatus && <p className="settings-llm-status" role="status">{emailStatus}</p>}
+            <div className="settings-llm-actions"><button className="primary-button compact" type="submit" disabled={readOnly || emailBusy}>{emailBusy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Save email preference' : '保存邮件设置')}</button></div>
           </form>
         </section>}
         {cloudMode && householdRole === 'owner' && <section className="settings-section"><VisitorLinkSettings locale={locale} /></section>}

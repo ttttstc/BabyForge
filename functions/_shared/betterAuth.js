@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth'
+import { sendTransactionalEmail } from './email.js'
 
 const authByDatabase = new WeakMap()
 
@@ -11,29 +12,6 @@ function escapeHtml(value) {
     "'": '&#39;',
   }[character]))
 }
-async function sendResend(env, { to, subject, url, action }) {
-  if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
-    throw new Error('邮件服务尚未配置')
-  }
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: env.RESEND_FROM_EMAIL,
-      to: [to],
-      subject,
-      html: `<p>BabyForge ${escapeHtml(action)}</p><p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p><p>如果这不是你的操作，可以忽略此邮件。</p>`,
-    }),
-  })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(`邮件发送失败（${response.status}）${detail ? `: ${detail.slice(0, 160)}` : ''}`)
-  }
-}
-
 function passwordMeetsPolicy(password) {
   const value = String(password || '')
   return value.length >= 6 && /[A-Za-z]/.test(value) && /\d/.test(value)
@@ -54,7 +32,11 @@ function createBetterAuth(env, waitUntil) {
   if (!env?.DB) throw new Error('D1 未配置')
   const baseURL = env.BETTER_AUTH_URL || undefined
   const deliverEmail = (message) => {
-    const delivery = sendResend(env, message)
+    const delivery = sendTransactionalEmail(env, {
+      to: message.to,
+      subject: message.subject,
+      html: `<p>BabyForge ${escapeHtml(message.action)}</p><p><a href="${escapeHtml(message.url)}">${escapeHtml(message.url)}</a></p><p>如果这不是你的操作，可以忽略此邮件。</p>`,
+    })
     return scheduleAuthEmailDelivery(delivery, waitUntil)
   }
   return betterAuth({

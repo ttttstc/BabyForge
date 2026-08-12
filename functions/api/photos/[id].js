@@ -1,11 +1,12 @@
 import { json, requireSession } from '../../_shared/auth.js'
+import { appUpdateUrl, scheduleUpdateNotifications } from '../../_shared/updateNotifications.js'
 
 async function accessiblePhoto(env, principalOrAccountId, photoId) {
   const formal = principalOrAccountId && typeof principalOrAccountId === 'object'
   const membershipClause = formal ? '(m.user_id = ? OR m.account_id = ?)' : 'm.account_id = ?'
   const membershipBinds = formal ? [principalOrAccountId.userId || null, principalOrAccountId.accountId] : [principalOrAccountId]
   return env.DB.prepare(`
-    SELECT p.*, COALESCE(b.status, 'active') AS baby_status FROM baby_photos p
+    SELECT p.*, b.household_id, b.nickname AS baby_name, COALESCE(b.status, 'active') AS baby_status FROM baby_photos p
     JOIN baby_profiles b ON b.id = p.baby_id
     JOIN household_members m ON m.household_id = b.household_id
     JOIN households h ON h.id = b.household_id
@@ -38,7 +39,7 @@ export async function onRequestGet({ request, env, params }) {
   return new Response(object.body, { headers })
 }
 
-export async function onRequestDelete({ request, env, params }) {
+export async function onRequestDelete({ request, env, params, waitUntil }) {
   if (!env.DB) return json({ error: 'D1 未配置' }, 503)
   if (!env.BABY_PHOTOS) return json({ error: 'R2 相册存储未配置' }, 503)
   const auth = await requireSession(request, env)
@@ -56,7 +57,17 @@ export async function onRequestDelete({ request, env, params }) {
   try {
     await env.BABY_PHOTOS.delete(photo.object_key)
   } catch (error) {
+    scheduleUpdateNotifications({
+      env, householdId: photo.household_id, actorUserId: auth.session.userId,
+      actorName: auth.session.displayName || '家庭成员', babyName: photo.baby_name || '宝宝',
+      action: '删除', photo: true, url: appUpdateUrl(request, env, '#/today'),
+    }, waitUntil)
     return json({ deleted: true, id: photo.id, storageCleanupPending: true, warning: error?.message || '照片文件清理待重试' }, 202)
   }
+  scheduleUpdateNotifications({
+    env, householdId: photo.household_id, actorUserId: auth.session.userId,
+    actorName: auth.session.displayName || '家庭成员', babyName: photo.baby_name || '宝宝',
+    action: '删除', photo: true, url: appUpdateUrl(request, env, '#/today'),
+  }, waitUntil)
   return json({ deleted: true, id: photo.id })
 }

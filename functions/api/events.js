@@ -1,5 +1,6 @@
 import { json, requireSession } from '../_shared/auth.js'
 import { accessibleBaby, eventFromRow, legacySourceForEvent, legacyTypeForEvent, planFromRow, safeEventInput } from '../_shared/care.js'
+import { appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
 
 function conflict(current, message = '事件版本冲突，请刷新后重新修改') {
   return json({ error: message, code: 'EVENT_CONFLICT', current: eventFromRow(current) }, 409)
@@ -69,7 +70,7 @@ export async function onRequestGet({ request, env }) {
   return json({ events, carePlanItems, concerns })
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   if (!env.DB) return json({ error: 'D1 未配置' }, 503)
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
@@ -125,7 +126,20 @@ export async function onRequestPost({ request, env }) {
     throw error
   }
   const row = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(event.id).first()
-  return json({ event: eventFromRow(row) }, 201)
+  const savedEvent = eventFromRow(row)
+  if (EMAIL_UPDATE_CATEGORIES.has(savedEvent.category)) {
+    scheduleUpdateNotifications({
+      env,
+      householdId: baby.householdId,
+      actorUserId: auth.session.userId,
+      actorName: auth.session.displayName || '家庭成员',
+      babyName: baby.nickname || '宝宝',
+      action: '新增',
+      next: savedEvent,
+      url: appUpdateUrl(request, env, `#/records?event=${encodeURIComponent(savedEvent.id)}`),
+    }, waitUntil)
+  }
+  return json({ event: savedEvent }, 201)
 }
 
 export { conflict }
