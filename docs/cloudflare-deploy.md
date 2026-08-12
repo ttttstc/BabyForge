@@ -46,7 +46,7 @@ npx wrangler r2 bucket create babyforge-photos
 npx wrangler r2 bucket create babyforge-photos-preview
 ```
 
-如果你确认以前开通过 R2，但 Wrangler 仍返回 `Please enable R2 through the Cloudflare Dashboard`，通常是当前授权账号不是开通 R2 的账号，或当前 Token 没有 R2 scope；请先确认控制台右上角账号为 `ncz1993107@gmail.com`，再重新创建包含 R2 权限的 Account API Token。照片桶保持私有即可，应用通过 Pages Functions 的 R2 binding 读写，不需要开启公共 URL。
+如果你确认以前开通过 R2，但 Wrangler 仍返回 `Please enable R2 through the Cloudflare Dashboard`，通常是当前授权账号不是开通 R2 的账号，或当前 Token 没有 R2 scope；请先确认控制台右上角是项目所属账号，再重新创建包含 R2 权限的 Account API Token。照片桶保持私有即可，应用通过 Pages Functions 的 R2 binding 读写，不需要开启公共 URL。
 
 经验检索使用 Tavily。开发环境把密钥放在仓库根目录的 `.dev.vars`（该文件已加入 `.gitignore`）；生产环境授权 Wrangler 后执行下面的命令，按提示粘贴密钥，密钥只会保存为 Cloudflare 加密 Secret：
 

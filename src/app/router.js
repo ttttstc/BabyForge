@@ -24,6 +24,7 @@ export const ROUTES = {
   naibaAi: '#/naiba-ai',
   summary: '#/doctor-summary',
   settings: '#/settings',
+  visitor: '#/visit',
 }
 
 export const RECORD_RETURN_ROUTES = Object.freeze([
@@ -119,6 +120,16 @@ export function navigate(route) {
 
 export function buildInviteRoute(token) {
   return `${ROUTES.household}/invite/${encodeURIComponent(String(token || '').trim())}`
+}
+
+export function buildVisitorRoute(token) {
+  return `${ROUTES.visitor}/${encodeURIComponent(String(token || '').trim())}`
+}
+
+export function visitorTokenFromLocation(location) {
+  const prefix = `${ROUTES.visitor}/`
+  if (!location?.route?.startsWith(prefix)) return ''
+  try { return decodeURIComponent(location.route.slice(prefix.length)) } catch { return '' }
 }
 
 export function inviteTokenFromLocation(location) {

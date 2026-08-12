@@ -131,9 +131,10 @@ async function responsePayload(response) {
   return payload
 }
 
-export async function listBabyPhotos(babyId, { remote = false } = {}) {
+export async function listBabyPhotos(babyId, { remote = false, showcase = false } = {}) {
   if (!remote) return listLocalPhotos(babyId)
-  const response = await fetch(`/api/photos?babyId=${encodeURIComponent(babyId)}`, { credentials: 'include' })
+  const endpoint = showcase ? '/api/demo-showcase/photos' : `/api/photos?babyId=${encodeURIComponent(babyId)}`
+  const response = await fetch(endpoint, { credentials: 'include' })
   return (await responsePayload(response)).photos || []
 }
 

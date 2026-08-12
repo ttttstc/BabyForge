@@ -1,11 +1,13 @@
 import { clearSessionCookie, getLegacySessionToken } from '../_shared/auth.js'
 import { getBetterAuth } from '../_shared/betterAuth.js'
+import { clearShowcaseCookie, revokeShowcaseSession } from '../_shared/demoShowcase.js'
 
 export async function logoutRequest(request, env, { createAuth = getBetterAuth } = {}) {
   const legacyToken = getLegacySessionToken(request)
   if (legacyToken && env.DB) {
     await env.DB.prepare('DELETE FROM auth_sessions WHERE token = ?').bind(legacyToken).run()
   }
+  await revokeShowcaseSession(request, env)
 
   const headers = new Headers(request.headers)
   if (!headers.get('origin')) headers.set('origin', new URL(request.url).origin)
@@ -16,6 +18,7 @@ export async function logoutRequest(request, env, { createAuth = getBetterAuth }
   const response = await createAuth(env).handler(signOutRequest)
   const responseHeaders = new Headers(response.headers)
   responseHeaders.append('set-cookie', clearSessionCookie())
+  responseHeaders.append('set-cookie', clearShowcaseCookie(request))
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

@@ -31,3 +31,31 @@ export function previewHouseholdInvite(token, options = {}) {
 export function acceptHouseholdInvite(token, options = {}) {
   return inviteRequest(token, { ...options, method: 'POST' })
 }
+
+async function visitorLinkRequest(input, init = {}, options = {}) {
+  const response = await (options.fetchImpl || globalThis.fetch)(input, { credentials: 'include', ...init })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error || '临时访客链接操作失败')
+  return payload
+}
+
+export function listVisitorLinks(options = {}) {
+  return visitorLinkRequest('/api/visitor-links', {}, options)
+}
+
+export function createVisitorLink(options = {}) {
+  return visitorLinkRequest('/api/visitor-links', { method: 'POST' }, options)
+}
+
+export function revokeVisitorLink(id, options = {}) {
+  return visitorLinkRequest(`/api/visitor-links/${encodeURIComponent(id)}`, { method: 'DELETE' }, options)
+}
+
+export function loadVisitorSummary(token, options = {}) {
+  return visitorLinkRequest('/api/visitor', {
+    method: 'POST',
+    credentials: 'omit',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  }, options)
+}

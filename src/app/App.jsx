@@ -10,18 +10,23 @@ import { HouseholdGate } from '../features/HouseholdGate.jsx'
 import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
+import { VisitorView } from '../features/VisitorView.jsx'
 import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
-import { pullWorkspace, pushWorkspace } from '../domain/sync.js'
+import { pullShowcaseWorkspace, pullWorkspace, pushWorkspace } from '../domain/sync.js'
 import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
 import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
 import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
 import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
-import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation } from './router.js'
+import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation, visitorTokenFromLocation } from './router.js'
 
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
+
+function demoWorkspace(session) {
+  return createDemoWorkspace(new Date(), session?.demoVariant === 'mock' ? 'mock' : 'niwa')
+}
 
 function sameValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
@@ -31,12 +36,17 @@ export function App() {
   const location = useHashLocation()
   const route = location.route
   const inviteToken = inviteTokenFromLocation(location)
-  const [session, setSession] = useState(() => loadSession())
+  const visitorToken = visitorTokenFromLocation(location)
+  const [session, setSession] = useState(() => visitorToken ? null : loadSession())
   const sessionOwner = (value) => value?.userId || value?.username
   const initialOwnerRef = useRef(sessionOwner(session))
+  const initialVisitorTokenRef = useRef(visitorToken)
   const sessionRef = useRef(session)
   const [state, setState] = useState(() => {
-    const owner = sessionOwner(loadSession())
+    if (visitorToken) return createInitialState()
+    const currentSession = loadSession()
+    if (currentSession?.mode === 'demo') return demoWorkspace(currentSession)
+    const owner = sessionOwner(currentSession)
     return loadState(globalThis.localStorage, owner)
   })
   const [authError, setAuthError] = useState('')
@@ -172,6 +182,12 @@ export function App() {
       } catch {
         // Actor sync is best effort; event sync remains useful without it.
       }
+      const currentSession = sessionRef.current
+      const stillAuthorized = currentSession?.mode === 'cloudflare'
+        && Boolean(currentSession.household)
+        && sessionOwner(currentSession) === owner
+        && currentSession.babies?.some((baby) => baby.id === babyId)
+      if (!stillAuthorized) return
       // Both requests can overlap with optimistic local writes. Build the
       // merged snapshot only after every remote read resolves, using the
       // latest local state so stale responses never roll back a new event.
@@ -187,6 +203,12 @@ export function App() {
       saveState(globalThis.localStorage, next, owner)
       setState(next)
     } catch (error) {
+      const currentSession = sessionRef.current
+      const stillAuthorized = currentSession?.mode === 'cloudflare'
+        && Boolean(currentSession.household)
+        && sessionOwner(currentSession) === owner
+        && currentSession.babies?.some((baby) => baby.id === babyId)
+      if (!stillAuthorized) return
       if ([401, 403].includes(error?.status)) {
         handleAuthRevoked()
         return
@@ -224,6 +246,7 @@ export function App() {
 
   useEffect(() => {
     if (route === ROUTES.resetPassword) return
+    if (visitorToken) return
     if (!session) {
       if (route !== ROUTES.login && !inviteToken) navigate(ROUTES.login)
       return
@@ -241,22 +264,44 @@ export function App() {
     if (route === ROUTES.login && !state.baby && canEdit(session)) navigate(ROUTES.onboarding)
     if (!state.baby && route !== ROUTES.onboarding && route !== ROUTES.login) navigate(canEdit(session) ? ROUTES.onboarding : ROUTES.login)
     if (state.baby && route === ROUTES.onboarding) navigate(ROUTES.today)
-  }, [inviteToken, route, session, state.baby])
+  }, [inviteToken, route, session, state.baby, visitorToken])
 
   useEffect(() => {
     document.documentElement.lang = state.preferences.locale
   }, [state.preferences.locale])
 
   useEffect(() => {
+    if (initialVisitorTokenRef.current) return undefined
+    const initialSession = sessionRef.current
+    if (initialSession?.mode === 'demo') {
+      void Promise.all([
+        clearState(globalThis.localStorage, initialSession.username),
+        stateRef.current.baby?.id ? clearLocalBabyAlbum(stateRef.current.baby.id).catch(() => {}) : Promise.resolve(),
+      ])
+      clearExperienceCache({ storage: globalThis.localStorage })
+      return undefined
+    }
     let active = true
     const owner = initialOwnerRef.current
-    const initialSession = sessionRef.current
     const revisionAtEffectStart = localRevisionRef.current
     hydrateState(globalThis.localStorage, owner).then(async (next) => {
       if (!active || hydrationCancelledRef.current || !next?.version || sessionOwner(sessionRef.current) !== owner) return
       let hydrated = next
       const remoteBabyId = initialSession?.mode === 'cloudflare' ? initialSession.babies?.[0]?.id : null
-      if (remoteBabyId) {
+      if (initialSession?.mode === 'showcase') {
+        try {
+          const remote = await pullShowcaseWorkspace()
+          if (remote?.baby && sessionOwner(sessionRef.current) === owner) {
+            hydrated = {
+              ...createInitialState(),
+              ...remote,
+              preferences: { ...next.preferences, locale: remote.baby.locale || next.preferences.locale },
+            }
+          }
+        } catch (error) {
+          if ([401, 403].includes(error?.status)) handleAuthRevoked()
+        }
+      } else if (remoteBabyId) {
         const revisionBeforeRemote = localRevisionRef.current
         const stateBeforeRemote = stateRef.current
         try {
@@ -381,12 +426,26 @@ export function App() {
       return
     }
     let current = loadState(globalThis.localStorage, workspaceOwner)
-    if (next.mode === 'demo' && next.username === 'guest' && !current.baby) {
-      current = createDemoWorkspace()
-      saveState(globalThis.localStorage, current, workspaceOwner)
-    }
+    if (next.mode === 'demo') current = demoWorkspace(next)
     const remoteBaby = next.babies?.[0]
-    if (next.mode === 'cloudflare' && remoteBaby?.id) {
+    if (next.mode === 'showcase') {
+      try {
+        const remote = await pullShowcaseWorkspace()
+        if (remote?.baby) {
+          current = {
+            ...createInitialState(),
+            ...remote,
+            preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
+          }
+        }
+      } catch (error) {
+        if ([401, 403].includes(error?.status)) {
+          handleAuthRevoked()
+          return
+        }
+        setAuthError(error.message)
+      }
+    } else if (next.mode === 'cloudflare' && remoteBaby?.id) {
       try {
         const remote = await pullWorkspace(remoteBaby.id)
         if (remote?.baby) {
@@ -422,6 +481,7 @@ export function App() {
   }
 
   useEffect(() => {
+    if (visitorToken) return undefined
     if (sessionRefreshStartedRef.current || (session && session.mode !== 'cloudflare')) return undefined
     sessionRefreshStartedRef.current = true
     let active = true
@@ -439,7 +499,7 @@ export function App() {
     // activateSession intentionally remains a stable-in-practice component
     // helper; the effect only needs to rerun when the auth state changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session])
+  }, [session, visitorToken])
 
   async function handleLogin(email, password) {
     setAuthError('')
@@ -483,7 +543,8 @@ export function App() {
     const current = sessionRef.current
     const owner = sessionOwner(current)
     const babyId = stateRef.current.baby?.id
-    await logout()
+    await logout({ remote: ['cloudflare', 'showcase'].includes(current?.mode) })
+    if (['demo', 'showcase'].includes(current?.mode)) sessionRefreshStartedRef.current = true
     clearState(globalThis.localStorage, owner)
     if (current?.userId && current?.username) clearState(globalThis.localStorage, current.username)
     if (babyId) void clearLocalBabyAlbum(babyId).catch(() => {})
@@ -521,6 +582,8 @@ export function App() {
     return true
   }
 
+  if (visitorToken) return <VisitorView token={visitorToken} locale={state.preferences.locale} />
+
   if (!session || route === ROUTES.login || route === ROUTES.resetPassword || (session?.role === 'guest' && !state.baby)) {
     const returnTo = inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household
     const callbackURL = `${globalThis.location?.origin || ''}/${returnTo}`
@@ -539,7 +602,7 @@ export function App() {
   }
 
   if (route === ROUTES.settings) {
-    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} nickname={session?.nickname || session?.displayName || '家长'} onNicknameChange={handleNicknameChange} />
+    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} householdRole={session?.household?.role || session?.role} nickname={session?.nickname || session?.displayName || '家长'} onNicknameChange={handleNicknameChange} />
   }
 
   if (route === ROUTES.records) {
@@ -555,17 +618,17 @@ export function App() {
   }
 
   if (route === ROUTES.experience) {
-    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} remote={session?.mode === 'cloudflare'} />
   }
 
   if (route === ROUTES.naibaAi) {
     const returnTo = resolveNaibaReturnTo(location.params.get('returnTo')) || ROUTES.today
-    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} demoMode={['demo', 'showcase'].includes(session?.mode)} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if (route === ROUTES.healthVaccines) {
     return <VaccineView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
-  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} />
+  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} showcaseMode={session?.mode === 'showcase'} />
 }

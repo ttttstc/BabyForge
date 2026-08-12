@@ -135,7 +135,7 @@ function withPhotoUrl(photo, remote, objectUrls) {
   return { ...photo, url }
 }
 
-export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = false }) {
+export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = false, showcase = false }) {
   const copy = strings(locale)
   const inputRef = useRef(null)
   const dailyInputRef = useRef(null)
@@ -158,7 +158,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
 
   useEffect(() => {
     let active = true
-    listBabyPhotos(baby.id, { remote }).then((records) => {
+    listBabyPhotos(baby.id, { remote, showcase }).then((records) => {
       if (!active) return
       const next = records.map((photo) => withPhotoUrl(photo, remote, objectUrls))
       setPhotos(next)
@@ -171,7 +171,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     return () => {
       active = false
     }
-  }, [baby.id, remote, copy.loadError])
+  }, [baby.id, remote, showcase, copy.loadError])
 
   useEffect(() => {
     return () => {

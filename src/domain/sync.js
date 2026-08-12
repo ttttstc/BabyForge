@@ -10,6 +10,18 @@ export async function pullWorkspace(babyId, fetchImpl = globalThis.fetch) {
   return payload?.baby ? payload : null
 }
 
+export async function pullShowcaseWorkspace(fetchImpl = globalThis.fetch) {
+  if (typeof fetchImpl !== 'function') return null
+  const response = await fetchImpl('/api/demo-showcase', { credentials: 'include' })
+  if (!response.ok) {
+    const error = new Error('演示资料暂时无法读取')
+    error.status = response.status
+    throw error
+  }
+  const payload = await response.json()
+  return payload?.baby ? payload : null
+}
+
 export async function pushWorkspace(state, fetchImpl = globalThis.fetch) {
   if (!state?.baby || typeof fetchImpl !== 'function') return null
   const response = await fetchImpl('/api/sync', {

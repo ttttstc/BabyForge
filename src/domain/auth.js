@@ -1,12 +1,5 @@
 export const SESSION_KEY = 'babyforge:session'
 
-const DEMO_ACCOUNTS = import.meta.env?.DEV ? {
-  niwa: { username: 'niwa', password: 'niwaniwa', role: 'admin', displayName: '管理员' },
-  baby: { username: 'baby', password: '0729', role: 'guest', displayName: '游客' },
-  guest: { username: 'guest', password: '123', role: 'guest', displayName: '只读演示账号' },
-  demo: { username: 'demo', password: '123456', role: 'admin', displayName: '演示账号' },
-} : null
-
 function normalizeUsername(value) {
   return String(value || '').trim().toLowerCase()
 }
@@ -81,32 +74,30 @@ export async function login(username, password, options = {}) {
   const secret = String(password || '')
   const storage = options.storage || globalThis.localStorage
 
-  // Demo credentials are compiled only into Vite development builds. The
-  // production bundle must use the Cloudflare Pages Function below.
-  const demo = DEMO_ACCOUNTS?.[normalized]
-  if (demo && demo.password === secret) {
-    return saveSession(storage, {
-      username: demo.username,
-      role: demo.role,
-      displayName: demo.displayName,
-      mode: 'demo',
-      issuedAt: new Date().toISOString(),
-    })
-  }
-
   const fetchImpl = options.fetchImpl || globalThis.fetch
   if (typeof fetchImpl !== 'function') throw new Error('登录服务不可用')
-  const endpoint = normalized.includes('@') ? '/api/auth/sign-in/email' : '/api/auth/sign-in/username'
-  const body = normalized.includes('@')
-    ? { email: normalized, password: secret, rememberMe: false }
-    : { username: normalized, password: secret, rememberMe: false }
-  const response = await authFetch(fetchImpl, endpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(body),
-  })
-  if (response.status === 404 || response.status === 405 || response.status === 503) {
+
+  if (!normalized.includes('@')) {
+    const demoResponse = await authFetch(fetchImpl, '/api/demo-login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ username: normalized, password: secret }),
+    })
+    if (demoResponse.ok) {
+      const { demo, expiresAt } = await demoResponse.json()
+      if (!demo?.username || !['mock', 'niwa'].includes(demo?.variant)) throw new Error('演示账号配置不可用')
+      return saveSession(storage, {
+        username: demo.username,
+        role: 'guest',
+        displayName: demo.displayName || '演示账号',
+        demoVariant: demo.variant,
+        mode: demo.showcase ? 'showcase' : 'demo',
+        ...(expiresAt ? { expiresAt } : {}),
+        issuedAt: new Date().toISOString(),
+      })
+    }
+
     const legacyResponse = await authFetch(fetchImpl, '/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -117,6 +108,13 @@ export async function login(username, password, options = {}) {
     const payload = await legacyResponse.json()
     return saveSession(storage, { ...payload, mode: 'cloudflare', auth: 'legacy' })
   }
+
+  const response = await authFetch(fetchImpl, '/api/auth/sign-in/email', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email: normalized, password: secret, rememberMe: false }),
+  })
   let payload = {}
   try { payload = await response.json() } catch { /* handled below */ }
   if (!response.ok) {
@@ -226,6 +224,7 @@ export async function startGoogleLogin(callbackURL = '/', options = {}) {
 export async function logout(options = {}) {
   const storage = options.storage || globalThis.localStorage
   storage?.removeItem(SESSION_KEY)
+  if (options.remote === false) return
   const fetchImpl = options.fetchImpl || globalThis.fetch
   if (typeof fetchImpl !== 'function') return
   try {

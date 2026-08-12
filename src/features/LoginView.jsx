@@ -74,7 +74,7 @@ export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegiste
       <section className="login-story">
         <div className="login-orbit" aria-hidden="true"><span /><span /><span /></div>
         <p className="eyebrow">BabyForge · {isEnglish ? 'A shared workspace for growing up' : '一个家庭，共同照护'}</p>
-        <h1>{isEnglish ? 'Your workspace for every stage of your baby’s growth.' : '你的宝宝成长工作台。'}</h1>
+        <h1>{isEnglish ? 'Your workspace for every stage of your baby’s growth.' : '一站式宝宝成长工作台'}</h1>
         <p>{isEnglish ? 'Record care facts, understand growth, follow stage guidance, learn pediatric essentials, and prepare clear notes for professional conversations.' : '记录喂养、睡眠、体温与成长；结合阶段指南、疫苗安排、儿科知识和奶爸 AI，整理今天该做什么、复诊时该说什么。'}</p>
         <div className="login-feature-grid">
           <span><CalendarCheck2 size={17} /><strong>{isEnglish ? 'Today' : '今日照护'}</strong><small>{isEnglish ? 'Shared facts and priorities' : '共同记录与重点'}</small></span>
@@ -96,13 +96,8 @@ export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegiste
           <p className="login-lede">{descriptions[mode]}</p>
         </div>
 
-        {(mode === 'login' || mode === 'register') && <>
-          <button className="login-google" type="button" disabled={busy} onClick={async () => { setBusy(true); setNotice(''); try { await onGoogleLogin?.() } catch (googleError) { setNotice(googleError.message || (isEnglish ? 'Google sign-in is unavailable.' : 'Google 登录暂时不可用。')) } finally { setBusy(false) } }}><GoogleMark />{isEnglish ? 'Continue with Google' : '使用 Google 账号继续'}</button>
-          <div className="login-divider"><span>{isEnglish ? 'or use email' : '或使用邮箱'}</span></div>
-        </>}
-
         <form className="login-form" onSubmit={submit}>
-          {(mode === 'register' || mode === 'login' || mode === 'forgot') && <label htmlFor="auth-email"><span>{isEnglish ? 'Email' : '邮箱'}</span><div className="login-input"><Mail size={17} /><input id="auth-email" type={mode === 'login' ? 'text' : 'email'} inputMode="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></div></label>}
+          {(mode === 'register' || mode === 'login' || mode === 'forgot') && <label htmlFor="auth-email"><span>{mode === 'login' ? (isEnglish ? 'Account' : '账号') : (isEnglish ? 'Email' : '邮箱')}</span><div className="login-input"><Mail size={17} /><input id="auth-email" type={mode === 'login' ? 'text' : 'email'} inputMode="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder={mode === 'login' ? 'you@example.com / demo' : 'you@example.com'} /></div></label>}
           {(mode === 'register' || mode === 'login' || mode === 'reset') && <label htmlFor="login-password"><span>{mode === 'reset' ? (isEnglish ? 'New password' : '新密码') : (isEnglish ? 'Password' : '密码')}</span><div className="login-input"><LockKeyhole size={17} /><input id="login-password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === 'login' ? (isEnglish ? 'Your password' : '输入密码') : (isEnglish ? 'At least 6, with a letter and number' : '至少 6 位，包含字母和数字')} /></div></label>}
           {mode === 'reset' && <label htmlFor="confirm-password"><span>{isEnglish ? 'Confirm new password' : '确认新密码'}</span><div className="login-input"><LockKeyhole size={17} /><input id="confirm-password" type="password" autoComplete="new-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={isEnglish ? 'Enter it again' : '再次输入新密码'} /></div></label>}
           {error && <p className="login-error" role="alert">{error}</p>}
@@ -111,6 +106,11 @@ export function LoginView({ locale = 'zh-CN', onLocaleChange, onLogin, onRegiste
         </form>
 
         {mode === 'login' && <div className="login-links"><button type="button" onClick={() => switchMode('register')}>{isEnglish ? 'Create an account' : '创建账号'}</button><button type="button" onClick={() => switchMode('forgot')}>{isEnglish ? 'Forgot password?' : '忘记密码？'}</button></div>}
+        {(mode === 'login' || mode === 'register') && <>
+          <div className="login-divider"><span>{isEnglish ? 'or' : '或'}</span></div>
+          <button className="login-google" type="button" disabled={busy} onClick={async () => { setBusy(true); setNotice(''); try { await onGoogleLogin?.() } catch (googleError) { setNotice(googleError.message || (isEnglish ? 'Google sign-in is unavailable.' : 'Google 登录暂时不可用。')) } finally { setBusy(false) } }}><GoogleMark />{isEnglish ? 'Continue with Google' : '使用 Google 账号继续'}</button>
+        </>}
+
         {mode !== 'login' && <div className="login-links login-links-single"><button type="button" onClick={() => switchMode('login')}>{isEnglish ? 'Back to sign in' : '返回登录'}</button></div>}
         <p className="login-trust"><LockKeyhole size={13} />{isEnglish ? 'Personal accounts, one shared household, traceable care facts.' : '个人账号登录，同一家庭协作，照护事实保留来源。'}</p>
       </section>

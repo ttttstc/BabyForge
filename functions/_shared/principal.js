@@ -1,5 +1,6 @@
 import { getBetterAuthSession } from './betterAuth.js'
 import { getSession, json } from './auth.js'
+import { getAdminPreset } from './presetAccounts.js'
 
 function idToken() {
   const bytes = new Uint8Array(24)
@@ -13,6 +14,9 @@ function legacyUsername(user) {
 }
 
 export async function ensureLegacyAccount(env, user) {
+  const configuredAdmin = await ensureConfiguredAdminAccount(env, user)
+  if (configuredAdmin) return configuredAdmin
+
   const link = await env.DB.prepare(`
     SELECT l.user_id, l.account_id, a.username, a.role, a.display_name
     FROM auth_user_account_links l JOIN accounts a ON a.id = l.account_id
@@ -69,6 +73,63 @@ export async function ensureLegacyAccount(env, user) {
     `).bind(user.id, accountId),
   ])
   return { id: accountId, username, role: 'caregiver', displayName }
+}
+
+export async function ensureConfiguredAdminAccount(env, user) {
+  const preset = getAdminPreset(env)
+  if (!preset || String(user?.email || '').trim().toLowerCase() !== String(preset.email).trim().toLowerCase()) return null
+
+  const target = await env.DB.prepare(`
+    SELECT a.id, a.username, a.role, a.display_name,
+      h.id AS household_id, b.id AS baby_id
+    FROM accounts a
+    JOIN households h ON h.id = ?
+    JOIN baby_profiles b ON b.id = ? AND b.household_id = h.id
+    WHERE a.id = ?
+  `).bind(preset.householdId, preset.babyId, preset.accountId).first()
+  if (!target) throw new Error('管理员账号配置指向的资源不存在')
+
+  const current = await env.DB.prepare(`
+    SELECT l.account_id, m.household_id, m.active, m.membership_role
+    FROM auth_user_account_links l
+    LEFT JOIN household_members m ON m.user_id = l.user_id AND m.household_id = ?
+    WHERE l.user_id = ? AND l.account_id = ?
+  `).bind(preset.householdId, user.id, preset.accountId).first()
+  if (current?.active === 1 && current?.membership_role === 'owner') {
+    return { id: target.id, username: target.username, role: target.role, displayName: target.display_name }
+  }
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE household_members
+      SET active = 0, inactive_at = CURRENT_TIMESTAMP
+      WHERE user_id = ? AND active = 1 AND household_id <> ?
+    `).bind(user.id, preset.householdId),
+    env.DB.prepare('DELETE FROM auth_user_account_links WHERE user_id = ? OR account_id = ?').bind(user.id, preset.accountId),
+    env.DB.prepare('INSERT INTO auth_user_account_links (user_id, account_id) VALUES (?, ?)').bind(user.id, preset.accountId),
+    env.DB.prepare("UPDATE accounts SET active = 1, role = 'admin' WHERE id = ?").bind(preset.accountId),
+    env.DB.prepare(`
+      INSERT OR IGNORE INTO household_members
+        (household_id, account_id, role, active, user_id, membership_role)
+      VALUES (?, ?, 'owner', 1, ?, 'owner')
+    `).bind(preset.householdId, preset.accountId, user.id),
+    env.DB.prepare(`
+      UPDATE household_members
+      SET user_id = ?, role = 'owner', membership_role = 'owner', active = 1, inactive_at = NULL
+      WHERE household_id = ? AND account_id = ?
+    `).bind(user.id, preset.householdId, preset.accountId),
+    env.DB.prepare(`
+      UPDATE households
+      SET owner_account_id = ?, owner_user_id = ?, deleted_at = NULL
+      WHERE id = ?
+    `).bind(preset.accountId, user.id, preset.householdId),
+    env.DB.prepare(`
+      UPDATE baby_profiles
+      SET household_id = ?, updated_by = ?
+      WHERE id = ?
+    `).bind(preset.householdId, preset.accountId, preset.babyId),
+  ])
+  return { id: target.id, username: target.username, role: 'admin', displayName: target.display_name }
 }
 
 export async function getPrincipal(request, env, { allowLegacy = true } = {}) {

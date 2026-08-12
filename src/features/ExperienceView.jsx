@@ -27,7 +27,26 @@ function copyToClipboard(value) {
   return copied ? Promise.resolve() : Promise.reject(new Error('copy failed'))
 }
 
-export function ExperienceView({ state, setState, onClear, onLogout, readOnly = false, role = 'admin' }) {
+function demoExperience(categoryId, locale) {
+  const isEnglish = locale === 'en-US'
+  return {
+    available: true,
+    generatedAt: new Date().toISOString(),
+    notice: isEnglish ? 'Demo mode uses a preloaded example and does not contact online services.' : '演示模式使用预置示例，不访问在线服务。',
+    articles: [{
+      id: `demo-${categoryId}`,
+      title: isEnglish ? 'Stage reading preview' : '当前阶段阅读示例',
+      summary: isEnglish ? 'A fictional preview showing how stage-appropriate sources are organized.' : '虚构展示内容，用于体验适龄资料的组织方式。',
+      sourceName: isEnglish ? 'Demo content' : '演示内容',
+      sourceType: 'professional',
+      ageLabel: isEnglish ? 'Current stage' : '当前阶段',
+      category: categoryId,
+      url: 'https://www.nhc.gov.cn/',
+    }],
+  }
+}
+
+export function ExperienceView({ state, setState, onClear, onLogout, readOnly = false, role = 'admin', remote = true }) {
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
   const age = useMemo(() => getContentAgeBandForBaby(state.baby.birthDate), [state.baby.birthDate])
@@ -56,6 +75,11 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
       requestControllersRef.current.get(requestKey)?.abort()
       loadedCategoryKeysRef.current.delete(requestKey)
     }
+    if (!remote) {
+      loadedCategoryKeysRef.current.add(requestKey)
+      setFeeds((current) => ({ ...current, [categoryId]: demoExperience(categoryId, locale) }))
+      return Promise.resolve()
+    }
     const controller = new AbortController()
     requestControllersRef.current.set(requestKey, controller)
     const task = (async () => {
@@ -80,7 +104,7 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
     return task.finally(() => {
       if (requestPromisesRef.current.get(requestKey) === task) requestPromisesRef.current.delete(requestKey)
     })
-  }, [age.band, isEnglish, locale, state.baby.id])
+  }, [age.band, isEnglish, locale, remote, state.baby.id])
 
   useEffect(() => {
     if (!age.band) return

@@ -11,11 +11,34 @@ function dateDaysAgo(days) {
   return date.toISOString().slice(0, 10)
 }
 
+async function activateVisualEditor(page) {
+  await page.route('**/api/me', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ user: { id: 'visual-test-user', email: 'visual@example.test', nickname: '视觉测试' } }),
+  }))
+  await page.route('**/api/household', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ household: { id: 'visual-test-household', role: 'owner', baby: null } }),
+  }))
+  await page.route('**/api/sync', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+  await page.evaluate(() => localStorage.setItem('babyforge:session', JSON.stringify({
+    userId: 'visual-test-user',
+    email: 'visual@example.test',
+    role: 'owner',
+    displayName: '视觉测试',
+    household: { id: 'visual-test-household', role: 'owner' },
+    babies: [],
+    mode: 'cloudflare',
+    auth: 'better-auth',
+  })))
+  await page.reload()
+}
+
 async function createBaby(page, ageDays = 6, sex = 'male') {
   await page.goto('/#/login')
-  await page.getByLabel('邮箱').fill('niwa')
-  await page.getByLabel('密码').fill('niwaniwa')
-  await page.getByRole('button', { name: '登录' }).click()
+  await activateVisualEditor(page)
   await expect(page).toHaveURL(/#\/(onboarding|today)$/)
   if (page.url().endsWith('#/today')) return
   await page.goto('/#/onboarding')
@@ -37,9 +60,7 @@ test('new visitors see the product login before profile setup', async ({ page })
   await expect(page).toHaveURL(/#\/login$/)
   await expect(page.getByRole('heading', { name: '查看宝宝情况' })).toBeVisible()
   await expect(page.getByText('日常记录', { exact: true })).toBeVisible()
-  await page.getByLabel('邮箱').fill('niwa')
-  await page.getByLabel('密码').fill('niwaniwa')
-  await page.getByRole('button', { name: '登录' }).click()
+  await activateVisualEditor(page)
   await expect(page).toHaveURL(/#\/onboarding$/)
 })
 
@@ -157,8 +178,8 @@ test('growth dashboard exposes the national chart, stage guide, and history rout
 
 test('birth measurements persist through onboarding and growth profile settings', async ({ page }) => {
   await page.goto('/#/login')
-  await page.getByLabel('邮箱').fill('niwa')
-  await page.getByLabel('密码').fill('niwaniwa')
+  await page.getByLabel('账号').fill('test-admin')
+  await page.getByLabel('密码').fill('test-password')
   await page.getByRole('button', { name: '登录' }).click()
   await page.goto('/#/onboarding')
   await page.getByLabel('家庭名称').fill('小舟的家庭')
@@ -220,7 +241,7 @@ test('guest account can view the workspace but cannot edit records', async ({ pa
   await createBaby(page)
   await page.getByRole('button', { name: '退出' }).click()
   await expect(page).toHaveURL(/#\/login$/)
-  await page.getByLabel('邮箱').fill('baby')
+  await page.getByLabel('账号').fill('baby')
   await page.getByLabel('密码').fill('0729')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/today$/)
@@ -280,6 +301,7 @@ test('pediatric library exposes all anatomy models and opens a concrete case gui
   await expect(page.locator('.pediatric-organ-list .pediatric-disease-item')).toHaveCount(16)
   await page.getByRole('button', { name: /大脑.*神经系统/ }).click()
   await expect(page.getByLabel('大脑 3D viewer')).toBeVisible()
+  await expect(page.locator('.pediatric-auto-rotate')).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByRole('tab', { name: '常见儿科病', exact: true }).click()
   await expect(page.locator('.disease-selected').getByRole('heading', { name: '新生儿黄疸', exact: true })).toBeVisible()
@@ -354,8 +376,8 @@ test('mobile workspace scrolls to the details below the stage', async ({ page })
 test('onboarding keeps the approved visual direction', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/login')
-  await page.getByLabel('邮箱').fill('niwa')
-  await page.getByLabel('密码').fill('niwaniwa')
+  await page.getByLabel('账号').fill('test-admin')
+  await page.getByLabel('密码').fill('test-password')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/onboarding$/)
   await expect(page).toHaveScreenshot('onboarding.png', { animations: 'disabled' })
