@@ -124,6 +124,18 @@ test('demo login uses server-side authentication then stays in the browser sandb
   assert.equal(JSON.parse(values.get('babyforge:session')).mode, 'demo')
 })
 
+test('demo login surfaces unavailable local configuration instead of masking it as bad credentials', async () => {
+  await assert.rejects(
+    () => login('niwa-demo', '123456', {
+      fetchImpl: async () => new Response(JSON.stringify({ error: '本地演示账号未配置' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' },
+      }),
+    }),
+    /本地演示账号未配置/,
+  )
+})
+
 test('demo credentials are read only from the server runtime secret', async () => {
   const env = { BABYFORGE_PRESET_ACCOUNTS: JSON.stringify({ demos: [
     { username: 'sandbox-user', password: 'test-password', variant: 'mock', displayName: '中性演示' },

@@ -97,6 +97,11 @@ export async function login(username, password, options = {}) {
         issuedAt: new Date().toISOString(),
       })
     }
+    if (![400, 401, 404, 405].includes(demoResponse.status)) {
+      let payload = {}
+      try { payload = await demoResponse.json() } catch { /* handled below */ }
+      throw new Error(payload?.error || '演示登录服务暂不可用')
+    }
 
     const legacyResponse = await authFetch(fetchImpl, '/api/login', {
       method: 'POST',
