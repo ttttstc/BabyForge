@@ -1,3 +1,5 @@
+import { getInfantMonthlyGuidance } from '../content/cuiParenting.js'
+
 const DAY_MS = 86_400_000
 
 export const CARE_TASKS = [
@@ -409,12 +411,15 @@ export function getCalendarEvents(baby, milestoneRecords = [], adminTaskRecords 
 
 export function getDailyHealthReminders(taskLogs = [], ageDays = 0, date = new Date()) {
   const dateKey = localDateKey(date)
+  const guidance = getInfantMonthlyGuidance(ageDays)
   const nutrition = ageDays < 180
     ? [{ id: 'nutrition-vitamin-d', title: { zh: '维生素 D', en: 'Vitamin D' }, detail: { zh: '按儿保或医生确认的每日方案补充', en: 'Follow the daily plan confirmed by child health care or a clinician' } }]
     : ageDays < 730
       ? [{ id: 'nutrition-iron-food', title: { zh: '富铁食物', en: 'Iron-rich food' }, detail: { zh: '今天的辅食包含一种富铁动物性食物', en: 'Include one iron-rich animal food in today’s complementary feeding' } }]
       : [{ id: 'nutrition-variety', title: { zh: '食物多样', en: 'Food variety' }, detail: { zh: '今天正餐兼顾主食、蛋白质和蔬果', en: 'Include staple food, protein, vegetables, and fruit today' } }]
-  const care = ageDays < 28
+  const care = guidance
+    ? [{ id: guidance.month === 1 ? 'care-cord-skin' : `care-month-${guidance.month}`, title: { zh: `第${guidance.month}个月护理重点`, en: `Month ${guidance.month} care focus` }, detail: guidance.care }]
+    : ageDays < 28
     ? [
         { id: 'care-cord-skin', title: { zh: '脐部与皮肤观察', en: 'Cord and skin check' }, detail: { zh: '保持清洁干燥，只记录红肿、渗液等变化', en: 'Keep clean and dry; record only changes such as redness or discharge' } },
         { id: 'care-oral-clean', title: { zh: '口腔清洁', en: 'Oral care' }, detail: { zh: '按儿保指导完成一次温和清洁', en: 'Complete one gentle clean following child-health guidance' } },
@@ -423,9 +428,11 @@ export function getDailyHealthReminders(taskLogs = [], ageDays = 0, date = new D
         { id: 'care-oral-clean', title: { zh: '口腔清洁', en: 'Oral care' }, detail: { zh: '按月龄完成今天的口腔清洁', en: 'Complete age-appropriate oral care today' } },
         { id: 'care-skin-check', title: { zh: '皮肤与褶皱检查', en: 'Skin and fold check' }, detail: { zh: '清洁后保持干燥，留意和平时不同的变化', en: 'Keep dry after cleaning and notice changes from usual' } },
       ]
+  const routine = guidance ? [{ id: `routine-month-${guidance.month}`, title: { zh: `第${guidance.month}个月作息`, en: `Month ${guidance.month} rhythm` }, detail: guidance.schedule }] : []
+  const development = guidance ? [{ id: `development-month-${guidance.month}`, title: { zh: `第${guidance.month}个月亲子互动`, en: `Month ${guidance.month} interaction` }, detail: guidance.learning }] : []
   const attachStatus = (item) => {
     const log = taskLogs.find((entry) => entry.taskId === item.id && entry.date === dateKey)
     return { ...item, date: dateKey, status: log?.status || 'pending' }
   }
-  return { nutrition: nutrition.map(attachStatus), care: care.map(attachStatus) }
+  return { nutrition: nutrition.map(attachStatus), routine: routine.map(attachStatus), care: care.map(attachStatus), development: development.map(attachStatus) }
 }

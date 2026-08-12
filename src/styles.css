@@ -152,14 +152,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .topic-entry strong { font-size: 0.75rem; }
 .topic-entry small { color: rgba(255, 255, 255, 0.7); font-size: 0.6rem; }
 .new-parent-guide { display: grid; gap: 10px; }
+.new-parent-guide-source { margin: -4px 0 0; color: #8b6a50; font-size: .57rem; font-weight: 800; }
 .new-parent-guide-list { display: grid; gap: 9px; }
 .new-parent-guide-list article { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; padding-top: 9px; border-top: 1px solid rgba(41, 79, 101, .08); }
 .new-parent-guide-list article:first-child { padding-top: 0; border-top: 0; }
 .guide-icon { width: 28px; height: 28px; display: grid; place-items: center; color: var(--aqua); border-radius: 9px; background: var(--aqua-soft); }
 .guide-icon.notice { color: var(--sage); background: var(--sage-soft); }
 .guide-icon.alert { color: #b85a4d; background: var(--coral-soft); }
+.guide-icon.routine { color: #6f5d97; background: #f1edfa; }
+.guide-icon.nutrition { color: #a9791e; background: #fff4d7; }
+.guide-icon.care { color: #4c8d82; background: #e8f5f0; }
+.guide-icon.development { color: #b85a4d; background: var(--coral-soft); }
 .new-parent-guide-list strong { font-size: .68rem; }
 .new-parent-guide-list p { margin: 2px 0 0; color: var(--muted); font-size: .59rem; line-height: 1.45; }
+.new-parent-guide-safety { margin: 0; color: var(--muted); font-size: .55rem; line-height: 1.45; }
 .rail-guide-link { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 0 0; color: var(--aqua); border: 0; border-top: 1px solid rgba(41, 79, 101, .08); background: transparent; cursor: pointer; font-size: .62rem; text-align: left; }
 .rail-guide-link:hover { color: var(--ink); }
 
@@ -170,9 +176,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .daily-reminder-group h3 { display: flex; align-items: center; gap: 6px; margin: 0; color: #687b77; font-size: .68rem; }
 .daily-reminder-group.nutrition h3 svg { color: #c8942d; }
 .daily-reminder-group.care h3 svg { color: #4c9a8c; }
+.daily-reminder-group.routine h3 svg { color: #7a67a4; }
+.daily-reminder-group.development h3 svg { color: #c56e61; }
 .daily-reminder-group > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .daily-reminder-group button { min-width: 0; display: grid; grid-template-columns: 20px 1fr; gap: 6px; align-items: start; padding: 9px 8px; text-align: left; border: 1px solid rgba(41, 79, 101, .08); border-radius: 12px; background: #f8fbfa; cursor: pointer; }
 .daily-reminder-group.nutrition button { background: #fff8e7; }
+.daily-reminder-group.routine button { background: #f6f2fc; }
+.daily-reminder-group.development button { background: #fff3ee; }
 .daily-reminder-group button > span:first-child { width: 18px; height: 18px; display: grid; place-items: center; color: white; border-radius: 50%; background: rgba(255, 255, 255, .72); box-shadow: inset 0 0 0 1.5px rgba(92, 113, 107, .22); }
 .daily-reminder-group button.done > span:first-child { background: #62b9a7; box-shadow: none; }
 .daily-reminder-group button > span:last-child { min-width: 0; display: grid; gap: 2px; }
@@ -1247,8 +1257,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .experience-source-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border-radius: 999px; font-size: .6rem; font-weight: 800; }
 .experience-source-badge.professional { color: #39766b; background: #e6f5ee; }
 .experience-source-badge.experience { color: #6e5d9a; background: #f1edfa; }
+.experience-source-badge.curated { color: #8a594d; background: #fff0e9; }
+.experience-card.curated.current-stage { border-color: rgba(235, 124, 107, .55); box-shadow: 0 18px 36px rgba(196, 105, 90, .15); }
 .experience-card h2 { margin: 17px 0 8px; color: var(--ink); font-family: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif; font-size: 1.55rem; line-height: 1.12; letter-spacing: -.025em; }
 .experience-card > p { margin: 0; color: #746b63; font-size: .72rem; line-height: 1.65; }
+.experience-method-list { display: grid; gap: 7px; margin: 14px 0 0; padding: 12px 12px 12px 28px; color: #665d56; border-radius: 12px; background: rgba(244, 236, 226, .55); font-size: .66rem; line-height: 1.5; }
+.experience-today-practice { display: grid; gap: 3px; margin-top: 12px !important; padding-left: 10px; border-left: 3px solid var(--coral); }
+.experience-today-practice strong { color: #8d594f; font-size: .62rem; }
 .experience-card dl { display: grid; gap: 6px; margin: 16px 0 0; padding-top: 13px; border-top: 1px solid rgba(123, 111, 100, .15); }
 .experience-card dl > div { display: flex; justify-content: space-between; gap: 10px; font-size: .62rem; }
 .experience-card dt { color: var(--muted); }
