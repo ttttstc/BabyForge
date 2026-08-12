@@ -1,6 +1,6 @@
 import { json, requireSession } from '../_shared/auth.js'
 import { accessibleBaby, eventFromRow, legacySourceForEvent, legacyTypeForEvent, planFromRow, safeEventInput } from '../_shared/care.js'
-import { appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
+import { appAssetUrl, appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
 
 function conflict(current, message = '事件版本冲突，请刷新后重新修改') {
   return json({ error: message, code: 'EVENT_CONFLICT', current: eventFromRow(current) }, 409)
@@ -137,6 +137,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
       action: '新增',
       next: savedEvent,
       url: appUpdateUrl(request, env, `#/records?event=${encodeURIComponent(savedEvent.id)}`),
+      heroUrl: appAssetUrl(request, env),
     }, waitUntil)
   }
   return json({ event: savedEvent }, 201)

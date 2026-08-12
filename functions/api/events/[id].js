@@ -1,7 +1,7 @@
 import { json, requireSession } from '../../_shared/auth.js'
 import { accessibleEvent, eventFromRow, legacySourceForEvent, legacyTypeForEvent, safeEventInput } from '../../_shared/care.js'
 import { conflict } from '../events.js'
-import { appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../../_shared/updateNotifications.js'
+import { appAssetUrl, appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../../_shared/updateNotifications.js'
 
 function readExpectedVersion(body, request) {
   const header = request.headers.get('if-match')
@@ -115,6 +115,7 @@ async function correctEvent({ request, env, params, waitUntil }) {
       previous: currentEvent,
       next: savedEvent,
       url: appUpdateUrl(request, env, `#/records?event=${encodeURIComponent(savedEvent.id)}`),
+      heroUrl: appAssetUrl(request, env),
     }, waitUntil)
   }
   return json({ event: savedEvent, correctedFromId: current.id }, 201)
@@ -177,6 +178,7 @@ export async function onRequestDelete({ request, env, params, waitUntil }) {
       action: '删除',
       previous: previousEvent,
       url: appUpdateUrl(request, env, '#/records'),
+      heroUrl: appAssetUrl(request, env),
     }, waitUntil)
   }
   return json({ event: voidedEvent })

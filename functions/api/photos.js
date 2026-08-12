@@ -1,6 +1,6 @@
 import { json, requireSession } from '../_shared/auth.js'
 import { accessibleBaby } from '../_shared/care.js'
-import { appUpdateUrl, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
+import { appAssetUrl, appUpdateUrl, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
 
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024
 const MAX_MULTIPART_BYTES = MAX_PHOTO_BYTES + 1024 * 1024
@@ -99,6 +99,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
     action: '新增',
     photo: true,
     url: appUpdateUrl(request, env, '#/today'),
+    heroUrl: appAssetUrl(request, env),
   }, waitUntil)
   return json({ photo: photoFromRow(row) }, 201)
 }
