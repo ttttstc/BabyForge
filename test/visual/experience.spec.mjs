@@ -41,6 +41,7 @@ async function createBaby(page, ageDays = 6) {
   await page.getByLabel('男孩').check()
   await page.getByLabel('喂养方式').selectOption('mixed')
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
+  await expect(page).toHaveURL(/#\/today$/)
 }
 
 test.beforeEach(async ({ page }) => {
