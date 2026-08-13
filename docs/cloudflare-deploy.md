@@ -109,4 +109,15 @@ LLM_KEY_ENCRYPTION_KEY_VERSION="1"
 ```
 
 然后运行 `npx wrangler pages dev dist`。不要把 `.dev.vars` 或 API Key 提交到 Git。
+
+## 邮件提醒投递配置
+
+关键更新邮件通过 Resend 发送。为了避免 Gmail 将邮件判定为垃圾邮件，生产环境不要使用 `onboarding@resend.dev` 这类 Resend 测试发件人；请先在 Resend 验证 `babyforge.bbroot.com`（或专用发送子域名）的 SPF 与 DKIM，再将以下变量配置到 Cloudflare Pages 的 Settings → Variables and Secrets。若使用仓库中的 GitHub Actions 发布流程，也要把同名值加入 GitHub Repository Secrets，工作流会在发布时同步它们：
+
+- `RESEND_API_KEY`：仅发送权限的 Resend API Key。
+- `RESEND_FROM_EMAIL`：已验证域名下的发件人，例如 `BabyForge <noreply@babyforge.bbroot.com>`。
+- `RESEND_REPLY_TO`：可选，接收回复的真实邮箱地址。
+- `RESEND_LIST_UNSUBSCRIBE_URL`：可选，只有在该 URL 能直接处理退订请求时才配置；邮件设置页仍会提供管理提醒入口。
+
+同时建议在 DNS 添加 DMARC 记录，先以 `p=none` 观察 SPF、DKIM 和 DMARC 通过情况，再逐步提升到 `p=quarantine`。部署后可在 Gmail 原邮件的“显示原始邮件”中确认 `SPF=PASS`、`DKIM=PASS`、`DMARC=PASS`。代码会同时发送 HTML 与纯文本版本，并设置回复地址与可选的退订头，降低内容层面的垃圾邮件风险。
 7. 如使用自定义域名，在 Cloudflare 控制台完成域名绑定后再分享链接。

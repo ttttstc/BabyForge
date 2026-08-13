@@ -60,14 +60,14 @@ export async function onRequestDelete({ request, env, params, waitUntil }) {
     scheduleUpdateNotifications({
       env, householdId: photo.household_id, actorUserId: auth.session.userId,
       actorName: auth.session.displayName || '家庭成员', babyName: photo.baby_name || '宝宝',
-      action: '删除', photo: true, url: appUpdateUrl(request, env, '#/today'), heroUrl: appAssetUrl(request, env),
+      action: '删除', photo: true, url: appUpdateUrl(request, env, '#/today'), settingsUrl: appUpdateUrl(request, env, '#/settings'), heroUrl: appAssetUrl(request, env),
     }, waitUntil)
     return json({ deleted: true, id: photo.id, storageCleanupPending: true, warning: error?.message || '照片文件清理待重试' }, 202)
   }
   scheduleUpdateNotifications({
     env, householdId: photo.household_id, actorUserId: auth.session.userId,
     actorName: auth.session.displayName || '家庭成员', babyName: photo.baby_name || '宝宝',
-    action: '删除', photo: true, url: appUpdateUrl(request, env, '#/today'), heroUrl: appAssetUrl(request, env),
+    action: '删除', photo: true, url: appUpdateUrl(request, env, '#/today'), settingsUrl: appUpdateUrl(request, env, '#/settings'), heroUrl: appAssetUrl(request, env),
   }, waitUntil)
   return json({ deleted: true, id: photo.id })
 }

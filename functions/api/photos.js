@@ -99,6 +99,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
     action: '新增',
     photo: true,
     url: appUpdateUrl(request, env, '#/today'),
+    settingsUrl: appUpdateUrl(request, env, '#/settings'),
     heroUrl: appAssetUrl(request, env),
   }, waitUntil)
   return json({ photo: photoFromRow(row) }, 201)

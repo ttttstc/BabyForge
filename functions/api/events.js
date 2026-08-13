@@ -137,6 +137,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
       action: '新增',
       next: savedEvent,
       url: appUpdateUrl(request, env, `#/records?event=${encodeURIComponent(savedEvent.id)}`),
+      settingsUrl: appUpdateUrl(request, env, '#/settings'),
       heroUrl: appAssetUrl(request, env),
     }, waitUntil)
   }

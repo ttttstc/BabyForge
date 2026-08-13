@@ -115,6 +115,7 @@ async function correctEvent({ request, env, params, waitUntil }) {
       previous: currentEvent,
       next: savedEvent,
       url: appUpdateUrl(request, env, `#/records?event=${encodeURIComponent(savedEvent.id)}`),
+      settingsUrl: appUpdateUrl(request, env, '#/settings'),
       heroUrl: appAssetUrl(request, env),
     }, waitUntil)
   }
@@ -178,6 +179,7 @@ export async function onRequestDelete({ request, env, params, waitUntil }) {
       action: '删除',
       previous: previousEvent,
       url: appUpdateUrl(request, env, '#/records'),
+      settingsUrl: appUpdateUrl(request, env, '#/settings'),
       heroUrl: appAssetUrl(request, env),
     }, waitUntil)
   }
