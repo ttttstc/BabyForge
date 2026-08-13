@@ -53,7 +53,7 @@ test('event email excludes the acting user in the household query and includes c
     next: { category: 'growth_measurement', occurredAt: '2026-08-12T08:00:00Z', payload: { type: 'weight', value: 3.5, unit: 'kg' } },
     url: 'https://babyforge.test/#/records?event=event-1',
     settingsUrl: 'https://babyforge.test/#/settings',
-    heroUrl: 'https://babyforge.test/assets/login/login-hero.png',
+    heroUrl: 'https://babyforge.test/assets/login/login-hero-mobile.png',
   })
 
   assert.match(calls.sql, /u\.id <> \?/)
@@ -68,9 +68,10 @@ test('event email excludes the acting user in the household query and includes c
   assert.match(calls.emails[0].html, /管理邮件提醒/)
   assert.match(calls.emails[0].text, /3\.2 → 3\.5/)
   assert.match(calls.emails[0].text, /打开 BabyForge 查看详情/)
-  assert.match(calls.emails[0].html, /width="640"[^>]+background="https:\/\/babyforge\.test\/assets\/login\/login-hero\.png"[^>]+background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero\.png'\)/)
+  assert.match(calls.emails[0].html, /width="640"[^>]+background="https:\/\/babyforge\.test\/assets\/login\/login-hero-mobile\.png"[^>]+background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero-mobile\.png'\)/)
   assert.match(calls.emails[0].html, /background:rgba\(255,250,244,.9\);border:1px solid #eaded3/)
-  assert.match(calls.emails[0].html, /background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero\.png'\)/)
+  assert.equal((calls.emails[0].html.match(/background-image:url\(/g) || []).length, 1)
+  assert.match(calls.emails[0].html, /background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero-mobile\.png'\)/)
   assert.equal(calls.emails[0].html.includes('<img'), false)
   assert.equal(calls.emails[0].html.includes('font-family:Georgia'), true)
   assert.equal(calls.emails[0].html.includes('charset="utf-8"'), true)
@@ -94,7 +95,7 @@ test('photo email reports only the action and privacy boundary', async (context)
     photo: true,
     url: 'https://babyforge.test/#/today',
     settingsUrl: 'https://babyforge.test/#/settings',
-    heroUrl: 'https://babyforge.test/assets/login/login-hero.png',
+    heroUrl: 'https://babyforge.test/assets/login/login-hero-mobile.png',
   })
 
   assert.match(calls.emails[0].html, /上传了新的照片/)
@@ -102,7 +103,8 @@ test('photo email reports only the action and privacy boundary', async (context)
   assert.match(calls.emails[0].subject, /小满的家庭的小满宝宝有新的相册动态/)
   assert.match(calls.emails[0].html, /相册隐私说明/)
   assert.match(calls.emails[0].text, /不会加载或展示照片本身/)
-  assert.match(calls.emails[0].html, /background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero\.png'\)/)
+  assert.equal((calls.emails[0].html.match(/background-image:url\(/g) || []).length, 1)
+  assert.match(calls.emails[0].html, /background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero-mobile\.png'\)/)
   assert.doesNotMatch(calls.emails[0].html, /<img/i)
 })
 
@@ -129,5 +131,5 @@ test('transactional transport sends plain text and optional sender headers', asy
 test('app update links use configured public origin and hash route', () => {
   const request = new Request('https://preview.example.test/api/events')
   assert.equal(appUpdateUrl(request, { BETTER_AUTH_URL: 'https://babyforge.example' }, '#/records?event=event-1'), 'https://babyforge.example/#/records?event=event-1')
-  assert.equal(appAssetUrl(request, { BETTER_AUTH_URL: 'https://babyforge.example' }), 'https://babyforge.example/assets/login/login-hero.png')
+  assert.equal(appAssetUrl(request, { BETTER_AUTH_URL: 'https://babyforge.example' }), 'https://babyforge.example/assets/login/login-hero-mobile.png')
 })

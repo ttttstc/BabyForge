@@ -115,7 +115,7 @@ LLM_KEY_ENCRYPTION_KEY_VERSION="1"
 关键更新邮件通过 Resend 发送。为了避免 Gmail 将邮件判定为垃圾邮件，生产环境不要使用 `onboarding@resend.dev` 这类 Resend 测试发件人；请先在 Resend 验证 `babyforge.bbroot.com`（或专用发送子域名）的 SPF 与 DKIM，再将以下变量配置到 Cloudflare Pages 的 Settings → Variables and Secrets。若使用仓库中的 GitHub Actions 发布流程，也要把同名值加入 GitHub Repository Secrets，工作流会在发布时同步它们：
 
 - `RESEND_API_KEY`：仅发送权限的 Resend API Key。
-- `RESEND_FROM_EMAIL`：已验证域名下的发件人，例如 `BabyForge <noreply@babyforge.bbroot.com>`。
+- `RESEND_FROM_EMAIL`：已验证域名下的发件人，例如 `BabyForge <noreply@auth.babyforge.bbroot.com>`。
 - `RESEND_REPLY_TO`：可选，接收回复的真实邮箱地址。
 - `RESEND_LIST_UNSUBSCRIBE_URL`：可选，只有在该 URL 能直接处理退订请求时才配置；邮件设置页仍会提供管理提醒入口。
 
