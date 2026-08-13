@@ -8,6 +8,7 @@ import {
   sendUpdateNotifications,
 } from '../functions/_shared/updateNotifications.js'
 import { sendTransactionalEmail } from '../functions/_shared/email.js'
+import { contactEmailError, normalizeContactEmail } from '../functions/api/email-subscription/contacts.js'
 
 function notificationEnv(results, calls) {
   return {
@@ -57,7 +58,8 @@ test('event email excludes the acting user in the household query and includes c
   })
 
   assert.match(calls.sql, /u\.id <> \?/)
-  assert.deepEqual(calls.binds, ['household-1', 'user-self', 'user-self'])
+  assert.match(calls.sql, /email_notification_contacts/)
+  assert.deepEqual(calls.binds, ['household-1', 'user-self', 'user-self', 'household-1', 'user-self', 'user-self', 'user-self'])
   assert.equal(calls.emails.length, 1)
   assert.deepEqual(calls.emails[0].to, ['other@example.com'])
   assert.match(calls.emails[0].subject, /小满的家庭｜小满宝宝的成长测量已更新/)
@@ -106,6 +108,40 @@ test('photo email reports only the action and privacy boundary', async (context)
   assert.equal((calls.emails[0].html.match(/background-image:url\(/g) || []).length, 1)
   assert.match(calls.emails[0].html, /background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero-mobile\.png'\)/)
   assert.doesNotMatch(calls.emails[0].html, /<img/i)
+})
+
+test('household contacts receive one shared event email each', async (context) => {
+  const calls = { emails: [] }
+  const env = notificationEnv([
+    { email: 'other@example.com', householdName: '小满的家庭' },
+    { email: 'grandma@example.com', householdName: '小满的家庭' },
+  ], calls)
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    calls.emails.push(JSON.parse(options.body))
+    return new Response('{}', { status: 200 })
+  })
+
+  await sendUpdateNotifications({
+    env,
+    householdId: 'household-1',
+    actorUserId: 'user-self',
+    actorName: '妈妈',
+    babyName: '小满',
+    action: '新增',
+    next: { category: 'temperature', occurredAt: '2026-08-12T08:00:00Z', payload: { value: 36.8, unit: '°C' } },
+    url: 'https://babyforge.test/#/records?event=event-2',
+    settingsUrl: 'https://babyforge.test/#/settings',
+    heroUrl: 'https://babyforge.test/assets/login/login-hero-mobile.png',
+  })
+
+  assert.deepEqual(calls.emails.map((email) => email.to[0]).sort(), ['grandma@example.com', 'other@example.com'])
+  assert.equal(calls.emails[0].subject, calls.emails[1].subject)
+})
+
+test('contact email normalization rejects invalid addresses', () => {
+  assert.equal(normalizeContactEmail('  Grandma@Example.COM '), 'grandma@example.com')
+  assert.equal(contactEmailError('grandma@example.com'), null)
+  assert.match(contactEmailError('not-an-email'), /有效的联系人邮箱/)
 })
 
 test('transactional transport sends plain text and optional sender headers', async (context) => {

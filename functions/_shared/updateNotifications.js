@@ -254,14 +254,33 @@ function photoMessage({ householdName, babyName, actorName, action, url, setting
 async function recipients(env, householdId, actorUserId) {
   if (!householdId) return []
   const rows = await env.DB.prepare(`
-    SELECT u.email, h.name AS householdName
-    FROM email_update_subscriptions s
-    JOIN "user" u ON u.id = s.user_id
-    JOIN household_members m ON m.user_id = u.id
-    JOIN households h ON h.id = m.household_id
-    WHERE s.enabled = 1 AND u.emailVerified = 1 AND m.household_id = ? AND m.active = 1
-      AND h.deleted_at IS NULL AND (? IS NULL OR u.id <> ?)
-  `).bind(householdId, actorUserId || null, actorUserId || null).all()
+    SELECT DISTINCT recipient_email AS email, household_name AS householdName
+    FROM (
+      SELECT lower(trim(u.email)) AS recipient_email, h.name AS household_name, u.id AS recipient_user_id
+      FROM email_update_subscriptions s
+      JOIN "user" u ON u.id = s.user_id
+      JOIN household_members m ON m.user_id = u.id
+      JOIN households h ON h.id = m.household_id
+      WHERE s.enabled = 1 AND u.emailVerified = 1 AND m.household_id = ? AND m.active = 1
+        AND h.deleted_at IS NULL AND (? = '' OR u.id <> ?)
+      UNION ALL
+      SELECT lower(trim(c.email)) AS recipient_email, h.name AS household_name, NULL AS recipient_user_id
+      FROM email_notification_contacts c
+      JOIN households h ON h.id = c.household_id
+      WHERE c.enabled = 1 AND c.household_id = ? AND h.deleted_at IS NULL
+    )
+    WHERE recipient_email <> ''
+      AND (recipient_user_id IS NULL OR (? = '' OR recipient_user_id <> ?))
+      AND recipient_email <> COALESCE((SELECT lower(trim(email)) FROM "user" WHERE id = ?), '')
+  `).bind(
+    householdId,
+    actorUserId || '',
+    actorUserId || '',
+    householdId,
+    actorUserId || '',
+    actorUserId || '',
+    actorUserId || '',
+  ).all()
   return (rows.results || []).map((row) => ({ email: row.email, householdName: row.householdName })).filter((row) => row.email)
 }
 
@@ -272,7 +291,9 @@ export async function sendUpdateNotifications({ env, householdId, actorUserId, a
   const message = photo
     ? photoMessage({ householdName, babyName, actorName, action, url, settingsUrl, heroUrl })
     : eventMessage({ householdName, babyName, actorName, action, previous, next, url, settingsUrl, heroUrl })
-  await Promise.all(targets.map((target) => sendTransactionalEmail(env, { to: target.email, ...message })))
+  const deliveries = await Promise.allSettled(targets.map((target) => sendTransactionalEmail(env, { to: target.email, ...message })))
+  const failed = deliveries.find((delivery) => delivery.status === 'rejected')
+  if (failed) throw failed.reason
 }
 
 export function scheduleUpdateNotifications(input, waitUntil, reportError = (error) => {
