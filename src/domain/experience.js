@@ -27,6 +27,12 @@ export const EXPERIENCE_CATEGORIES = [
     terms: '阶段育儿经验 家长分享 真实记录 中文社区',
   },
   {
+    id: 'cui-yutao',
+    label: { zh: '崔玉涛育儿专栏', en: 'Cui Yutao column' },
+    terms: '崔玉涛 育儿 方法论 生长趋势 个体差异 回应式照护',
+    curated: true,
+  },
+  {
     id: 'feeding',
     label: { zh: '喂养', en: 'Feeding' },
     terms: '喂养 吃奶 吃饱 拍嗝 吐奶 家长经验 真实记录',

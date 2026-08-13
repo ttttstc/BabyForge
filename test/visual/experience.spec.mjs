@@ -41,6 +41,7 @@ async function createBaby(page, ageDays = 6) {
   await page.getByLabel('男孩').check()
   await page.getByLabel('喂养方式').selectOption('mixed')
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
+  await expect(page).toHaveURL(/#\/today$/)
 }
 
 test.beforeEach(async ({ page }) => {
@@ -102,6 +103,27 @@ test('experience search failure stays inside the experience surface', async ({ p
   await expect(page.getByRole('heading', { name: '经验', exact: true })).toBeVisible()
   await expect(page.getByRole('alert')).toBeVisible()
   await expect(page.getByRole('button', { name: '成长', exact: true })).toBeVisible()
+})
+
+test('Cui Yutao column is locally curated and shows every 0–12 month stage', async ({ page }) => {
+  const requestedCategories = []
+  await page.route('**/api/experience*', (route) => {
+    requestedCategories.push(new URL(route.request().url()).searchParams.get('category'))
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ available: true, articles: [] }),
+    })
+  })
+  await createBaby(page)
+  await page.getByRole('button', { name: '查看崔玉涛育儿专栏' }).click()
+
+  await expect(page).toHaveURL(/#\/experience\?category=cui-yutao$/)
+  await expect(page.getByText('0–12个月五阶段核心方法论', { exact: true })).toBeVisible()
+  await expect(page.getByText('未经崔玉涛本人审核或授权')).toBeVisible()
+  await expect(page.locator('.experience-card.curated')).toHaveCount(5)
+  await expect(page.locator('.experience-card.current-stage')).toHaveCount(1)
+  expect(requestedCategories).toEqual([])
 })
 
 test('selected primary navigation item stays visible at narrow widths', async ({ page }) => {

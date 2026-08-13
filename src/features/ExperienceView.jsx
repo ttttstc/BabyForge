@@ -3,6 +3,7 @@ import { Check, Clipboard, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-r
 import { ROUTES } from '../app/router.js'
 import { getAgeDays } from '../domain/baby.js'
 import { EXPERIENCE_CATEGORIES, formatExperienceAge, getContentAgeBandForBaby } from '../domain/experience.js'
+import { getCuiYutaoColumn } from '../content/cuiParenting.js'
 import { fetchExperience, readExperienceCache, writeExperienceCache } from '../domain/experienceApi.js'
 import { Header } from './Header.jsx'
 
@@ -46,12 +47,17 @@ function demoExperience(categoryId, locale) {
   }
 }
 
+function initialExperienceCategory() {
+  const categoryId = new URLSearchParams(globalThis.window?.location?.hash?.split('?')[1] || '').get('category')
+  return EXPERIENCE_CATEGORIES.some((item) => item.id === categoryId) ? categoryId : 'recommended'
+}
+
 export function ExperienceView({ state, setState, onClear, onLogout, readOnly = false, role = 'admin', remote = true }) {
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
   const age = useMemo(() => getContentAgeBandForBaby(state.baby.birthDate), [state.baby.birthDate])
   const ageDays = useMemo(() => getAgeDays(state.baby.birthDate), [state.baby.birthDate])
-  const [activeCategory, setActiveCategory] = useState('recommended')
+  const [activeCategory, setActiveCategory] = useState(initialExperienceCategory)
   const [feeds, setFeeds] = useState({})
   const [loadingCategory, setLoadingCategory] = useState(null)
   const [errors, setErrors] = useState({})
@@ -74,6 +80,11 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
     if (refresh) {
       requestControllersRef.current.get(requestKey)?.abort()
       loadedCategoryKeysRef.current.delete(requestKey)
+    }
+    if (EXPERIENCE_CATEGORIES.find((item) => item.id === categoryId)?.curated) {
+      loadedCategoryKeysRef.current.add(requestKey)
+      setFeeds((current) => ({ ...current, [categoryId]: getCuiYutaoColumn(age.band.id, locale) }))
+      return Promise.resolve()
     }
     if (!remote) {
       loadedCategoryKeysRef.current.add(requestKey)
@@ -136,7 +147,9 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
   const feed = feeds[activeCategory]
   const error = errors[activeCategory]
   const category = EXPERIENCE_CATEGORIES.find((item) => item.id === activeCategory) || EXPERIENCE_CATEGORIES[0]
-  const sourceNotice = isEnglish ? 'Chinese communities and directly accessible domestic sources only.' : '优先中文社区与国内可直连来源，不展示境外受限站点。'
+  const sourceNotice = category.curated
+    ? (isEnglish ? 'Public education synthesis with explicit source and safety boundaries.' : '公开科普观点提炼，保留来源与安全边界。')
+    : (isEnglish ? 'Chinese communities and directly accessible domestic sources only.' : '优先中文社区与国内可直连来源，不展示境外受限站点。')
 
   async function copyLink(article) {
     try {
@@ -194,13 +207,13 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
             ) : <>
             <div className="experience-toolbar">
               <div>
-                <strong>{feed?.articles?.length ? (isEnglish ? `${feed.articles.length} articles found` : `已找到 ${feed.articles.length} 篇`) : (isEnglish ? 'Stage reading' : '当前阶段阅读')}</strong>
-                <small>{feed?.generatedAt ? `${isEnglish ? 'Updated ' : '更新于 '}${formatGeneratedAt(feed.generatedAt, locale)}` : (isEnglish ? 'Searches only when needed.' : '按需联网搜索，不预取其他分类。')}</small>
+                <strong>{category.curated ? (isEnglish ? 'Five stage methods for birth–12 months' : '0–12个月五阶段核心方法论') : feed?.articles?.length ? (isEnglish ? `${feed.articles.length} articles found` : `已找到 ${feed.articles.length} 篇`) : (isEnglish ? 'Stage reading' : '当前阶段阅读')}</strong>
+                <small>{category.curated ? (isEnglish ? 'The current stage is shown first.' : '当前阶段优先展示；其余阶段可连续阅读。') : feed?.generatedAt ? `${isEnglish ? 'Updated ' : '更新于 '}${formatGeneratedAt(feed.generatedAt, locale)}` : (isEnglish ? 'Searches only when needed.' : '按需联网搜索，不预取其他分类。')}</small>
               </div>
-              <button type="button" className="secondary-button compact" disabled={loadingCategory === activeCategory || role === 'guest'} title={role === 'guest' ? (isEnglish ? 'Guest accounts cannot refresh' : '游客不能强制更新') : undefined} onClick={() => void loadCategory(activeCategory, true)}>
+              {!category.curated && <button type="button" className="secondary-button compact" disabled={loadingCategory === activeCategory || role === 'guest'} title={role === 'guest' ? (isEnglish ? 'Guest accounts cannot refresh' : '游客不能强制更新') : undefined} onClick={() => void loadCategory(activeCategory, true)}>
                 <RefreshCw size={15} className={loadingCategory === activeCategory ? 'spin' : ''} />
                 {loadingCategory === activeCategory ? (isEnglish ? 'Updating' : '更新中') : (isEnglish ? 'Update articles' : '更新文章')}
-              </button>
+              </button>}
             </div>
 
             {error && <div className="experience-alert" role="alert">{error}</div>}
@@ -210,13 +223,15 @@ export function ExperienceView({ state, setState, onClear, onLogout, readOnly = 
             {!loadingCategory && feed && !feed.articles?.length && <div className="experience-state"><h2>{isEnglish ? 'No suitable articles found' : '暂时没有找到合适的文章'}</h2><p>{isEnglish ? 'Try updating later. Safety and source rules are kept.' : '请稍后更新；安全和来源规则不会为凑数量而放宽。'}</p></div>}
             {feed?.articles?.length > 0 && <div className="experience-card-grid">
               {feed.articles.map((article) => (
-                <article className="experience-card" key={article.id}>
+                <article className={`experience-card ${article.sourceType === 'curated' ? 'curated' : ''} ${article.isCurrent ? 'current-stage' : ''}`} key={article.id}>
                   <div className="experience-card-meta">
-                    <span className={`experience-source-badge ${article.sourceType}`}>{article.sourceType === 'professional' ? (isEnglish ? 'Professional source' : '专业来源') : (isEnglish ? 'Experience source' : '经验来源')}</span>
-                    <span>{article.ageLabel}</span>
+                    <span className={`experience-source-badge ${article.sourceType}`}>{article.sourceType === 'professional' ? (isEnglish ? 'Professional source' : '专业来源') : article.sourceType === 'curated' ? (isEnglish ? 'Public education synthesis' : '公开科普提炼') : (isEnglish ? 'Experience source' : '经验来源')}</span>
+                    <span>{article.isCurrent ? (isEnglish ? `Current · ${article.ageLabel}` : `当前阶段 · ${article.ageLabel}`) : article.ageLabel}</span>
                   </div>
                   <h2>{article.title}</h2>
                   <p>{article.summary || (isEnglish ? 'Open the source for the full article.' : '打开原文查看完整内容。')}</p>
+                  {article.principles?.length > 0 && <ul className="experience-method-list">{article.principles.map((principle) => <li key={principle}>{principle}</li>)}</ul>}
+                  {article.practice && <p className="experience-today-practice"><strong>{isEnglish ? 'Try today' : '今天这样做'}</strong>{article.practice}</p>}
                   <dl>
                     <div><dt>{isEnglish ? 'Source' : '来源'}</dt><dd>{article.sourceName}</dd></div>
                     {article.publishedAt && <div><dt>{isEnglish ? 'Published' : '发布时间'}</dt><dd>{article.publishedAt}</dd></div>}

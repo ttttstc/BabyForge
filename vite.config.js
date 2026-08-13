@@ -1,9 +1,12 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'node:fs'
+import path from 'node:path'
 import { Resolver } from 'node:dns/promises'
 import { Agent as HttpAgent, fetch as undiciFetch } from 'undici'
 import { describeNaibaAgentFailure, runNaibaAgent } from './functions/_shared/naibaAgent.js'
 import { resolvedLlmConfig } from './functions/_shared/llmConfig.js'
+import { authenticateDemo, getPresetAccounts } from './functions/_shared/presetAccounts.js'
 import { isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from './src/domain/naibaScope.js'
 
 function jsonSse(value) {
@@ -14,6 +17,74 @@ async function readJson(request) {
   const chunks = []
   for await (const chunk of request) chunks.push(chunk)
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+}
+
+function parseLocalVars(value) {
+  return String(value || '').split(/\r?\n/).reduce((result, line) => {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) return result
+    const separator = trimmed.indexOf('=')
+    if (separator <= 0) return result
+    const key = trimmed.slice(0, separator).trim()
+    let parsed = trimmed.slice(separator + 1).trim()
+    if (parsed.length >= 2 && parsed.startsWith('"') && parsed.endsWith('"')) {
+      try { parsed = JSON.parse(parsed) } catch { parsed = parsed.slice(1, -1) }
+    } else if (parsed.length >= 2 && parsed.startsWith("'") && parsed.endsWith("'")) {
+      parsed = parsed.slice(1, -1)
+    }
+    result[key] = parsed
+    return result
+  }, {})
+}
+
+function localRuntimeEnv(mode) {
+  const runtime = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
+  if (runtime.BABYFORGE_PRESET_ACCOUNTS) return runtime
+  for (const filename of ['.dev.vars', '.dev.vars.local']) {
+    try {
+      const fileEnv = parseLocalVars(fs.readFileSync(path.resolve(process.cwd(), filename), 'utf8'))
+      if (fileEnv.BABYFORGE_PRESET_ACCOUNTS) return { ...runtime, ...fileEnv }
+    } catch {
+      // Local secret files are optional for Vite-only development.
+    }
+  }
+  return runtime
+}
+
+function sendJson(response, status, value) {
+  response.statusCode = status
+  response.setHeader('content-type', 'application/json; charset=utf-8')
+  response.setHeader('cache-control', 'no-store')
+  response.end(JSON.stringify(value))
+}
+
+function localDemoPlugin(mode) {
+  return {
+    name: 'babyforge-local-demo-auth',
+    apply: 'serve',
+    configureServer(server) {
+      const env = localRuntimeEnv(mode)
+      server.middlewares.use('/api/demo-login', async (request, response, next) => {
+        if (request.method !== 'POST') return next()
+        if (!getPresetAccounts(env).demos.length) {
+          sendJson(response, 503, { error: '本地演示账号未配置，请在 .dev.vars 中设置 BABYFORGE_PRESET_ACCOUNTS' })
+          return
+        }
+        try {
+          const body = await readJson(request)
+          const demo = await authenticateDemo(env, body.username, body.password)
+          if (!demo) {
+            sendJson(response, 401, { error: '账号或密码不正确' })
+            return
+          }
+          // Vite has no D1/R2 bindings; use the browser-only seeded workspace.
+          sendJson(response, 200, { demo: { ...demo, showcase: false } })
+        } catch {
+          sendJson(response, 400, { error: '请求格式不正确' })
+        }
+      })
+    },
+  }
 }
 
 async function runLocalAgentWithTimeout(input, timeoutMs = 45_000) {
@@ -119,5 +190,5 @@ function localNaibaPlugin(mode) {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), localNaibaPlugin(mode)],
+  plugins: [react(), localDemoPlugin(mode), localNaibaPlugin(mode)],
 }))
