@@ -184,8 +184,12 @@ function renderEmail(args) {
 function eventMessage({ householdName, babyName, actorName, action, previous, next, url, settingsUrl, heroUrl }) {
   const event = next || previous
   const category = event?.category || '关键记录'
+  const family = householdName || '你们家庭'
+  const baby = babyLabel(babyName)
+  const label = categoryLabel(category)
+  const subjectAction = action === '新增' ? '新增' : action === '删除' ? '已移除' : '已更新'
   return {
-    subject: `${householdName || '你们家庭'}的${babyLabel(babyName)}有新的动态 · BabyForge`,
+    subject: `${family}｜${baby}的${label}${subjectAction}`,
     html: renderEmail({
       familyName: householdName,
       babyName,
@@ -214,8 +218,11 @@ function eventMessage({ householdName, babyName, actorName, action, previous, ne
 
 function photoMessage({ householdName, babyName, actorName, action, url, settingsUrl, heroUrl }) {
   const photoAction = action === '新增' ? '上传了新的照片' : action === '删除' ? '删除了一张照片' : '更新了照片记录'
+  const family = householdName || '你们家庭'
+  const baby = babyLabel(babyName)
+  const subjectAction = action === '新增' ? '有新照片' : action === '删除' ? '照片已移除' : '相册已更新'
   return {
-    subject: `${householdName || '你们家庭'}的${babyLabel(babyName)}有新的相册动态 · BabyForge`,
+    subject: `${family}｜${baby}的相册${subjectAction}`,
     html: renderEmail({
       familyName: householdName,
       babyName,
