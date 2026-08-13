@@ -2981,3 +2981,148 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
   .disease-hub-organ-mode { width: min(100% - 20px, 1380px); padding: 12px 0 20px; }
   .disease-hub-organ-mode .organ-learning-workspace { height: auto; min-height: 0; }
 }
+
+/* Parent guidance readability: give the two long-form cards an editorial
+   hierarchy instead of squeezing their copy into tiny two-column tiles. */
+.new-parent-guide {
+  gap: 15px;
+  padding: 20px;
+}
+.new-parent-guide .section-heading,
+.daily-health-reminders .section-heading {
+  margin-bottom: 0;
+  color: #554c45;
+  font-size: .92rem;
+  letter-spacing: .04em;
+}
+.new-parent-guide-source {
+  margin: -7px 0 0;
+  color: #8b604f;
+  font-size: .72rem;
+  line-height: 1.45;
+}
+.new-parent-guide-list {
+  gap: 12px;
+}
+.new-parent-guide-list article,
+.new-parent-guide-list article:first-child {
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgba(117, 91, 70, .14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .48);
+  box-shadow: 0 7px 18px rgba(87, 62, 43, .04);
+}
+.new-parent-guide-list article:last-child {
+  background: rgba(255, 241, 236, .52);
+}
+.guide-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+}
+.guide-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.new-parent-guide-list strong {
+  display: block;
+  color: #403934;
+  font-size: .9rem;
+  line-height: 1.35;
+}
+.new-parent-guide-list p {
+  margin-top: 6px;
+  color: #665c54;
+  font-size: .8rem;
+  line-height: 1.68;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.new-parent-guide-safety {
+  color: #756a61;
+  font-size: .7rem;
+  line-height: 1.55;
+}
+.rail-guide-link {
+  padding-top: 12px;
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+.daily-health-reminders {
+  gap: 17px;
+  padding: 20px;
+}
+.daily-reminder-group {
+  gap: 10px;
+}
+.daily-reminder-group h3 {
+  gap: 8px;
+  color: #554c45;
+  font-size: .86rem;
+  line-height: 1.35;
+}
+.daily-reminder-group h3 svg {
+  width: 19px;
+  height: 19px;
+  padding: 3px;
+  border-radius: 7px;
+  background: rgba(141, 107, 204, .12);
+}
+.daily-reminder-group.nutrition h3 svg {
+  background: rgba(197, 154, 94, .18);
+}
+.daily-reminder-group > div {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.daily-reminder-group button {
+  grid-template-columns: 27px minmax(0, 1fr);
+  gap: 11px;
+  padding: 14px 15px;
+  border-color: rgba(117, 91, 70, .15);
+  border-radius: 16px;
+  box-shadow: 0 7px 18px rgba(87, 62, 43, .04);
+}
+.daily-reminder-group button > span:first-child {
+  width: 25px;
+  height: 25px;
+  margin-top: 1px;
+}
+.daily-reminder-group button > span:last-child {
+  gap: 5px;
+}
+.daily-reminder-group button strong {
+  color: #403934;
+  font-size: .86rem;
+  line-height: 1.35;
+}
+.daily-reminder-group button small {
+  color: #665c54;
+  font-size: .78rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.daily-reminder-group button:disabled:not(.done) {
+  opacity: 1;
+}
+.daily-health-reminders > p {
+  margin: -3px 0 0;
+  color: #756a61;
+  font-size: .7rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 820px) {
+  .new-parent-guide,
+  .daily-health-reminders {
+    padding: 17px;
+  }
+  .new-parent-guide-list p,
+  .daily-reminder-group button small {
+    font-size: .78rem;
+  }
+}
