@@ -68,6 +68,8 @@ test('event email excludes the acting user in the household query and includes c
   assert.match(calls.emails[0].html, /管理邮件提醒/)
   assert.match(calls.emails[0].text, /3\.2 → 3\.5/)
   assert.match(calls.emails[0].text, /打开 BabyForge 查看详情/)
+  assert.match(calls.emails[0].html, /width="640"[^>]+background="https:\/\/babyforge\.test\/assets\/login\/login-hero\.png"[^>]+background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero\.png'\)/)
+  assert.match(calls.emails[0].html, /background:rgba\(255,250,244,.9\);border:1px solid #eaded3/)
   assert.match(calls.emails[0].html, /background-image:url\('https:\/\/babyforge\.test\/assets\/login\/login-hero\.png'\)/)
   assert.equal(calls.emails[0].html.includes('<img'), false)
   assert.equal(calls.emails[0].html.includes('font-family:Georgia'), true)
