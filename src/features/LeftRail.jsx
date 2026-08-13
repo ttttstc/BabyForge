@@ -1,4 +1,4 @@
-import { Baby, Blocks, BookOpen, ChevronRight, CircleAlert, Clock3, HeartPulse, Leaf, ShieldCheck, Sparkles } from 'lucide-react'
+import { Baby, Blocks, BookOpen, ChevronRight, CircleAlert, HeartPulse, ShieldCheck, Sparkles } from 'lucide-react'
 import { getSexLabel } from '../domain/baby.js'
 import { navigate, ROUTES } from '../app/router.js'
 import { getCopy } from '../domain/i18n.js'
@@ -17,8 +17,6 @@ export function LeftRail({ baby, ageDays, careEvents = [], locale = 'zh-CN', rea
   const guidance = getInfantMonthlyGuidance(ageDays)
   const isEnglish = locale === 'en-US'
   const guideItems = guidance ? [
-    { id: 'routine', icon: Clock3, title: isEnglish ? 'Rhythm reference' : '作息表建议', detail: guidance.schedule },
-    { id: 'nutrition', icon: Leaf, title: isEnglish ? 'Feeding and nutrition' : '营养与喂养', detail: guidance.nutrition },
     { id: 'care', icon: Sparkles, title: isEnglish ? 'Care focus' : '护理重点', detail: guidance.care },
     { id: 'development', icon: Blocks, title: isEnglish ? 'Early learning' : '早教安排', detail: guidance.learning },
   ] : [

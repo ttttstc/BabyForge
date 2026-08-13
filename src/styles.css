@@ -164,7 +164,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .guide-icon.care { color: #4c8d82; background: #e8f5f0; }
 .guide-icon.development { color: #b85a4d; background: var(--coral-soft); }
 .new-parent-guide-list strong { font-size: .68rem; }
-.new-parent-guide-list p { margin: 2px 0 0; color: var(--muted); font-size: .59rem; line-height: 1.45; }
+.new-parent-guide-list p { margin: 2px 0 0; color: var(--muted); font-size: .59rem; line-height: 1.45; white-space: pre-line; }
 .new-parent-guide-safety { margin: 0; color: var(--muted); font-size: .55rem; line-height: 1.45; }
 .rail-guide-link { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 0 0; color: var(--aqua); border: 0; border-top: 1px solid rgba(41, 79, 101, .08); background: transparent; cursor: pointer; font-size: .62rem; text-align: left; }
 .rail-guide-link:hover { color: var(--ink); }
@@ -187,7 +187,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--aqua); box-shado
 .daily-reminder-group button.done > span:first-child { background: #62b9a7; box-shadow: none; }
 .daily-reminder-group button > span:last-child { min-width: 0; display: grid; gap: 2px; }
 .daily-reminder-group button strong { font-size: .64rem; }
-.daily-reminder-group button small { color: var(--muted); font-size: .55rem; line-height: 1.35; }
+.daily-reminder-group button small { color: var(--muted); font-size: .55rem; line-height: 1.35; white-space: pre-line; }
 .daily-reminder-group button.done { opacity: .7; }
 .growth-overview > .admin-task-panel { border: 1px solid rgba(41, 79, 101, .1); border-radius: 20px; background: rgba(255, 255, 255, .9); box-shadow: 0 14px 34px rgba(45, 71, 87, .07); }
 
