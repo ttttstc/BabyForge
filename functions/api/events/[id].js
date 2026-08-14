@@ -1,6 +1,7 @@
 import { json, requireSession } from '../../_shared/auth.js'
 import { accessibleEvent, eventFromRow, legacySourceForEvent, legacyTypeForEvent, safeEventInput } from '../../_shared/care.js'
 import { conflict } from '../events.js'
+import { appAssetUrl, appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../../_shared/updateNotifications.js'
 
 function readExpectedVersion(body, request) {
   const header = request.headers.get('if-match')
@@ -35,7 +36,7 @@ async function runAtomic(env, statements) {
   return env.DB.batch(statements)
 }
 
-async function correctEvent({ request, env, params }) {
+async function correctEvent({ request, env, params, waitUntil }) {
   if (!env.DB) return json({ error: 'D1 未配置' }, 503)
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
@@ -101,7 +102,24 @@ async function correctEvent({ request, env, params }) {
     return conflict(latest || current)
   }
   const row = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(next.id).first()
-  return json({ event: eventFromRow(row), correctedFromId: current.id }, 201)
+  const savedEvent = eventFromRow(row)
+  if (EMAIL_UPDATE_CATEGORIES.has(currentEvent.category) || EMAIL_UPDATE_CATEGORIES.has(savedEvent.category)) {
+    const baby = await env.DB.prepare('SELECT household_id AS householdId, nickname FROM baby_profiles WHERE id = ?').bind(current.baby_id).first()
+    scheduleUpdateNotifications({
+      env,
+      householdId: baby?.householdId,
+      actorUserId: auth.session.userId,
+      actorName: auth.session.displayName || '家庭成员',
+      babyName: baby?.nickname || '宝宝',
+      action: '修改',
+      previous: currentEvent,
+      next: savedEvent,
+      url: appUpdateUrl(request, env, `#/records?event=${encodeURIComponent(savedEvent.id)}`),
+      settingsUrl: appUpdateUrl(request, env, '#/settings'),
+      heroUrl: appAssetUrl(request, env),
+    }, waitUntil)
+  }
+  return json({ event: savedEvent, correctedFromId: current.id }, 201)
 }
 
 export async function onRequestPost(context) {
@@ -112,7 +130,7 @@ export async function onRequestPatch(context) {
   return correctEvent(context)
 }
 
-export async function onRequestDelete({ request, env, params }) {
+export async function onRequestDelete({ request, env, params, waitUntil }) {
   if (!env.DB) return json({ error: 'D1 未配置' }, 503)
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
@@ -148,5 +166,22 @@ export async function onRequestDelete({ request, env, params }) {
     return conflict(latest || current)
   }
   const row = await env.DB.prepare('SELECT * FROM care_events WHERE id = ?').bind(current.id).first()
-  return json({ event: eventFromRow(row) })
+  const voidedEvent = eventFromRow(row)
+  const previousEvent = eventFromRow(current)
+  if (EMAIL_UPDATE_CATEGORIES.has(previousEvent.category)) {
+    const baby = await env.DB.prepare('SELECT household_id AS householdId, nickname FROM baby_profiles WHERE id = ?').bind(current.baby_id).first()
+    scheduleUpdateNotifications({
+      env,
+      householdId: baby?.householdId,
+      actorUserId: auth.session.userId,
+      actorName: auth.session.displayName || '家庭成员',
+      babyName: baby?.nickname || '宝宝',
+      action: '删除',
+      previous: previousEvent,
+      url: appUpdateUrl(request, env, '#/records'),
+      settingsUrl: appUpdateUrl(request, env, '#/settings'),
+      heroUrl: appAssetUrl(request, env),
+    }, waitUntil)
+  }
+  return json({ event: voidedEvent })
 }

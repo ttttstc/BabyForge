@@ -73,6 +73,33 @@ test('authenticated users without a household share create and invite entry', as
   await expect(page).toHaveURL(/#\/today$/)
 })
 
+test('authenticated users with an existing baby skip profile setup while the workspace loads', async ({ page }) => {
+  let releaseWorkspace
+  const workspaceReady = new Promise((resolve) => { releaseWorkspace = resolve })
+  const baby = { id: 'baby-existing', nickname: '小舟', birthDate: '2026-08-01', gestationalWeeks: 40, gestationalDays: 0, sex: 'male', feedingMode: 'mixed', locale: 'zh-CN' }
+  await page.route('**/api/me', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ user: { id: 'user-existing', email: 'parent@example.com', emailVerified: true, nickname: '家长' } }),
+  }))
+  await page.route('**/api/household', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ household: { id: 'household-existing', name: '小舟的家庭', role: 'owner', baby } }),
+  }))
+  await page.route('**/api/sync**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('babyId') !== baby.id) return route.continue()
+    await workspaceReady
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ baby, observations: [], questions: [], taskLogs: [], adminTaskRecords: [], growthMeasurements: [], milestoneRecords: [] }) })
+  })
+
+  await page.goto('/#/login')
+  await expect(page).not.toHaveURL(/#\/onboarding$/)
+  releaseWorkspace()
+  await expect(page).toHaveURL(/#\/today$/)
+  await expect(page.getByRole('heading', { name: '先从宝宝档案开始' })).toHaveCount(0)
+})
+
 test('removed members lose their cached household data on refresh', async ({ page }) => {
   await page.route('**/api/me', (route) => route.fulfill({
     status: 200,

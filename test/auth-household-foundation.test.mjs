@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { passwordPolicyError } from '../functions/_shared/betterAuth.js'
 import { hashToken, randomToken } from '../functions/_shared/principal.js'
-import { login, logout, register, resetPassword, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
+import { login, logout, register, resetPassword, resumeSession, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
 import { parseInviteToken } from '../src/domain/householdAccess.js'
 import { buildInviteRoute, buildVisitorRoute, inviteTokenFromLocation, parseHashLocation, visitorTokenFromLocation } from '../src/app/router.js'
 import { nicknamePolicyError, normalizeNickname } from '../functions/api/me.js'
@@ -40,6 +40,19 @@ test('Google sign-in posts to Better Auth before navigating to the provider', as
   assert.equal(requests[0].options.method, 'POST')
   assert.deepEqual(JSON.parse(requests[0].options.body), { provider: 'google', callbackURL: 'http://localhost:8788/#/login' })
   assert.equal(destinations[0], url)
+})
+
+test('OAuth session keeps the existing household when the follow-up household read is temporarily unavailable', async () => {
+  const baby = { id: 'baby-existing', nickname: '小舟', birthDate: '2026-08-01' }
+  const storage = { setItem() {} }
+  const session = await resumeSession({
+    storage,
+    fetchImpl: async (path) => path === '/api/me'
+      ? new Response(JSON.stringify({ user: { id: 'user-existing', email: 'parent@example.com', nickname: '家长' }, household: { id: 'household-existing', role: 'owner', baby } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      : new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } }),
+  })
+  assert.equal(session.household.id, 'household-existing')
+  assert.deepEqual(session.babies, [baby])
 })
 
 test('email registration needs only email and password and preserves the return route', async () => {

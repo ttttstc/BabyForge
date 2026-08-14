@@ -28,10 +28,12 @@ async function loadBetterAuthSession(fetchImpl, storage = globalThis.localStorag
   if (!meResponse.headers.get('content-type')?.includes('application/json')) return null
   const me = await meResponse.json()
   const householdResponse = await authFetch(fetchImpl, '/api/household', { credentials: 'include' })
-  const householdPayload = householdResponse.ok && householdResponse.headers.get('content-type')?.includes('application/json')
-    ? await householdResponse.json()
-    : { household: null }
-  const household = householdPayload.household || null
+  const hasHouseholdPayload = householdResponse.ok && householdResponse.headers.get('content-type')?.includes('application/json')
+  const householdPayload = hasHouseholdPayload ? await householdResponse.json() : null
+  // `/api/me` already includes the household snapshot. Keep it as a fallback
+  // only when the follow-up request is briefly unavailable after an OAuth
+  // callback; a valid `{ household: null }` response remains authoritative.
+  const household = hasHouseholdPayload ? (householdPayload.household || null) : (me.household || null)
   return saveSession(storage, {
     userId: me.user.id,
     username: '',

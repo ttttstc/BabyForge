@@ -50,6 +50,7 @@ export function App() {
     return loadState(globalThis.localStorage, owner)
   })
   const [authError, setAuthError] = useState('')
+  const [sessionActivating, setSessionActivating] = useState(() => session?.mode === 'cloudflare')
   const stateRef = useRef(state)
   const syncingRef = useRef(false)
   const pendingSyncRef = useRef([])
@@ -247,6 +248,10 @@ export function App() {
   useEffect(() => {
     if (route === ROUTES.resetPassword) return
     if (visitorToken) return
+    // A Google/email callback updates the auth session before its household
+    // workspace has finished loading. Do not let the route guard interpret
+    // that short-lived empty state as a brand-new account.
+    if (sessionActivating) return
     if (!session) {
       if (route !== ROUTES.login && !inviteToken) navigate(ROUTES.login)
       return
@@ -264,7 +269,7 @@ export function App() {
     if (route === ROUTES.login && !state.baby && canEdit(session)) navigate(ROUTES.onboarding)
     if (!state.baby && route !== ROUTES.onboarding && route !== ROUTES.login) navigate(canEdit(session) ? ROUTES.onboarding : ROUTES.login)
     if (state.baby && route === ROUTES.onboarding) navigate(ROUTES.today)
-  }, [inviteToken, route, session, state.baby, visitorToken])
+  }, [inviteToken, route, session, sessionActivating, state.baby, visitorToken])
 
   useEffect(() => {
     document.documentElement.lang = state.preferences.locale
@@ -404,79 +409,84 @@ export function App() {
 
   async function activateSession(next) {
     revokingRef.current = false
-    setSession(next)
-    sessionRef.current = next
-    // The Vite demo accounts share the seeded local workspace so the guest
-    // flow mirrors the production household membership. Cloudflare always
-    // uses the account-specific remote workspace returned by the API.
-    const workspaceOwner = sessionOwner(next)
-    if (next.mode === 'cloudflare' && !next.household) {
-      hydrationCancelledRef.current = true
-      const current = stateRef.current
-      await Promise.all([
-        clearState(globalThis.localStorage, workspaceOwner),
-        next?.username && next?.userId ? clearState(globalThis.localStorage, next.username) : Promise.resolve(),
-        current.baby?.id ? clearLocalBabyAlbum(current.baby.id).catch(() => {}) : Promise.resolve(),
-      ])
-      clearExperienceCache({ storage: globalThis.localStorage })
-      const initial = createInitialState()
-      stateRef.current = initial
-      setState(initial)
-      navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
-      return
-    }
-    let current = loadState(globalThis.localStorage, workspaceOwner)
-    if (next.mode === 'demo') current = demoWorkspace(next)
-    const remoteBaby = next.babies?.[0]
-    if (next.mode === 'showcase') {
-      try {
-        const remote = await pullShowcaseWorkspace()
-        if (remote?.baby) {
-          current = {
-            ...createInitialState(),
-            ...remote,
-            preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
-          }
-        }
-      } catch (error) {
-        if ([401, 403].includes(error?.status)) {
-          handleAuthRevoked()
-          return
-        }
-        setAuthError(error.message)
+    setSessionActivating(true)
+    try {
+      setSession(next)
+      sessionRef.current = next
+      // The Vite demo accounts share the seeded local workspace so the guest
+      // flow mirrors the production household membership. Cloudflare always
+      // uses the account-specific remote workspace returned by the API.
+      const workspaceOwner = sessionOwner(next)
+      if (next.mode === 'cloudflare' && !next.household) {
+        hydrationCancelledRef.current = true
+        const current = stateRef.current
+        await Promise.all([
+          clearState(globalThis.localStorage, workspaceOwner),
+          next?.username && next?.userId ? clearState(globalThis.localStorage, next.username) : Promise.resolve(),
+          current.baby?.id ? clearLocalBabyAlbum(current.baby.id).catch(() => {}) : Promise.resolve(),
+        ])
+        clearExperienceCache({ storage: globalThis.localStorage })
+        const initial = createInitialState()
+        stateRef.current = initial
+        setState(initial)
+        navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
+        return
       }
-    } else if (next.mode === 'cloudflare' && remoteBaby?.id) {
-      try {
-        const remote = await pullWorkspace(remoteBaby.id)
-        if (remote?.baby) {
-          current = {
-            ...createInitialState(),
-            ...remote,
-            preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
+      let current = loadState(globalThis.localStorage, workspaceOwner)
+      if (next.mode === 'demo') current = demoWorkspace(next)
+      const remoteBaby = next.babies?.[0]
+      if (next.mode === 'showcase') {
+        try {
+          const remote = await pullShowcaseWorkspace()
+          if (remote?.baby) {
+            current = {
+              ...createInitialState(),
+              ...remote,
+              preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
+            }
           }
+        } catch (error) {
+          if ([401, 403].includes(error?.status)) {
+            handleAuthRevoked()
+            return
+          }
+          setAuthError(error.message)
         }
-      } catch (error) {
-        if ([401, 403].includes(error?.status)) {
-          handleAuthRevoked()
-          return
+      } else if (next.mode === 'cloudflare' && remoteBaby?.id) {
+        try {
+          const remote = await pullWorkspace(remoteBaby.id)
+          if (remote?.baby) {
+            current = {
+              ...createInitialState(),
+              ...remote,
+              preferences: { ...current.preferences, locale: remote.baby.locale || current.preferences.locale },
+            }
+          }
+        } catch (error) {
+          if ([401, 403].includes(error?.status)) {
+            handleAuthRevoked()
+            return
+          }
+          setAuthError(error.message)
         }
-        setAuthError(error.message)
+        if (!current.baby) current = { ...current, baby: remoteBaby }
       }
-      if (!current.baby) current = { ...current, baby: remoteBaby }
-    }
-    current = applyCareEventsToLegacy(migrateLegacyState(current), current.careEvents || [])
-    stateRef.current = current
-    saveState(globalThis.localStorage, current, workspaceOwner)
-    setState(current)
-    if (next.mode === 'cloudflare' && remoteBaby?.id) void pullEventWorkspace(sessionOwner(next), remoteBaby.id)
-    if (next.role === 'guest' && !current.baby) {
-      setAuthError('当前账号暂未关联宝宝档案，请联系管理员。')
-      return
-    }
-    if (next.mode === 'cloudflare' && !next.household) {
-      navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
-    } else {
-      navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
+      current = applyCareEventsToLegacy(migrateLegacyState(current), current.careEvents || [])
+      stateRef.current = current
+      saveState(globalThis.localStorage, current, workspaceOwner)
+      setState(current)
+      if (next.mode === 'cloudflare' && remoteBaby?.id) void pullEventWorkspace(sessionOwner(next), remoteBaby.id)
+      if (next.role === 'guest' && !current.baby) {
+        setAuthError('当前账号暂未关联宝宝档案，请联系管理员。')
+        return
+      }
+      if (next.mode === 'cloudflare' && !next.household) {
+        navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
+      } else {
+        navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
+      }
+    } finally {
+      setSessionActivating(false)
     }
   }
 
@@ -488,12 +498,16 @@ export function App() {
     resumeSession().then(async (next) => {
       if (!active) return
       if (!next) {
+        setSessionActivating(false)
         if (sessionRef.current?.mode === 'cloudflare') handleAuthRevoked()
         return
       }
       await activateSession(next)
     }).catch((error) => {
-      if (active && error?.message) setAuthError(error.message)
+      if (active) {
+        setSessionActivating(false)
+        if (error?.message) setAuthError(error.message)
+      }
     })
     return () => { active = false }
     // activateSession intentionally remains a stable-in-practice component
@@ -584,6 +598,11 @@ export function App() {
 
   if (visitorToken) return <VisitorView token={visitorToken} locale={state.preferences.locale} />
 
+  if (sessionActivating && route !== ROUTES.resetPassword) {
+    const isEnglish = state.preferences.locale === 'en-US'
+    return <main className="login-shell" aria-busy="true"><section className="login-card"><p className="eyebrow">BabyForge</p><h2>{isEnglish ? 'Restoring your household…' : '正在恢复家庭空间…'}</h2><p className="muted">{isEnglish ? 'Loading your baby profile and workspace.' : '正在读取你的宝宝档案和工作区，请稍候。'}</p></section></main>
+  }
+
   if (!session || route === ROUTES.login || route === ROUTES.resetPassword || (session?.role === 'guest' && !state.baby)) {
     const returnTo = inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household
     const callbackURL = `${globalThis.location?.origin || ''}/${returnTo}`
@@ -602,7 +621,7 @@ export function App() {
   }
 
   if (route === ROUTES.settings) {
-    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} householdRole={session?.household?.role || session?.role} nickname={session?.nickname || session?.displayName || '家长'} onNicknameChange={handleNicknameChange} />
+    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} householdRole={session?.household?.role || session?.role} nickname={session?.nickname || session?.displayName || '家长'} accountEmail={session?.email || ''} onNicknameChange={handleNicknameChange} />
   }
 
   if (route === ROUTES.records) {

@@ -69,6 +69,10 @@ jobs:
           LLM_KEY_ENCRYPTION_KEY_VERSION: ${{ secrets.LLM_KEY_ENCRYPTION_KEY_VERSION }}
           AI_HEALTH_TOKEN: ${{ secrets.AI_HEALTH_TOKEN }}
           BABYFORGE_PRESET_ACCOUNTS: ${{ secrets.BABYFORGE_PRESET_ACCOUNTS }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          RESEND_REPLY_TO: ${{ secrets.RESEND_REPLY_TO }}
+          RESEND_LIST_UNSUBSCRIBE_URL: ${{ secrets.RESEND_LIST_UNSUBSCRIBE_URL }}
         run: |
           test -n "$OPENAI_API_KEY"
           test -n "$OPENAI_BASE_URL"
@@ -87,6 +91,18 @@ jobs:
           printf '%s' "$LLM_KEY_ENCRYPTION_KEY_VERSION" | npx wrangler pages secret put LLM_KEY_ENCRYPTION_KEY_VERSION --project-name babyforge
           printf '%s' "$AI_HEALTH_TOKEN" | npx wrangler pages secret put AI_HEALTH_TOKEN --project-name babyforge
           printf '%s' "$BABYFORGE_PRESET_ACCOUNTS" | npx wrangler pages secret put BABYFORGE_PRESET_ACCOUNTS --project-name babyforge
+          if [ -n "${RESEND_API_KEY:-}" ] || [ -n "${RESEND_FROM_EMAIL:-}" ]; then
+            test -n "$RESEND_API_KEY"
+            test -n "$RESEND_FROM_EMAIL"
+            printf '%s' "$RESEND_API_KEY" | npx wrangler pages secret put RESEND_API_KEY --project-name babyforge
+            printf '%s' "$RESEND_FROM_EMAIL" | npx wrangler pages secret put RESEND_FROM_EMAIL --project-name babyforge
+          fi
+          if [ -n "${RESEND_REPLY_TO:-}" ]; then
+            printf '%s' "$RESEND_REPLY_TO" | npx wrangler pages secret put RESEND_REPLY_TO --project-name babyforge
+          fi
+          if [ -n "${RESEND_LIST_UNSUBSCRIBE_URL:-}" ]; then
+            printf '%s' "$RESEND_LIST_UNSUBSCRIBE_URL" | npx wrangler pages secret put RESEND_LIST_UNSUBSCRIBE_URL --project-name babyforge
+          fi
 
       - name: Deploy Pages
         id: deploy

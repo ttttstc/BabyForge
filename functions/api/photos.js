@@ -1,5 +1,6 @@
 import { json, requireSession } from '../_shared/auth.js'
 import { accessibleBaby } from '../_shared/care.js'
+import { appAssetUrl, appUpdateUrl, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
 
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024
 const MAX_MULTIPART_BYTES = MAX_PHOTO_BYTES + 1024 * 1024
@@ -46,7 +47,7 @@ export async function onRequestGet({ request, env }) {
   return json({ photos: (rows.results || []).map(photoFromRow) })
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   if (!env.DB) return json({ error: 'D1 未配置' }, 503)
   if (!env.BABY_PHOTOS) return json({ error: 'R2 相册存储未配置' }, 503)
   const auth = await requireSession(request, env)
@@ -89,5 +90,17 @@ export async function onRequestPost({ request, env }) {
     throw error
   }
   const row = await env.DB.prepare('SELECT * FROM baby_photos WHERE id = ?').bind(id).first()
+  scheduleUpdateNotifications({
+    env,
+    householdId: baby.householdId,
+    actorUserId: auth.session.userId,
+    actorName: auth.session.displayName || '家庭成员',
+    babyName: baby.nickname || '宝宝',
+    action: '新增',
+    photo: true,
+    url: appUpdateUrl(request, env, '#/today'),
+    settingsUrl: appUpdateUrl(request, env, '#/settings'),
+    heroUrl: appAssetUrl(request, env),
+  }, waitUntil)
   return json({ photo: photoFromRow(row) }, 201)
 }
