@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { passwordPolicyError } from '../functions/_shared/betterAuth.js'
 import { hashToken, randomToken } from '../functions/_shared/principal.js'
 import { login, logout, register, resetPassword, resumeSession, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
+import { pullWorkspace } from '../src/domain/sync.js'
 import { parseInviteToken } from '../src/domain/householdAccess.js'
 import { buildInviteRoute, buildVisitorRoute, inviteTokenFromLocation, parseHashLocation, visitorTokenFromLocation } from '../src/app/router.js'
 import { nicknamePolicyError, normalizeNickname } from '../functions/api/me.js'
@@ -53,6 +54,45 @@ test('OAuth session keeps the existing household when the follow-up household re
   })
   assert.equal(session.household.id, 'household-existing')
   assert.deepEqual(session.babies, [baby])
+})
+
+test('registered household falls back to the /api/me snapshot when the follow-up request stalls', async () => {
+  const baby = { id: 'baby-existing', nickname: '小舟', birthDate: '2026-08-01' }
+  const session = await resumeSession({
+    storage: { setItem() {} },
+    timeoutMs: 25,
+    fetchImpl: async (path) => path === '/api/me'
+      ? new Response(JSON.stringify({ user: { id: 'user-existing', email: 'parent@example.com', nickname: '家长' }, household: { id: 'household-existing', role: 'owner', baby } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      : new Promise(() => {}),
+  })
+  assert.equal(session.household.id, 'household-existing')
+  assert.deepEqual(session.babies, [baby])
+})
+
+test('session restore does not wait forever when no household snapshot exists', async () => {
+  const outcome = await Promise.race([
+    resumeSession({
+      storage: { setItem() {} },
+      timeoutMs: 25,
+      fetchImpl: async (path) => path === '/api/me'
+        ? new Response(JSON.stringify({ user: { id: 'user-new', email: 'parent@example.com', nickname: '家长' } }), { status: 200, headers: { 'content-type': 'application/json' } })
+        : new Promise(() => {}),
+    }).then(() => ({ type: 'resolved' }), (error) => ({ type: 'rejected', error })),
+    new Promise((resolve) => setTimeout(() => resolve({ type: 'test-timeout' }), 100)),
+  ])
+  assert.notEqual(outcome.type, 'test-timeout')
+  assert.equal(outcome.type, 'rejected')
+  assert.equal(outcome.error.code, 'REQUEST_TIMEOUT')
+})
+
+test('workspace restore does not wait forever for a stalled sync request', async () => {
+  const outcome = await Promise.race([
+    pullWorkspace('baby-existing', () => new Promise(() => {}), { timeoutMs: 25 }).then(() => ({ type: 'resolved' }), (error) => ({ type: 'rejected', error })),
+    new Promise((resolve) => setTimeout(() => resolve({ type: 'test-timeout' }), 100)),
+  ])
+  assert.notEqual(outcome.type, 'test-timeout')
+  assert.equal(outcome.type, 'rejected')
+  assert.equal(outcome.error.code, 'REQUEST_TIMEOUT')
 })
 
 test('email registration needs only email and password and preserves the return route', async () => {

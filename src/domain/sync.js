@@ -1,12 +1,20 @@
-export async function pullWorkspace(babyId, fetchImpl = globalThis.fetch) {
+import { WORKSPACE_RESTORE_TIMEOUT_MS, fetchWithTimeout, withTimeout } from './request.js'
+
+export async function pullWorkspace(babyId, fetchImpl = globalThis.fetch, options = {}) {
   if (!babyId || typeof fetchImpl !== 'function') return null
-  const response = await fetchImpl(`/api/sync?babyId=${encodeURIComponent(babyId)}`, { credentials: 'include' })
+  const response = await fetchWithTimeout(fetchImpl, `/api/sync?babyId=${encodeURIComponent(babyId)}`, { credentials: 'include' }, {
+    timeoutMs: options.timeoutMs ?? WORKSPACE_RESTORE_TIMEOUT_MS,
+    message: '线上档案读取超时，请稍后重试。',
+  })
   if (!response.ok) {
     const error = new Error('线上档案暂时无法读取')
     error.status = response.status
     throw error
   }
-  const payload = await response.json()
+  const payload = await withTimeout(() => response.json(), {
+    timeoutMs: options.timeoutMs ?? WORKSPACE_RESTORE_TIMEOUT_MS,
+    message: '线上档案读取超时，请稍后重试。',
+  })
   return payload?.baby ? payload : null
 }
 
