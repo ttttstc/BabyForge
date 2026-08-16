@@ -1,3 +1,5 @@
+import { AUTH_RESTORE_TIMEOUT_MS, fetchWithTimeout, withTimeout } from './request.js'
+
 export const SESSION_KEY = 'babyforge:session'
 
 function normalizeUsername(value) {
@@ -9,9 +11,12 @@ function saveSession(storage, session) {
   return session
 }
 
-async function authFetch(fetchImpl, input, init) {
+async function authFetch(fetchImpl, input, init, timeoutMs = AUTH_RESTORE_TIMEOUT_MS) {
   try {
-    return await fetchImpl(input, init)
+    return await fetchWithTimeout(fetchImpl, input, init, {
+      timeoutMs,
+      message: '登录服务响应超时，请刷新后重试。',
+    })
   } catch (error) {
     if (error instanceof TypeError || /failed to fetch|networkerror|fetch failed/i.test(String(error?.message || ''))) {
       throw new Error('无法连接登录服务，请确认网络连接后重试。', { cause: error })
@@ -20,16 +25,27 @@ async function authFetch(fetchImpl, input, init) {
   }
 }
 
-async function loadBetterAuthSession(fetchImpl, storage = globalThis.localStorage) {
-  const meResponse = await authFetch(fetchImpl, '/api/me', { credentials: 'include' })
+async function loadBetterAuthSession(fetchImpl, storage = globalThis.localStorage, options = {}) {
+  const timeoutMs = options.timeoutMs ?? AUTH_RESTORE_TIMEOUT_MS
+  const readJson = (response) => withTimeout(() => response.json(), {
+    timeoutMs,
+    message: '登录服务响应超时，请刷新后重试。',
+  })
+  const meResponse = await authFetch(fetchImpl, '/api/me', { credentials: 'include' }, timeoutMs)
   if (meResponse.status === 401 || meResponse.status === 404) return null
   if (meResponse.status === 403) throw new Error('请先验证邮箱')
   if (!meResponse.ok) throw new Error('登录状态无法确认')
   if (!meResponse.headers.get('content-type')?.includes('application/json')) return null
-  const me = await meResponse.json()
-  const householdResponse = await authFetch(fetchImpl, '/api/household', { credentials: 'include' })
-  const hasHouseholdPayload = householdResponse.ok && householdResponse.headers.get('content-type')?.includes('application/json')
-  const householdPayload = hasHouseholdPayload ? await householdResponse.json() : null
+  const me = await readJson(meResponse)
+  let hasHouseholdPayload = false
+  let householdPayload = null
+  try {
+    const householdResponse = await authFetch(fetchImpl, '/api/household', { credentials: 'include' }, timeoutMs)
+    hasHouseholdPayload = householdResponse.ok && householdResponse.headers.get('content-type')?.includes('application/json')
+    householdPayload = hasHouseholdPayload ? await readJson(householdResponse) : null
+  } catch (error) {
+    if (!me.household) throw error
+  }
   // `/api/me` already includes the household snapshot. Keep it as a fallback
   // only when the follow-up request is briefly unavailable after an OAuth
   // callback; a valid `{ household: null }` response remains authoritative.
@@ -135,7 +151,7 @@ export async function login(username, password, options = {}) {
 export async function resumeSession(options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
   if (typeof fetchImpl !== 'function') return null
-  return loadBetterAuthSession(fetchImpl, options.storage || globalThis.localStorage)
+  return loadBetterAuthSession(fetchImpl, options.storage || globalThis.localStorage, options)
 }
 
 export async function updateNickname(value, options = {}) {
