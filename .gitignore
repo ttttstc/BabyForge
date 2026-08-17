@@ -11,3 +11,14 @@ playwright-report/
 .dev.vars*
 .DS_Store
 prompt/image/黄疸/source/ill
+
+# HarmonyOS local build and developer signing material.
+harmony/**/build/
+harmony/**/oh_modules/
+harmony/.local-signing/
+harmony/.ohos/
+harmony/**/*.p12
+harmony/**/*.p7b
+harmony/**/*.cer
+harmony/**/*.csr
+.hvigor/

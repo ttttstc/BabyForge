@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "BabyForge HarmonyOS shell"
+    },
+    {
+      "name": "entry_desc",
+      "value": "BabyForge mobile care workspace"
+    },
+    {
+      "name": "entry_label",
+      "value": "BabyForge"
+    },
+    {
+      "name": "internet_reason",
+      "value": "访问 BabyForge 在线服务"
+    }
+  ]
+}
