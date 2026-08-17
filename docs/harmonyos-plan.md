@@ -184,13 +184,14 @@ Pop-Location
 
 ## 10. 本次自测记录
 
-- HarmonyOS：Hvigor 清理后构建通过，ArkTS、资源和 HAP 打包通过；产物为 `harmony/entry/build/default/outputs/default/entry-default-unsigned.hap`。`node harmony/scripts/verify-harmony.mjs` 源码与实际 HAP 产物验收通过 40 项；`--require-signed` 会以 exit 1 拒绝当前 unsigned HAP。无真机连接、无仓库内签名配置，因此未虚报安装通过。
-- 真机安装保护：`harmony/scripts/install-harmony.ps1` 已通过 PowerShell 解析检查；当前 unsigned HAP 会在调用 HDC 前失败，若输出目录里存在更新的 unsigned HAP 也会拒绝使用旧 signed HAP。签名 HAP 出现后会先调用 `hap-sign-tool.jar verify-app` 实际验签，再校验 `com.ni.babyforge`、`EntryAbility`、phone 和 portrait，最后才允许安装并请求启动 Bundle；本轮已验证 unsigned HAP、以及仅把 unsigned HAP 改名为 `*-signed.hap` 两种拒绝逻辑。
-- Web 单元/协议基线：全量 223/223 通过；`balanced/high` 不再因触控特征或普通 2GB 设备被静默降级，只有显式 `low` 或极低内存设备自动降级。
+以下记录截至 2026-08-18；“实现”不等于“真机手工通过”，未验证的场景仍保留在待办中。
+
+- HarmonyOS 构建：Hvigor 清理构建通过；签名 HAP `entry-default-signed.hap` 通过 `hap-sign-tool.jar verify-app`，`verify-harmony.mjs --require-signed` 通过 43 项。
+- 真机启动：已安装到 HUAWEI Mate 70 Pro（PLR-AL00，HarmonyOS 6.1.0.135），修复启动阶段 `setWindowBackgroundColor` 闪退后，强制停止再启动成功；`com.ni.babyforge` 主进程和 ArkWeb 渲染进程存活，Ability 状态为 `FOREGROUND`。
+- Web 单元/协议基线：全量 224/224 通过；新增邮箱登录请求 `rememberMe: true` 的回归测试，目标是支持鸿蒙冷启动恢复会话。
 - ESLint：0 errors，2 个既有 React Hook dependency warnings（`.review/pr47/src_app_App.jsx` 和 `src/app/App.jsx`）。
-- Vite production build：通过；本轮未执行 Cloudflare 生产部署，Harmony 壳仍按既定方案加载现有生产入口。
-- Playwright visual：60 条中 22 通过、38 失败；失败主要在测试登录后仍停在 `#/login`，造成后续 onboarding/业务场景连锁超时。根因是本地 Vite 仅挂载演示 API，而 `.dev.vars` 当前没有视觉用例硬编码的 `test-admin` 测试账号；未发现来自 `harmony/` 的调用路径。该结果作为现有 Web 测试夹具问题记录，不作为鸿蒙壳的通过项。
-- 设备：当前 `hdc list targets` 为空；明天连接手机后必须重新执行安装、启动、登录、返回、外链、断网和真机 WebGL 检查。
-- 签名环境：仓库 `build-profile.json5` 不携带 `signingConfigs`；本机现有历史调试 profile 与其他 Bundle 且已过有效期，不能用于 `com.ni.babyforge`。明天必须在 DevEco 账号内为本工程重新执行自动签名，不要复用旧 profile 或把签名材料写回仓库。
-- 生产入口连通性：本机普通请求优先尝试 Cloudflare IPv6 地址时出现 connection reset，但强制 IPv4 请求下根入口、`/#/login` 和生产 JS 资源均返回 200，未登录的同源 `/api/me` 返回预期 401；HTTP 请求正确重定向到 HTTPS，页面 HTML 含移动端 viewport。仍属于当前网络 IPv6 路径风险，不能替代真机网络验收。
-- 本地模拟器：尝试启动 `NI_Phone` 时因主机 Hyper-V 未启用而失败，未产生 HDC 目标；不影响明天使用真实华为手机验收。
+- Vite production build：通过；本轮未执行 Cloudflare 生产部署，线上资源仍返回旧的 `rememberMe: false` 构建，因此 H-04 会话恢复尚未闭环。
+- Playwright visual：已记录的基线为 60 条中 22 通过、38 失败；失败主要由本地视觉夹具缺少 `test-admin` 测试账号导致停在 `#/login`，未发现来自 `harmony/` 的调用路径；该项仍是 Web 测试基础设施待办，不作为鸿蒙壳通过项。
+- 真机待验：H-04（登录/冷启动会话恢复）、H-05（站内全路径）、H-06（外链/危险协议运行时）、H-07（系统返回键）、H-08（断网/恢复重试）、H-09（照护记录同步）、H-10（AI）、H-11（WebGL/2D fallback）尚未逐项完成手工证据；其中 H-09/H-10/H-11 需要测试账号、可控数据和 AI/网络条件，未擅自写入生产数据或消耗额度。
+- 安全与产物：仓库 `build-profile.json5` 不携带 `signingConfigs`、证书或密码；HAP 仅声明 `ohos.permission.INTERNET`，静态安全验收通过。真机安装保护会拒绝 unsigned、过期 signed 和身份不匹配的 HAP。
+- 生产入口：`https://babyforge.bbroot.com/` 当前返回 200，未登录 `/api/me` 返回预期 401；IPv6 路径仍有偶发 reset 风险，不能替代真机网络验收。

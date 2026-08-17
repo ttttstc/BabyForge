@@ -136,7 +136,7 @@ export async function login(username, password, options = {}) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email: normalized, password: secret, rememberMe: false }),
+    body: JSON.stringify({ email: normalized, password: secret, rememberMe: true }),
   })
   let payload = {}
   try { payload = await response.json() } catch { /* handled below */ }
