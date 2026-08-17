@@ -1,16 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { Onboarding } from '../features/Onboarding.jsx'
-import { Workspace } from '../features/Workspace.jsx'
-import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
-import { PediatricDiseasesView } from '../features/PediatricDiseasesView.jsx'
-import { ExperienceView } from '../features/ExperienceView.jsx'
-import { SettingsView } from '../features/SettingsView.jsx'
-import { LoginView } from '../features/LoginView.jsx'
-import { HouseholdGate } from '../features/HouseholdGate.jsx'
-import { RecordCenter } from '../features/RecordCenter.jsx'
-import { NaibaAiView } from '../features/NaibaAiView.jsx'
-import { VaccineView } from '../features/VaccineView.jsx'
-import { VisitorView } from '../features/VisitorView.jsx'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
@@ -22,6 +10,19 @@ import { clearExperienceCache } from '../domain/experienceApi.js'
 import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
 import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation, visitorTokenFromLocation } from './router.js'
 
+const Onboarding = lazy(() => import('../features/Onboarding.jsx').then((module) => ({ default: module.Onboarding })))
+const Workspace = lazy(() => import('../features/Workspace.jsx').then((module) => ({ default: module.Workspace })))
+const DoctorSummaryView = lazy(() => import('../features/DoctorSummaryView.jsx').then((module) => ({ default: module.DoctorSummaryView })))
+const PediatricDiseasesView = lazy(() => import('../features/PediatricDiseasesView.jsx').then((module) => ({ default: module.PediatricDiseasesView })))
+const ExperienceView = lazy(() => import('../features/ExperienceView.jsx').then((module) => ({ default: module.ExperienceView })))
+const SettingsView = lazy(() => import('../features/SettingsView.jsx').then((module) => ({ default: module.SettingsView })))
+const LoginView = lazy(() => import('../features/LoginView.jsx').then((module) => ({ default: module.LoginView })))
+const HouseholdGate = lazy(() => import('../features/HouseholdGate.jsx').then((module) => ({ default: module.HouseholdGate })))
+const RecordCenter = lazy(() => import('../features/RecordCenter.jsx').then((module) => ({ default: module.RecordCenter })))
+const NaibaAiView = lazy(() => import('../features/NaibaAiView.jsx').then((module) => ({ default: module.NaibaAiView })))
+const VaccineView = lazy(() => import('../features/VaccineView.jsx').then((module) => ({ default: module.VaccineView })))
+const VisitorView = lazy(() => import('../features/VisitorView.jsx').then((module) => ({ default: module.VisitorView })))
+
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
 
 function demoWorkspace(session) {
@@ -30,6 +31,11 @@ function demoWorkspace(session) {
 
 function sameValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+function RouteLoading({ locale }) {
+  const isEnglish = locale === 'en-US'
+  return <main className="login-shell" aria-busy="true"><section className="login-card"><p className="eyebrow">BabyForge</p><h2>{isEnglish ? 'Opening this space…' : '正在打开页面…'}</h2><p className="muted">{isEnglish ? 'Preparing your caregiver workspace.' : '正在准备你的照护工作区。'}</p></section></main>
 }
 
 export function App() {
@@ -596,7 +602,7 @@ export function App() {
     return true
   }
 
-  if (visitorToken) return <VisitorView token={visitorToken} locale={state.preferences.locale} />
+  if (visitorToken) return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><VisitorView token={visitorToken} locale={state.preferences.locale} /></Suspense>
 
   if (sessionActivating && route !== ROUTES.resetPassword) {
     const isEnglish = state.preferences.locale === 'en-US'
@@ -609,45 +615,45 @@ export function App() {
     const resetParams = new URLSearchParams(globalThis.location?.search || '')
     const resetToken = route === ROUTES.resetPassword ? resetParams.get('token') || '' : ''
     const resetError = route === ROUTES.resetPassword ? resetParams.get('error') || '' : ''
-    return <LoginView key={route} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onForgotPassword={(email) => requestPasswordReset(email)} onResetPassword={({ token, password }) => resetPassword({ token, password })} onResetComplete={() => { globalThis.history?.replaceState(null, '', `${globalThis.location?.pathname || '/'}${ROUTES.login}`); navigate(ROUTES.login) }} onResendVerification={(email) => resendVerification(email, { callbackURL })} resetMode={route === ROUTES.resetPassword} resetToken={resetToken} resetError={resetError} error={authError} noProfile={session?.role === 'guest' && !state.baby} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><LoginView key={route} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} onLogin={handleLogin} onRegister={async (input) => { setAuthError(''); await register(input, { callbackURL }) }} onGoogleLogin={() => startGoogleLogin(returnTo)} onForgotPassword={(email) => requestPasswordReset(email)} onResetPassword={({ token, password }) => resetPassword({ token, password })} onResetComplete={() => { globalThis.history?.replaceState(null, '', `${globalThis.location?.pathname || '/'}${ROUTES.login}`); navigate(ROUTES.login) }} onResendVerification={(email) => resendVerification(email, { callbackURL })} resetMode={route === ROUTES.resetPassword} resetToken={resetToken} resetError={resetError} error={authError} noProfile={session?.role === 'guest' && !state.baby} /></Suspense>
   }
 
   if (session.mode === 'cloudflare' && !session.household && route !== ROUTES.onboarding) {
-    return <HouseholdGate key={inviteToken || 'household'} locale={state.preferences.locale} inviteToken={inviteToken} onCreate={() => navigate(ROUTES.onboarding)} onOpenInvite={(token) => navigate(token ? buildInviteRoute(token) : ROUTES.household)} onAccept={handleInviteAccepted} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><HouseholdGate key={inviteToken || 'household'} locale={state.preferences.locale} inviteToken={inviteToken} onCreate={() => navigate(ROUTES.onboarding)} onOpenInvite={(token) => navigate(token ? buildInviteRoute(token) : ROUTES.household)} onAccept={handleInviteAccepted} /></Suspense>
   }
 
   if (!state.baby || route === ROUTES.onboarding) {
-    return <Onboarding onCreate={createBaby} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><Onboarding onCreate={createBaby} locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} /></Suspense>
   }
 
   if (route === ROUTES.settings) {
-    return <SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} householdRole={session?.household?.role || session?.role} nickname={session?.nickname || session?.displayName || '家长'} accountEmail={session?.email || ''} onNicknameChange={handleNicknameChange} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><SettingsView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} cloudMode={session?.mode === 'cloudflare'} householdRole={session?.household?.role || session?.role} nickname={session?.nickname || session?.displayName || '家长'} accountEmail={session?.email || ''} onNicknameChange={handleNicknameChange} /></Suspense>
   }
 
   if (route === ROUTES.records) {
-    return <RecordCenter state={state} commitState={commitState} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><RecordCenter state={state} commitState={commitState} onLogout={handleLogout} readOnly={readOnly} role={session?.role} /></Suspense>
   }
 
   if ([ROUTES.healthDiseases, ROUTES.healthOrgans].includes(route)) {
-    return <PediatricDiseasesView key={route} route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><PediatricDiseasesView key={route} route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} /></Suspense>
   }
 
   if (route === ROUTES.summary) {
-    return <DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><DoctorSummaryView state={state} onBack={() => navigate(ROUTES.today)} onClear={clearWorkspace} readOnly={readOnly} onLogout={handleLogout} /></Suspense>
   }
 
   if (route === ROUTES.experience) {
-    return <ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} remote={session?.mode === 'cloudflare'} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><ExperienceView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} remote={session?.mode === 'cloudflare'} /></Suspense>
   }
 
   if (route === ROUTES.naibaAi) {
     const returnTo = resolveNaibaReturnTo(location.params.get('returnTo')) || ROUTES.today
-    return <NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} demoMode={['demo', 'showcase'].includes(session?.mode)} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><NaibaAiView state={state} commitState={commitState} cloudMode={session?.mode === 'cloudflare'} demoMode={['demo', 'showcase'].includes(session?.mode)} onBack={() => navigate(returnTo)} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} /></Suspense>
   }
 
   if (route === ROUTES.healthVaccines) {
-    return <VaccineView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><VaccineView state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} /></Suspense>
   }
 
-  return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} showcaseMode={session?.mode === 'showcase'} />
+  return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} showcaseMode={session?.mode === 'showcase'} /></Suspense>
 }
