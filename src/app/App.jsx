@@ -482,7 +482,7 @@ export function App() {
       }
       if (next.mode === 'cloudflare' && !next.household) {
         navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
-      } else {
+      } else if ([ROUTES.login, ROUTES.onboarding, ROUTES.household, ROUTES.resetPassword].includes(route) || inviteToken) {
         navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
       }
     } finally {

@@ -21,6 +21,7 @@ async function createBaby(page) {
   await page.getByLabel('男孩').check()
   await page.getByLabel('喂养方式').selectOption('mixed')
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
+  await expect(page).toHaveURL(/#\/today$/)
 }
 
 function cloudVaccineFixture() {
@@ -58,17 +59,34 @@ function cloudVaccineFixture() {
     displayName: '管理员',
     mode: 'cloudflare',
     expiresAt: '2099-01-01T00:00:00.000Z',
+    household: { id: 'cloud-vaccine-household', name: '云端家庭', role: 'owner', baby },
     babies: [baby],
   }
   return { baby, workspace, session }
 }
 
 async function seedCloudVaccineWorkspace(page, fixture) {
+  const { session } = fixture
+  await page.route('**/api/me', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      user: { id: 'niwa', email: 'niwa@example.test', nickname: '管理员' },
+      household: session.household,
+    }),
+  }))
+  await page.route('**/api/household', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ household: session.household }),
+  }))
   await page.addInitScript(({ session: initialSession, workspace: initialWorkspace }) => {
+    document.cookie = 'babyforge_visual_session=1; Path=/'
     localStorage.setItem('babyforge:session', JSON.stringify(initialSession))
     localStorage.setItem('babyforge:workspace:niwa', JSON.stringify(initialWorkspace))
   }, fixture)
   await page.evaluate(({ session: initialSession, workspace: initialWorkspace }) => {
+    document.cookie = 'babyforge_visual_session=1; Path=/'
     localStorage.setItem('babyforge:session', JSON.stringify(initialSession))
     localStorage.setItem('babyforge:workspace:niwa', JSON.stringify(initialWorkspace))
   }, fixture)
@@ -81,8 +99,9 @@ test.beforeEach(async ({ page }) => {
 
 test('vaccines tab uses the 2026 national roadmap and opens complete dose guidance', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '疫苗', exact: true }).click()
-  await expect(page).toHaveURL(/#\/vaccines$/)
+  await page.getByRole('button', { name: '健康', exact: true }).click()
+  await expect(page).toHaveURL(/#\/health\/vaccines$/)
+  await expect(page.getByRole('tab', { name: '疫苗计划', exact: true })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('heading', { name: '宝宝疫苗计划' })).toBeVisible()
   await expect(page.getByText('国家免疫规划 · 2026 年版')).toBeVisible()
   await expect(page.getByText('宝宝当前节点')).toBeVisible()
@@ -127,7 +146,8 @@ test('vaccine completion survives an in-flight cloud event pull', async ({ page 
   const pullStarted = page.waitForRequest((request) => request.method() === 'GET' && request.url().includes('/api/events?babyId='))
   await page.reload()
   await pullStarted
-  await page.goto('/#/vaccines')
+  await expect(page).toHaveURL(/#\/today$/)
+  await page.goto('/#/health/vaccines')
   const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
   await completionToggle.click()
   await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
@@ -156,7 +176,8 @@ test('vaccine completion survives an in-flight cloud actor pull', async ({ page 
   const pullStarted = page.waitForRequest((request) => request.method() === 'GET' && request.url().includes('/api/actors?babyId='))
   await page.reload()
   await pullStarted
-  await page.goto('/#/vaccines')
+  await expect(page).toHaveURL(/#\/today$/)
+  await page.goto('/#/health/vaccines')
   const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
   await completionToggle.click()
   await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
@@ -185,7 +206,8 @@ test('vaccine completion survives the initial cloud workspace pull', async ({ pa
   const pullStarted = page.waitForRequest((request) => request.method() === 'GET' && request.url().includes('/api/sync?babyId='))
   await page.reload()
   await pullStarted
-  await page.goto('/#/vaccines')
+  await expect(page).toHaveURL(/#\/today$/)
+  await page.goto('/#/health/vaccines')
   const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
   await completionToggle.click()
   await expect(completionToggle).toHaveAttribute('aria-pressed', 'true')
@@ -212,7 +234,8 @@ test('cloud vaccine writes show pending until the event is confirmed', async ({ 
   await page.route('**/api/actors?babyId=*', (route) => route.fulfill({ json: { actors: workspace.careActors } }))
 
   await page.reload()
-  await page.goto('/#/vaccines')
+  await expect(page).toHaveURL(/#\/today$/)
+  await page.goto('/#/health/vaccines')
   const completionToggle = page.locator('.vaccine-stop.current .vaccine-dose-complete').first()
   const writeStarted = page.waitForRequest((request) => request.method() === 'POST' && request.url().endsWith('/api/events'))
   await completionToggle.click()

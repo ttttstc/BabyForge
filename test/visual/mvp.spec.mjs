@@ -23,16 +23,19 @@ async function activateVisualEditor(page) {
     body: JSON.stringify({ household: { id: 'visual-test-household', role: 'owner', baby: null } }),
   }))
   await page.route('**/api/sync', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
-  await page.evaluate(() => localStorage.setItem('babyforge:session', JSON.stringify({
-    userId: 'visual-test-user',
-    email: 'visual@example.test',
-    role: 'owner',
-    displayName: '视觉测试',
-    household: { id: 'visual-test-household', role: 'owner' },
-    babies: [],
-    mode: 'cloudflare',
-    auth: 'better-auth',
-  })))
+  await page.evaluate(() => {
+    document.cookie = 'babyforge_visual_session=1; Path=/'
+    localStorage.setItem('babyforge:session', JSON.stringify({
+      userId: 'visual-test-user',
+      email: 'visual@example.test',
+      role: 'owner',
+      displayName: '视觉测试',
+      household: { id: 'visual-test-household', role: 'owner' },
+      babies: [],
+      mode: 'cloudflare',
+      auth: 'better-auth',
+    }))
+  })
   await page.reload()
 }
 
@@ -49,6 +52,7 @@ async function createBaby(page, ageDays = 6, sex = 'male') {
   await page.getByLabel(sex === 'female' ? '女孩' : '男孩').check()
   await page.getByLabel('喂养方式').selectOption('mixed')
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
+  await expect(page).toHaveURL(/#\/today$/)
 }
 
 test.beforeEach(async ({ page }) => {
@@ -58,8 +62,8 @@ test.beforeEach(async ({ page }) => {
 
 test('new visitors see the product login before profile setup', async ({ page }) => {
   await expect(page).toHaveURL(/#\/login$/)
-  await expect(page.getByRole('heading', { name: '查看宝宝情况' })).toBeVisible()
-  await expect(page.getByText('日常记录', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '继续照护，不错过每个变化' })).toBeVisible()
+  await expect(page.getByText('今日照护', { exact: true })).toBeVisible()
   await activateVisualEditor(page)
   await expect(page).toHaveURL(/#\/onboarding$/)
 })
@@ -71,7 +75,8 @@ test('parent creates a profile and sees the newborn workspace', async ({ page })
   await expect(page).toHaveURL(/#\/today$/)
   await expect(page.getByText('出生后 6 天').first()).toBeVisible()
   await expect(page.getByText('男孩', { exact: true }).first()).toBeVisible()
-  await expect(page.getByTestId('care-task-list').locator('[data-task-id]')).toHaveCount(3)
+  await expect(page.getByTestId('today-care-summary')).toBeVisible()
+  await expect(page.getByTestId('today-care-summary').getByRole('button', { name: '喂养 · 查看今天记录' })).toBeVisible()
   await expect(page.getByTestId('baby-album')).toBeVisible()
   await expect(page.getByTestId('album-empty')).toBeVisible()
   await page.getByRole('button', { name: '成长', exact: true }).click()
@@ -245,8 +250,8 @@ test('guest account can view the workspace but cannot edit records', async ({ pa
   await page.getByLabel('密码').fill('0729')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/#\/today$/)
-  await expect(page.getByText('游客 · 只读')).toBeVisible()
-  await expect(page.getByTestId('care-task-list').locator('button').first()).toBeDisabled()
+  await expect(page.locator('.role-pill.guest')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '新增喂养' })).toBeDisabled()
   await page.getByRole('button', { name: '成长', exact: true }).click()
   await expect(page.getByRole('button', { name: '去记录中心录入成长测量' })).toBeVisible()
   await page.goto('/#/records?panel=basic')
@@ -317,11 +322,13 @@ test('settings switches the persisted interface language', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '设置' })).toBeVisible()
   await page.locator('input[name="locale"][value="en-US"]').check()
   await page.getByRole('button', { name: 'Done' }).click()
-  await expect(page.getByRole('button', { name: 'Conditions', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Conditions', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Health', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Health', exact: true }).click()
+  await expect(page.getByRole('tab', { name: 'Conditions', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'Conditions', exact: true }).click()
   await expect(page.locator('.disease-selected').getByRole('heading', { name: 'Newborn jaundice', exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Conditions', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Conditions', exact: true })).toBeVisible()
 })
 
 test('settings edits baby birth profile and recalculates age-based plans', async ({ page }) => {

@@ -187,11 +187,12 @@ Pop-Location
 以下记录截至 2026-08-18；“实现”不等于“真机手工通过”，未验证的场景仍保留在待办中。
 
 - HarmonyOS 构建：Hvigor 清理构建通过；签名 HAP `entry-default-signed.hap` 通过 `hap-sign-tool.jar verify-app`，`verify-harmony.mjs --require-signed` 通过 43 项。
-- 真机启动：已安装到 HUAWEI Mate 70 Pro（PLR-AL00，HarmonyOS 6.1.0.135），修复启动阶段 `setWindowBackgroundColor` 闪退后，强制停止再启动成功；`com.ni.babyforge` 主进程和 ArkWeb 渲染进程存活，Ability 状态为 `FOREGROUND`。
+- 真机启动：此前已安装到 HUAWEI Mate 70 Pro（PLR-AL00，HarmonyOS 6.1.0.135），修复启动阶段 `setWindowBackgroundColor` 闪退后，强制停止再启动成功；`com.ni.babyforge` 主进程和 ArkWeb 渲染进程存活，Ability 状态为 `FOREGROUND`。本轮按收尾要求不再追加真机操作。
 - Web 单元/协议基线：全量 224/224 通过；新增邮箱登录请求 `rememberMe: true` 的回归测试，目标是支持鸿蒙冷启动恢复会话。
 - ESLint：0 errors，2 个既有 React Hook dependency warnings（`.review/pr47/src_app_App.jsx` 和 `src/app/App.jsx`）。
 - Vite production build：通过；本轮未执行 Cloudflare 生产部署，线上资源仍返回旧的 `rememberMe: false` 构建，因此 H-04 会话恢复尚未闭环。
-- Playwright visual：已记录的基线为 60 条中 22 通过、38 失败；失败主要由本地视觉夹具缺少 `test-admin` 测试账号导致停在 `#/login`，未发现来自 `harmony/` 的调用路径；该项仍是 Web 测试基础设施待办，不作为鸿蒙壳通过项。
+- Playwright visual：本轮使用仅在 `BABYFORGE_VISUAL_TESTS=1` 下启用的本地确定性夹具，60/60 通过，覆盖登录/家庭入口、记录中心、照片、成长、疫苗、儿科、奶爸 AI、移动布局和 3D 模型回退；该结果验证 Web 业务与壳加载入口，不替代 HarmonyOS 真机手工验收。
+- 本轮收尾边界：按照用户要求不再进行真机验证；本次只完成 Web 本地验收、ArkWeb 壳代码修复、产物检查和 PR 提交。
 - 真机待验：H-04（登录/冷启动会话恢复）、H-05（站内全路径）、H-06（外链/危险协议运行时）、H-07（系统返回键）、H-08（断网/恢复重试）、H-09（照护记录同步）、H-10（AI）、H-11（WebGL/2D fallback）尚未逐项完成手工证据；其中 H-09/H-10/H-11 需要测试账号、可控数据和 AI/网络条件，未擅自写入生产数据或消耗额度。
 - 安全与产物：仓库 `build-profile.json5` 不携带 `signingConfigs`、证书或密码；HAP 仅声明 `ohos.permission.INTERNET`，静态安全验收通过。真机安装保护会拒绝 unsigned、过期 signed 和身份不匹配的 HAP。
 - 生产入口：`https://babyforge.bbroot.com/` 当前返回 200，未登录 `/api/me` 返回预期 401；IPv6 路径仍有偶发 reset 风险，不能替代真机网络验收。
