@@ -99,6 +99,7 @@ check('应用名称必须为 BabyForge', appStrings.includes('BabyForge') && ent
 check('必须只声明 phone 设备', has(moduleConfig, /"deviceTypes"\s*:\s*\[\s*"phone"\s*\]/))
 check('必须锁定竖屏', has(moduleConfig, /"orientation"\s*:\s*"portrait"/))
 check('窗口必须启用全屏布局', ability.includes('setWindowLayoutFullScreen(true)'))
+check('不得在窗口内容加载前设置原生背景色', !ability.includes('setWindowBackgroundColor('))
 check('全屏布局必须动态避让系统和键盘区域', ability.includes('getWindowAvoidArea') && ability.includes('TYPE_KEYBOARD') && ability.includes("on('avoidAreaChange'") && ability.includes('AppStorage.setOrCreate'))
 check('ArkUI 内容必须使用动态安全区内边距', indexPage.includes("@StorageProp('topAvoidHeight')") && indexPage.includes('bottomAvoidHeight') && indexPage.includes('.padding({ top: this.topAvoidHeight'))
 check('必须且只能声明网络访问权限', requestedPermissions.length === 1 && requestedPermissions[0] === 'ohos.permission.INTERNET', requestedPermissions.join(', ') || '没有声明权限')

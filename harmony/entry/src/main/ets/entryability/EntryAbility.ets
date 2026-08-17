@@ -39,7 +39,6 @@ export default class EntryAbility extends UIAbility {
     const mainWindow = windowStage.getMainWindowSync();
     this.mainWindow = mainWindow;
     mainWindow.setWindowLayoutFullScreen(true);
-    mainWindow.setWindowBackgroundColor('#FFF9F0');
     this.updateAvoidArea(window.AvoidAreaType.TYPE_SYSTEM, mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM));
     this.updateAvoidArea(window.AvoidAreaType.TYPE_KEYBOARD, mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_KEYBOARD));
     mainWindow.on('avoidAreaChange', this.onAvoidAreaChange);
