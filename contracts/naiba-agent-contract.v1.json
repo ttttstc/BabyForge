@@ -1,0 +1,21 @@
+{
+  "contract": "babyforge.naiba.agent",
+  "contractVersion": "1.0.0",
+  "endpoint": "/api/ai/chat",
+  "request": {
+    "required": ["message", "babyId", "history"],
+    "optional": ["skillId", "context", "decisionFacts", "attachments"],
+    "maxHistoryTurns": 20,
+    "maxHistoryCharacters": 16000,
+    "contextSources": ["today", "record", "growth", "explore"],
+    "attachmentKinds": ["image"],
+    "maxAttachments": 3,
+    "maxAttachmentBytes": 6000000,
+    "explicitAttachmentSend": true
+  },
+  "events": ["meta", "activity", "message", "decision", "draft", "sources", "done"],
+  "encodings": ["text/event-stream", "application/json"],
+  "conversationPersistence": false,
+  "sharedRuntime": "functions/_shared/naibaAgent.js",
+  "platformAdapters": ["web", "harmony"]
+}

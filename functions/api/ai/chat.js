@@ -1,7 +1,7 @@
 import { getSession, json } from '../../_shared/auth.js'
 import { accessibleBaby, concernFromRow, eventFromRow, planFromRow } from '../../_shared/care.js'
 import { describeNaibaAgentFailure, runNaibaAgent } from '../../_shared/naibaAgent.js'
-import { selectSkillId } from '../../_shared/skillRegistry.js'
+import { getSkillContract, selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
 import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
@@ -9,51 +9,22 @@ import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
 import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
 import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
+import { NAIBA_AGENT_CONTRACT, NAIBA_AGENT_CONTRACT_VERSION, normalizeNaibaAttachments, normalizeNaibaContext, normalizeNaibaHistory } from '../../../src/domain/naibaAgentContract.js'
+import { draftText, parseCareEventDraft } from '../../../src/domain/careEventDraft.js'
 
 function sse(events, status = 200) {
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
   return new Response(body, { status, headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' } })
 }
 
-function newConversationId() {
-  return globalThis.crypto?.randomUUID?.() || `conversation-${Date.now()}`
+function newRequestId() {
+  return globalThis.crypto?.randomUUID?.() || `request-${Date.now()}`
 }
 
-async function openConversation(env, accountId, babyId, requestedId = '') {
-  const id = /^[a-zA-Z0-9_-]{1,120}$/.test(requestedId) ? requestedId : newConversationId()
-  const now = new Date()
-  const expiresAt = new Date(now.getTime() + 30 * 86_400_000).toISOString()
-  try {
-    const existing = await env.DB.prepare('SELECT id, account_id AS accountId, baby_id AS babyId, status, expires_at AS expiresAt FROM ai_conversations WHERE id = ?').bind(id).first()
-    if (existing && (existing.accountId !== accountId || existing.babyId !== babyId || existing.status === 'deleted')) return { denied: true }
-    if (!existing) {
-      await env.DB.prepare(`
-        INSERT INTO ai_conversations (id, baby_id, account_id, title, status, created_at, updated_at, expires_at)
-        VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
-      `).bind(id, babyId, accountId, '奶爸AI对话', now.toISOString(), now.toISOString(), expiresAt).run()
-    } else if (existing.expiresAt <= now.toISOString()) {
-      await env.DB.prepare('UPDATE ai_conversations SET status = \'active\', updated_at = ?, expires_at = ? WHERE id = ?').bind(now.toISOString(), expiresAt, id).run()
-    }
-    return { id }
-  } catch (error) {
-    // A deployment that has not applied 0007 can still use the safe chat path;
-    // persistence becomes available as soon as the migration is applied.
-    console.error('Naiba AI conversation persistence unavailable', error)
-    return { id: null }
-  }
-}
-
-async function appendMessage(env, conversationId, role, content, skillId = null, decisionResultId = null) {
-  if (!conversationId) return
-  const now = new Date().toISOString()
-  try {
-    await env.DB.batch([
-      env.DB.prepare('INSERT INTO ai_messages (id, conversation_id, role, content_json, skill_id, decision_result_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(newConversationId(), conversationId, role, JSON.stringify({ text: content }), skillId, decisionResultId, now),
-      env.DB.prepare('UPDATE ai_conversations SET updated_at = ? WHERE id = ?').bind(now, conversationId),
-    ])
-  } catch (error) {
-    console.error('Naiba AI message persistence unavailable', error)
-  }
+function agentResponse(events, jsonMode = false, status = 200) {
+  return jsonMode
+    ? json({ contract: NAIBA_AGENT_CONTRACT, contractVersion: NAIBA_AGENT_CONTRACT_VERSION, events }, status)
+    : sse(events, status)
 }
 
 function localAnswer(message, recommendation = {}, decision = null) {
@@ -87,6 +58,28 @@ async function loadAuthorizedContext(env, principalOrAccountId, babyId) {
   }
 }
 
+export function authorizedPageContext(requested, context, now = new Date()) {
+  if (!requested) return null
+  const allowedFocus = {
+    today: new Set(['analysis', 'feeding', 'plan']),
+    record: new Set(['timeline']),
+    growth: new Set(['trend', 'weight', 'length', 'headCircumference']),
+    explore: new Set(['current-topic']),
+  }
+  const pageContext = {
+    source: requested.source,
+    focus: allowedFocus[requested.source]?.has(requested.focus) ? requested.focus : '',
+  }
+  const compactEvent = (event) => ({ id: event.id, category: event.category, occurredAt: event.occurredAt, payload: event.payload, status: event.status })
+  if (requested.source === 'today') {
+    const cutoff = now.getTime() - 24 * 60 * 60 * 1000
+    return { ...pageContext, facts: context.careEvents.filter((event) => new Date(event.occurredAt || event.recordedAt).getTime() >= cutoff).slice(-16).map(compactEvent) }
+  }
+  if (requested.source === 'record') return { ...pageContext, facts: context.careEvents.slice(-16).map(compactEvent) }
+  if (requested.source === 'growth') return { ...pageContext, measurements: context.growthEvents.slice(-16).map(compactEvent) }
+  return pageContext
+}
+
 export const SAFE_DECISION_FACT_KEYS = Object.freeze([...DECISION_INPUT_FACT_KEYS])
 const SAFE_DECISION_FACT_KEY_SET = new Set(SAFE_DECISION_FACT_KEYS)
 if (!DECISION_REQUIRED_FACT_KEYS.every((key) => SAFE_DECISION_FACT_KEY_SET.has(key))) throw new Error('decision-fact-allowlist-drift')
@@ -101,8 +94,8 @@ function positiveLimit(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
 }
 
-function usageEstimate(message) {
-  return Math.max(256, Math.ceil((String(message || '').length + 2_000) / 4))
+function usageEstimate(message, imageCount = 0) {
+  return Math.max(256, Math.ceil((String(message || '').length + 2_000) / 4) + Math.max(0, imageCount) * 1_000)
 }
 
 async function consumeUsageWindow(env, scopeKey, { accountId = null, babyId = null, day, estimate, requestLimit, tokenLimit, now }) {
@@ -118,10 +111,10 @@ async function consumeUsageWindow(env, scopeKey, { accountId = null, babyId = nu
   return Number(result?.meta?.changes || 0) > 0
 }
 
-export async function consumeNaibaQuota(env, accountId, babyId, message, now = new Date()) {
+export async function consumeNaibaQuota(env, accountId, babyId, message, now = new Date(), imageCount = 0) {
   const day = now.toISOString().slice(0, 10)
   const nowIso = now.toISOString()
-  const estimate = usageEstimate(message)
+  const estimate = usageEstimate(message, imageCount)
   const accountLimit = positiveLimit(env.NAIBA_DAILY_MESSAGE_LIMIT, 30)
   const babyLimit = positiveLimit(env.NAIBA_DAILY_BABY_MESSAGE_LIMIT, 30)
   const globalLimit = positiveLimit(env.NAIBA_GLOBAL_DAILY_MESSAGE_LIMIT, 500)
@@ -143,7 +136,7 @@ export async function consumeNaibaQuota(env, accountId, babyId, message, now = n
 
 async function persistDecision(env, accountId, babyId, result) {
   if (!result) return null
-  const id = newConversationId()
+  const id = newRequestId()
   try {
     await env.DB.prepare('INSERT INTO decision_results (id, baby_id, account_id, unit_id, unit_version, status, result_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(id, babyId, accountId, result.unitId, result.unitVersion, result.status, JSON.stringify(result), new Date().toISOString()).run()
@@ -161,25 +154,26 @@ async function persistHealthEpisode(env, accountId, babyId, unitId, facts, resul
     const existing = await env.DB.prepare('SELECT id FROM health_episodes WHERE baby_id = ? AND account_id = ? AND topic = ? AND status = \'open\' ORDER BY updated_at DESC LIMIT 1').bind(babyId, accountId, unitId).first()
     const summary = JSON.stringify({ facts, decision: result })
     if (existing?.id) await env.DB.prepare('UPDATE health_episodes SET summary_json = ?, updated_at = ? WHERE id = ?').bind(summary, now, existing.id).run()
-    else await env.DB.prepare('INSERT INTO health_episodes (id, baby_id, account_id, topic, status, summary_json, created_at, updated_at) VALUES (?, ?, ?, ?, \'open\', ?, ?, ?)').bind(newConversationId(), babyId, accountId, unitId, summary, now, now).run()
+    else await env.DB.prepare('INSERT INTO health_episodes (id, baby_id, account_id, topic, status, summary_json, created_at, updated_at) VALUES (?, ?, ?, ?, \'open\', ?, ?, ?)').bind(newRequestId(), babyId, accountId, unitId, summary, now, now).run()
   } catch (error) {
     console.error('Naiba AI health episode persistence unavailable', error)
   }
 }
 
-async function persistProvisionalEvidence(env, accountId, babyId, query, output) {
+async function persistProvisionalEvidence(env, accountId, babyId, output) {
   const urls = [...new Set(String(output).match(/https?:\/\/[^\s)\]]+/g) || [])].filter(isApprovedAuthorityUrl)
   if (!urls.length) return
   const now = new Date()
   try {
     await env.DB.prepare('INSERT INTO provisional_knowledge_evidence (id, account_id, baby_id, query, evidence_json, policy_status, created_at, expires_at) VALUES (?, ?, ?, ?, ?, \'accepted_general\', ?, ?)')
-      .bind(newConversationId(), accountId, babyId, query, JSON.stringify({ urls, limitation: 'general_education_only' }), now.toISOString(), new Date(now.getTime() + 7 * 86_400_000).toISOString()).run()
+      .bind(newRequestId(), accountId, babyId, 'naiba-authority-source', JSON.stringify({ urls, limitation: 'general_education_only' }), now.toISOString(), new Date(now.getTime() + 7 * 86_400_000).toISOString()).run()
   } catch (error) {
     console.error('Naiba AI provisional evidence persistence unavailable', error)
   }
 }
 
 export async function onRequestPost({ request, env }) {
+  const jsonMode = String(request.headers.get('accept') || '').includes('application/json')
   const session = await getSession(request, env)
   if (!session) return json({ error: '未登录或登录已过期' }, 401)
   let body
@@ -192,21 +186,27 @@ export async function onRequestPost({ request, env }) {
   if (!message) return json({ error: '请输入问题' }, 400)
   if (message.length > 4_000) return json({ error: '问题过长，请分段输入' }, 413)
 
-  const babyId = String(body?.baby?.id || '').trim()
+  const babyId = String(body?.babyId || body?.baby?.id || '').trim()
   if (!babyId) return json({ error: '缺少宝宝档案编号' }, 422)
   const growthMetric = ['weight', 'length', 'headCircumference'].includes(String(body?.growthMetric || '')) ? String(body.growthMetric) : null
   const context = await loadAuthorizedContext(env, session, babyId)
   if (!context) return json({ error: '无权访问该宝宝档案' }, 403)
-  const conversation = await openConversation(env, session.accountId, babyId, String(body?.conversationId || '').trim())
-  if (conversation.denied) return json({ error: '无权访问该 AI 对话' }, 403)
+  const requestId = newRequestId()
+  const pageContext = normalizeNaibaContext(body?.context)
+  let history
+  try { history = normalizeNaibaHistory(body?.history) } catch { return json({ error: '当前对话上下文无效' }, 422) }
+  let attachments
+  try { attachments = normalizeNaibaAttachments(body?.attachments) } catch { return json({ error: '图片格式、大小或发送确认无效' }, 422) }
   const requestedSkillId = String(body?.skillId || '').slice(0, 120)
-  await appendMessage(env, conversation.id, 'user', message, requestedSkillId || null)
   const recommendation = calculateFeedingRecommendation({ baby: context.baby, events: context.careEvents, locale: context.baby.locale || 'zh-CN' })
-  const skillId = selectSkillId(message, requestedSkillId)
+  const injectedPageContext = authorizedPageContext(pageContext, context)
+  const previousUserMessage = [...history].reverse().find((item) => item.role === 'user')?.text || ''
+  const contextualFollowUp = isNaibaContextualFollowUp(message) && (Boolean(pageContext) || history.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text)))
+  const routingMessage = contextualFollowUp ? `${previousUserMessage}\n${message}` : message
+  const skillId = selectSkillId(routingMessage, requestedSkillId)
   const hasDecisionContext = body?.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
-  if (!isNaibaTopicInScope(message) && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
-    await appendMessage(env, conversation.id, 'assistant', NAIBA_OUT_OF_SCOPE_MESSAGE, skillId || null, null)
-    return sse([{ type: 'meta', conversationId: conversation.id }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }])
+  if (!isNaibaTopicInScope(message) && !contextualFollowUp && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
+    return agentResponse([{ type: 'meta', contract: NAIBA_AGENT_CONTRACT, contractVersion: NAIBA_AGENT_CONTRACT_VERSION, requestId }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }], jsonMode)
   }
   const healthSensitive = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i.test(message)
   // The server, not the browser, owns the topic-to-unit mapping. This also
@@ -214,7 +214,7 @@ export async function onRequestPost({ request, env }) {
   const decisionUnitId = (skillId === 'triage_and_preassessment' || healthSensitive) ? selectDecisionUnit(message) : ''
   const decisionFacts = { ...safeDecisionFacts(body?.decisionFacts), ...extractDecisionFacts(message), ageDays: getAgeDays(context.baby.birthDate) }
   const decision = decisionUnitId ? runDecisionUnit({ unitId: decisionUnitId, facts: decisionFacts }) : null
-  const decisionResultId = await persistDecision(env, session.accountId, context.baby.id, decision)
+  await persistDecision(env, session.accountId, context.baby.id, decision)
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
   const fallback = localAnswer(message, recommendation, decision)
   let llmConfig
@@ -225,21 +225,32 @@ export async function onRequestPost({ request, env }) {
     configUnavailable = true
     console.error('Account LLM configuration failed closed', error)
   }
-  async function respond(events, assistantText = '') {
-    if (assistantText) await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
-    return sse([{ type: 'meta', conversationId: conversation.id }, ...events])
+  async function respond(events) {
+    return agentResponse([{ type: 'meta', contract: NAIBA_AGENT_CONTRACT, contractVersion: NAIBA_AGENT_CONTRACT_VERSION, requestId }, ...events], jsonMode)
   }
 
-  if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([{ type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }], fallback)
-  if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), { type: 'done' }], fallback)
+  const activity = { type: 'activity', skillId, label: getSkillContract(skillId)?.label || '奶爸 AI', status: 'completed' }
+  if (skillId === 'care_event_quick_logger') {
+    const draft = parseCareEventDraft({
+      message: contextualFollowUp && previousUserMessage ? `${previousUserMessage} ${message}` : message,
+      baby: context.baby,
+      actor: { id: session.accountId, displayName: session.displayName || '家庭成员' },
+      locale: context.baby.locale || 'zh-CN',
+    })
+    return respond([activity, { type: 'message', delta: draftText(draft, context.baby.locale || 'zh-CN') }, ...(draft.status === 'draft_ready' ? [{ type: 'draft', draft }] : []), { type: 'done' }])
+  }
+  if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }])
+  if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), { type: 'done' }])
   if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, { type: 'done' }])
 
-  const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, message)
+  const quotaText = [...history.map((item) => item.text), message].join('\n')
+  const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, quotaText, new Date(), attachments.length + history.reduce((count, item) => count + (item.attachments?.length || 0), 0))
   if (!quota.allowed) return respond([{ type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }])
 
   try {
     const output = await runNaibaAgent({
       message,
+      history,
       skillId,
       baby: context.baby,
       careEvents: context.careEvents,
@@ -249,7 +260,9 @@ export async function onRequestPost({ request, env }) {
       questions: [],
       feedingReference: recommendation,
       decisionResult: decision,
-      conversationId: conversation.id,
+      pageContext: injectedPageContext,
+      attachments,
+      requestId,
       locale: context.baby.locale || 'zh-CN',
       model: llmConfig.model,
       apiKey: llmConfig.apiKey,
@@ -258,8 +271,9 @@ export async function onRequestPost({ request, env }) {
       useResponses: llmConfig.useResponses,
       growthMetric,
     })
-    await persistProvisionalEvidence(env, session.accountId, context.baby.id, message, output)
-    return respond([{ type: 'message', delta: output }, { type: 'done' }], output)
+    await persistProvisionalEvidence(env, session.accountId, context.baby.id, output)
+    const sources = [...new Set(String(output).match(/https?:\/\/[^\s)\]]+/g) || [])].filter(isApprovedAuthorityUrl).map((url) => ({ url, kind: 'authority' }))
+    return respond([activity, { type: 'message', delta: output }, ...(sources.length ? [{ type: 'sources', items: sources }] : []), { type: 'done' }])
   } catch (error) {
     const failure = describeNaibaAgentFailure(error)
     console.error('Naiba AI agent failed; returning provider error', { ...failure, error })

@@ -32,7 +32,7 @@
       "id": "ai",
       "delivery": "issue-73",
       "entry": "ai.root",
-      "desktopCapabilities": ["capability-registry", "sessions", "sources", "draft-confirmation", "reports", "care-handoff"]
+      "desktopCapabilities": ["capability-registry", "ephemeral-multi-turn", "context-injection", "sources", "draft-confirmation", "reports", "care-handoff"]
     },
     {
       "id": "growth",
