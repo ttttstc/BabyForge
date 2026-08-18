@@ -8,12 +8,21 @@ import {
 } from './NativeResourceContract';
 import { NativeSessionStore } from './NativeSessionStore';
 import { NativeCareCommand, NativeCareEvent, NativeTodayModel, parseNativeToday } from './NativeTodayContract';
+import { NativeGrowthModel, parseNativeGrowth } from './NativeGrowthContract';
+import { NativeExploreModel, parseNativeExplore } from './NativeExploreContract';
+import { NativeSettingsModel, NativeSettingsPatch, parseNativeSettings } from './NativeSettingsContract';
 
 const SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com';
 const NATIVE_AUTH_CALLBACK_URL: string = 'babyforge://auth/callback';
 
 export interface NativeBootstrapResult {
   resource: NativeResourceEnvelope;
+  source: 'network' | 'cache';
+  stale: boolean;
+}
+
+export interface NativeSurfaceResult<T> {
+  model: T;
   source: 'network' | 'cache';
   stale: boolean;
 }
@@ -28,16 +37,6 @@ interface NativeHeaders {
   'x-babyforge-timezone': string;
   Cookie?: string;
   'content-type'?: string;
-}
-
-interface NativeRequestBody {
-  email?: string;
-  password?: string;
-  rememberMe?: boolean;
-  name?: string;
-  provider?: string;
-  callbackURL?: string;
-  baby?: NativeBabyInput | null;
 }
 
 export interface NativePhotoDownload {
@@ -93,8 +92,8 @@ function emptyRecord(): Record<string, Object> {
   return JSON.parse('{}') as Record<string, Object>;
 }
 
-function requestBody(value: NativeRequestBody): Object {
-  return value as Object;
+function requestBody(value: Object): Object {
+  return value;
 }
 
 function deviceTimezone(): string {
@@ -179,6 +178,42 @@ export class NativeResourceAdapter {
     }
   }
 
+  private canUseSurfaceCache(error: Error): boolean {
+    if (!(error instanceof NativeTransportError)) return false;
+    if (error.status === 401 || error.status === 403) return false;
+    return error.retryable;
+  }
+
+  private exploreCacheKey(babyId: string, category: string, query: string, organId: string): string {
+    return [babyId, category, query.trim(), organId.trim()]
+      .map((value: string) => encodeURIComponent(value))
+      .join('|');
+  }
+
+  private async currentBabyId(): Promise<string> {
+    const resource = await this.session.readResource();
+    return resource?.household?.baby?.id || '';
+  }
+
+  private async readExploreCache(cacheKey: string): Promise<Object | null> {
+    const saved = await this.session.readSurfaceCache('exploreCache');
+    if (saved === null || typeof saved !== 'object' || Array.isArray(saved)) return null;
+    const cache = record(saved);
+    const value = cache[cacheKey];
+    return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  }
+
+  private async saveExploreCache(cacheKey: string, model: NativeExploreModel): Promise<void> {
+    const saved = await this.session.readSurfaceCache('exploreCache');
+    const cache: Record<string, Object> = saved !== null && typeof saved === 'object' && !Array.isArray(saved)
+      ? record(saved)
+      : emptyRecord();
+    cache[cacheKey] = model as Object;
+    const keys = Object.keys(cache);
+    if (keys.length > 12) delete cache[keys[0]];
+    await this.session.saveSurfaceCache('exploreCache', cache as Object);
+  }
+
   async bootstrap(): Promise<NativeBootstrapResult> {
     try {
       const payload = await this.request('/api/native/bootstrap');
@@ -197,6 +232,102 @@ export class NativeResourceAdapter {
   async today(day: string = ''): Promise<NativeTodayModel> {
     const query = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `?day=${encodeURIComponent(day)}` : '';
     return parseNativeToday(await this.request(`/api/native/today${query}`));
+  }
+
+  async growth(): Promise<NativeSurfaceResult<NativeGrowthModel>> {
+    try {
+      const model = parseNativeGrowth(await this.request('/api/native/growth'));
+      await this.session.saveSurfaceCache('growthCache', model as Object);
+      return { model, source: 'network', stale: false };
+    } catch (error) {
+      if (!this.canUseSurfaceCache(error as Error)) throw error as Error;
+      const cached = await this.session.readSurfaceCache('growthCache');
+      if (cached !== null) return { model: parseNativeGrowth(cached), source: 'cache', stale: true };
+      throw error as Error;
+    }
+  }
+
+  async explore(category: string = 'recommended', query: string = '', organId: string = ''): Promise<NativeSurfaceResult<NativeExploreModel>> {
+    const params: Array<string> = [`category=${encodeURIComponent(category)}`];
+    if (query.trim().length > 0) params.push(`q=${encodeURIComponent(query)}`);
+    if (organId.trim().length > 0) params.push(`organ=${encodeURIComponent(organId)}`);
+    try {
+      const model = parseNativeExplore(await this.request(`/api/native/explore?${params.join('&')}`));
+      await this.saveExploreCache(this.exploreCacheKey(model.baby.id, category, query, organId), model);
+      return { model, source: 'network', stale: false };
+    } catch (error) {
+      if (!this.canUseSurfaceCache(error as Error)) throw error as Error;
+      const babyId = await this.currentBabyId();
+      const cached = babyId.length > 0
+        ? await this.readExploreCache(this.exploreCacheKey(babyId, category, query, organId))
+        : null;
+      if (cached !== null) return { model: parseNativeExplore(cached), source: 'cache', stale: true };
+      throw error as Error;
+    }
+  }
+
+  async settings(): Promise<NativeSurfaceResult<NativeSettingsModel>> {
+    try {
+      const model = parseNativeSettings(await this.request('/api/native/settings'));
+      await this.session.saveSurfaceCache('settingsCache', model as Object);
+      return { model, source: 'network', stale: false };
+    } catch (error) {
+      if (!this.canUseSurfaceCache(error as Error)) throw error as Error;
+      const cached = await this.session.readSurfaceCache('settingsCache');
+      if (cached !== null) return { model: parseNativeSettings(cached), source: 'cache', stale: true };
+      throw error as Error;
+    }
+  }
+
+  async updateSettings(patch: NativeSettingsPatch): Promise<NativeSettingsModel> {
+    const model = parseNativeSettings(await this.request('/api/native/settings', http.RequestMethod.PATCH, requestBody(patch as Object)));
+    await this.session.saveSurfaceCache('settingsCache', model as Object);
+    return model;
+  }
+
+  async createNativeEvent(event: NativeCareEvent): Promise<Object> {
+    return this.request('/api/events', http.RequestMethod.POST, requestBody({ event }));
+  }
+
+  async updateEmailSubscription(enabled: boolean): Promise<Object> {
+    return this.request('/api/email-subscription', http.RequestMethod.PUT, requestBody({ enabled }));
+  }
+
+  async addEmailContact(email: string): Promise<Object> {
+    return this.request('/api/email-subscription/contacts', http.RequestMethod.POST, requestBody({ email }));
+  }
+
+  async removeEmailContact(id: string): Promise<Object> {
+    return this.request(`/api/email-subscription/contacts/${encodeURIComponent(id)}`, http.RequestMethod.DELETE);
+  }
+
+  async createVisitorLink(): Promise<Object> {
+    const payload = record(await this.request('/api/visitor-links', http.RequestMethod.POST));
+    const link = payload['link'];
+    if (link !== null && link !== undefined && typeof link === 'object' && !Array.isArray(link)) {
+      const linkRecord = record(link);
+      if (typeof linkRecord['url'] === 'string' && String(linkRecord['url']).startsWith('/')) {
+        linkRecord['url'] = `${SERVICE_ORIGIN}${String(linkRecord['url'])}`;
+      }
+    }
+    return payload as Object;
+  }
+
+  async revokeVisitorLink(id: string): Promise<Object> {
+    return this.request(`/api/visitor-links/${encodeURIComponent(id)}`, http.RequestMethod.DELETE);
+  }
+
+  async updateLlmConfig(input: Record<string, Object>): Promise<Object> {
+    return this.request('/api/ai/config', http.RequestMethod.PUT, requestBody(input as Object));
+  }
+
+  async clearLlmConfig(): Promise<Object> {
+    return this.request('/api/ai/config', http.RequestMethod.DELETE);
+  }
+
+  async clearLocalCache(): Promise<void> {
+    await this.ensureOpened();
+    await this.session.clearLocalCache();
   }
 
   async createCareEvent(command: NativeCareCommand): Promise<Object> {

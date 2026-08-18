@@ -1,0 +1,28 @@
+{
+  "contract": "babyforge.native.growth",
+  "contractVersion": "1.0.0",
+  "endpoint": "/api/native/growth",
+  "requiredFields": [
+    "metadata",
+    "permissions",
+    "baby",
+    "age",
+    "stage",
+    "stageContent",
+    "measurements",
+    "metrics",
+    "charts",
+    "milestones",
+    "carePlanItems",
+    "adminTasks",
+    "parentActions",
+    "interpretation",
+    "limitations",
+    "sources"
+  ],
+  "writeEndpoint": "/api/events",
+  "writeCategories": ["growth_measurement", "milestone", "care_plan_item", "admin_task"],
+  "referenceSource": "shared-growth-reference",
+  "offlineQueue": false,
+  "conflictPolicy": "show-conflict-and-withhold-change"
+}

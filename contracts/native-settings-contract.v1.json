@@ -1,0 +1,23 @@
+{
+  "contract": "babyforge.native.settings",
+  "contractVersion": "1.0.0",
+  "endpoint": "/api/native/settings",
+  "requiredFields": [
+    "metadata",
+    "permissions",
+    "user",
+    "baby",
+    "subscription",
+    "contacts",
+    "visitorLinks",
+    "llmConfig",
+    "sync",
+    "localCache"
+  ],
+  "writeEndpoint": "/api/native/settings",
+  "writeMethod": "PATCH",
+  "sensitivePolicy": "api-key-never-echoed",
+  "visitorPolicy": "owner-managed-read-only-deidentified",
+  "localCachePolicy": "clear-local-only",
+  "offlineQueue": false
+}

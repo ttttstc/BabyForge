@@ -5,6 +5,9 @@ import {
   validateNativeResourceEnvelope,
 } from './nativeResourceContract.js'
 import { validateNativeTodayModel } from './nativeToday.js'
+import { validateNativeGrowthModel } from './nativeGrowth.js'
+import { validateNativeExploreModel } from './nativeExplore.js'
+import { validateNativeSettingsModel } from './nativeSettings.js'
 
 export class NativeResourceClientError extends Error {
   constructor(code, message, { status = 0, retryable = false, details = null } = {}) {
@@ -85,6 +88,21 @@ export function createNativeResourceClient({ fetchImpl = globalThis.fetch, baseU
       const query = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `?day=${encodeURIComponent(day)}` : ''
       return validateNativeTodayModel(await request(`/api/native/today${query}`))
     },
+    async growth() {
+      return validateNativeGrowthModel(await request('/api/native/growth'))
+    },
+    async explore({ category = 'recommended', query = '', organId = '' } = {}) {
+      const params = new URLSearchParams({ category })
+      if (query) params.set('q', query)
+      if (organId) params.set('organ', organId)
+      return validateNativeExploreModel(await request(`/api/native/explore?${params.toString()}`))
+    },
+    async settings() {
+      return validateNativeSettingsModel(await request('/api/native/settings'))
+    },
+    async updateSettings(patch) {
+      return validateNativeSettingsModel(await request('/api/native/settings', { method: 'PATCH', body: patch }))
+    },
     async createCareEvent(event) {
       return request('/api/events', { method: 'POST', body: { event } })
     },
@@ -94,6 +112,27 @@ export function createNativeResourceClient({ fetchImpl = globalThis.fetch, baseU
     },
     async voidCareEvent(eventId, version) {
       return request(`/api/events/${encodeURIComponent(eventId)}`, { method: 'DELETE', body: { version } })
+    },
+    async updateEmailSubscription(enabled) {
+      return request('/api/email-subscription', { method: 'PUT', body: { enabled: Boolean(enabled) } })
+    },
+    async addEmailContact(email) {
+      return request('/api/email-subscription/contacts', { method: 'POST', body: { email } })
+    },
+    async removeEmailContact(id) {
+      return request(`/api/email-subscription/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
+    async createVisitorLink() {
+      return request('/api/visitor-links', { method: 'POST' })
+    },
+    async revokeVisitorLink(id) {
+      return request(`/api/visitor-links/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
+    async updateLlmConfig(config) {
+      return request('/api/ai/config', { method: 'PUT', body: config })
+    },
+    async clearLlmConfig() {
+      return request('/api/ai/config', { method: 'DELETE' })
     },
     async photos(babyId) {
       return request(`/api/photos?babyId=${encodeURIComponent(babyId)}`)
