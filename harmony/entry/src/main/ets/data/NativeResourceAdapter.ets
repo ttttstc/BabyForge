@@ -6,6 +6,7 @@ import {
   parseNativeResource
 } from './NativeResourceContract';
 import { NativeSessionStore } from './NativeSessionStore';
+import { NativeCareCommand, NativeCareEvent, NativeTodayModel, parseNativeToday } from './NativeTodayContract';
 
 const SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com';
 const NATIVE_AUTH_CALLBACK_URL: string = 'babyforge://auth/callback';
@@ -36,6 +37,37 @@ interface NativeRequestBody {
   provider?: string;
   callbackURL?: string;
   baby?: NativeBabyInput | null;
+}
+
+export interface NativePhotoDownload {
+  data: ArrayBuffer;
+  contentType: string;
+}
+
+interface NativeCorrectionRequest {
+  id: string;
+  version: number;
+  occurredAt: string;
+  kind: string;
+  category: string;
+  source: string;
+  actor: Object;
+  payload: Object;
+}
+
+interface NativeVersionRequest {
+  version: number;
+}
+
+function photoContentType(uri: string): string {
+  const lower = uri.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic')) return 'image/heic';
+  if (lower.endsWith('.heif')) return 'image/heif';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.avif')) return 'image/avif';
+  return 'image/jpeg';
 }
 
 export class NativeTransportError extends Error {
@@ -110,10 +142,12 @@ export class NativeResourceAdapter {
       const responseCode: number = Number(response.responseCode);
       const raw: string = typeof response.result === 'string' ? response.result : JSON.stringify(response.result);
       let payload: Object = emptyRecord();
-      try {
-        payload = JSON.parse(raw) as Object;
-      } catch {
-        throw new NativeTransportError('INVALID_RESPONSE', '共享业务服务返回了无效响应。', responseCode, responseCode >= 500);
+      if (raw.trim().length > 0) {
+        try {
+          payload = JSON.parse(raw) as Object;
+        } catch {
+          throw new NativeTransportError('INVALID_RESPONSE', '共享业务服务返回了无效响应。', responseCode, responseCode >= 500);
+        }
       }
       if (responseCode < 200 || responseCode >= 300) {
         const error = record(payload)['error'];
@@ -147,6 +181,131 @@ export class NativeResourceAdapter {
       if (cached !== null) return { resource: cached, source: 'cache', stale: true };
       throw error as Error;
     }
+  }
+
+  async today(day: string = ''): Promise<NativeTodayModel> {
+    const query = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `?day=${encodeURIComponent(day)}` : '';
+    return parseNativeToday(await this.request(`/api/native/today${query}`));
+  }
+
+  async createCareEvent(command: NativeCareCommand): Promise<Object> {
+    return this.request('/api/events', http.RequestMethod.POST, command as Object);
+  }
+
+  async correctCareEvent(eventId: string, version: number, replacement: NativeCareEvent): Promise<Object> {
+    const payload: NativeCorrectionRequest = {
+      id: replacement.id,
+      version,
+      occurredAt: replacement.occurredAt,
+      kind: replacement.kind,
+      category: replacement.category,
+      source: replacement.source,
+      actor: replacement.actor,
+      payload: replacement.payload
+    };
+    return this.request(`/api/events/${encodeURIComponent(eventId)}`, http.RequestMethod.POST, payload as Object);
+  }
+
+  async findCareEvent(babyId: string, eventId: string): Promise<Object | null> {
+    const payload = record(await this.request(`/api/events?babyId=${encodeURIComponent(babyId)}&includeVoided=true`));
+    const events = payload['events'];
+    if (!Array.isArray(events)) return null;
+    return (events as Array<Object>).find((value: Object) => record(value)['id'] === eventId) || null;
+  }
+
+  async voidCareEvent(eventId: string, version: number): Promise<Object> {
+    const payload: NativeVersionRequest = { version };
+    return this.request(`/api/events/${encodeURIComponent(eventId)}`, http.RequestMethod.DELETE, payload as Object);
+  }
+
+  async deletePhoto(photoId: string): Promise<Object> {
+    return this.request(`/api/photos/${encodeURIComponent(photoId)}`, http.RequestMethod.DELETE);
+  }
+
+  async uploadPhoto(uri: string, babyId: string, takenAt: string): Promise<Object> {
+    await this.ensureOpened();
+    const request = http.createHttp();
+    const contentType = photoContentType(uri);
+    const extension = contentType.split('/')[1].replace('jpeg', 'jpg');
+    const parts: Array<http.MultiFormData> = [
+      { name: 'babyId', contentType: 'text/plain', data: babyId },
+      { name: 'takenAt', contentType: 'text/plain', data: takenAt },
+      { name: 'timeSource', contentType: 'text/plain', data: 'file' },
+      { name: 'photo', contentType, remoteFileName: `native-${Date.now()}.${extension}`, filePath: uri }
+    ];
+    const headers: NativeHeaders = { accept: 'application/json', 'x-babyforge-timezone': 'Asia/Shanghai' };
+    const cookie = this.session.cookie();
+    if (cookie.length > 0) headers.Cookie = cookie;
+    try {
+      const response = await request.request(`${SERVICE_ORIGIN}/api/photos`, {
+        method: http.RequestMethod.POST,
+        header: headers,
+        multiFormDataList: parts,
+        expectDataType: http.HttpDataType.STRING,
+        connectTimeout: 15000,
+        readTimeout: 30000
+      });
+      await this.session.capture(response);
+      const code = Number(response.responseCode);
+      const raw = typeof response.result === 'string' ? response.result : JSON.stringify(response.result);
+      const payload = raw.trim().length > 0 ? JSON.parse(raw) as Object : emptyRecord();
+      if (code < 200 || code >= 300) {
+        const error = record(payload)['error'];
+        throw new NativeTransportError('PHOTO_UPLOAD_FAILED', typeof error === 'string' ? error : '照片上传未完成。', code, code >= 500);
+      }
+      return payload;
+    } catch (error) {
+      if (error instanceof NativeTransportError) throw error;
+      throw new NativeTransportError('PHOTO_UPLOAD_FAILED', '照片上传未完成，请检查网络后重试。', 0, true);
+    } finally {
+      request.destroy();
+    }
+  }
+
+  private async fetchPhoto(photoId: string, download: boolean): Promise<NativePhotoDownload> {
+    await this.ensureOpened();
+    const request = http.createHttp();
+    const headers: NativeHeaders = { accept: 'image/*', 'x-babyforge-timezone': 'Asia/Shanghai' };
+    const cookie = this.session.cookie();
+    if (cookie.length > 0) headers.Cookie = cookie;
+    try {
+      const response = await request.request(`${SERVICE_ORIGIN}/api/photos/${encodeURIComponent(photoId)}${download ? '?download=1' : ''}`, {
+        method: http.RequestMethod.GET,
+        header: headers,
+        expectDataType: http.HttpDataType.ARRAY_BUFFER,
+        connectTimeout: 15000,
+        readTimeout: 30000,
+        maxLimit: 13 * 1024 * 1024
+      });
+      await this.session.capture(response);
+      const code = Number(response.responseCode);
+      if (code < 200 || code >= 300 || !(response.result instanceof ArrayBuffer)) throw new NativeTransportError('PHOTO_DOWNLOAD_FAILED', '照片下载未完成。', code, code >= 500);
+      const responseHeaders = response.header as Record<string, Object>;
+      return { data: response.result, contentType: String(responseHeaders['content-type'] || 'image/jpeg') };
+    } catch (error) {
+      if (error instanceof NativeTransportError) throw error;
+      throw new NativeTransportError('PHOTO_DOWNLOAD_FAILED', '照片下载未完成，请检查网络后重试。', 0, true);
+    } finally {
+      request.destroy();
+    }
+  }
+
+  async viewPhoto(photoId: string): Promise<NativePhotoDownload> {
+    return this.fetchPhoto(photoId, false);
+  }
+
+  async downloadPhoto(photoId: string): Promise<NativePhotoDownload> {
+    return this.fetchPhoto(photoId, true);
+  }
+
+  async saveRecordDraft(draft: Object | null): Promise<void> {
+    await this.ensureOpened();
+    await this.session.saveRecordDraft(draft);
+  }
+
+  async readRecordDraft(): Promise<Object | null> {
+    await this.ensureOpened();
+    return this.session.readRecordDraft();
   }
 
   async signInEmail(email: string, password: string): Promise<NativeBootstrapResult> {

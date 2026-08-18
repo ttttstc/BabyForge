@@ -5,6 +5,7 @@ import { NativeResourceEnvelope, parseNativeResource } from './NativeResourceCon
 
 const SESSION_COOKIE_KEY: string = 'sessionCookie';
 const RESOURCE_CACHE_KEY: string = 'resourceCache';
+const RECORD_DRAFT_KEY: string = 'recordDraft';
 
 interface ParsedCookie {
   name: string;
@@ -144,11 +145,26 @@ export class NativeSessionStore {
     }
   }
 
+  async saveRecordDraft(draft: Object | null): Promise<void> {
+    if (this.store === null) return;
+    if (draft === null) await this.store.delete(RECORD_DRAFT_KEY);
+    else await this.store.put(RECORD_DRAFT_KEY, JSON.stringify(draft));
+    await this.store.flush();
+  }
+
+  async readRecordDraft(): Promise<Object | null> {
+    if (this.store === null) return null;
+    const saved = await this.store.get(RECORD_DRAFT_KEY, '');
+    if (typeof saved !== 'string' || saved.length === 0) return null;
+    try { return JSON.parse(saved) as Object; } catch { return null; }
+  }
+
   async clear(): Promise<void> {
     this.cookieHeader = '';
     if (this.store === null) return;
     await this.store.delete(SESSION_COOKIE_KEY);
     await this.store.delete(RESOURCE_CACHE_KEY);
+    await this.store.delete(RECORD_DRAFT_KEY);
     await this.store.flush();
   }
 }

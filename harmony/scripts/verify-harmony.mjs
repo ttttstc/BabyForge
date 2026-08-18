@@ -102,10 +102,14 @@ const legacyWeb = read('entry/src/main/ets/pages/LegacyWeb.ets')
 const nativeContract = read('entry/src/main/ets/data/NativeResourceContract.ets')
 const nativeAdapter = read('entry/src/main/ets/data/NativeResourceAdapter.ets')
 const nativeSession = read('entry/src/main/ets/data/NativeSessionStore.ets')
+const nativeTodayContract = read('entry/src/main/ets/data/NativeTodayContract.ets')
 const navigation = read('entry/src/main/ets/navigation/NativeNavigation.ets')
 const pagesProfile = read('entry/src/main/resources/base/profile/main_pages.json')
 const capabilityManifest = readProject('contracts/native-capability-manifest.v1.json')
 const resourceContract = readProject('contracts/native-resource-contract.v1.json')
+const todayContract = readProject('contracts/native-today-contract.v1.json')
+const todayModel = readProject('src/domain/nativeToday.js')
+const todayEndpoint = readProject('functions/api/native/today.js')
 const betterAuthConfig = readProject('functions/_shared/betterAuth.js')
 const ability = read('entry/src/main/ets/entryability/EntryAbility.ets')
 const shellState = read('entry/src/main/ets/common/ShellState.ets')
@@ -124,6 +128,7 @@ function parseProjectJson(text, relativePath) {
 
 const capabilityManifestData = parseProjectJson(capabilityManifest, 'contracts/native-capability-manifest.v1.json')
 const resourceContractData = parseProjectJson(resourceContract, 'contracts/native-resource-contract.v1.json')
+const todayContractData = parseProjectJson(todayContract, 'contracts/native-today-contract.v1.json')
 const resourceContractVersion = typeof resourceContractData?.contractVersion === 'string'
   ? resourceContractData.contractVersion
   : ''
@@ -140,7 +145,7 @@ check('窗口必须启用全屏布局', ability.includes('setWindowLayoutFullScr
 check('不得在窗口内容加载前设置原生背景色', !ability.includes('setWindowBackgroundColor('))
 check('全屏布局必须动态避让系统和键盘区域', ability.includes('getWindowAvoidArea') && ability.includes('TYPE_KEYBOARD') && ability.includes("on('avoidAreaChange'") && ability.includes('AppStorage.setOrCreate'))
 check('ArkUI 内容必须使用动态安全区内边距', indexPage.includes("@StorageProp('topAvoidHeight')") && indexPage.includes('bottomAvoidHeight') && indexPage.includes('.padding({ top: this.topAvoidHeight'))
-check('必须且只能声明网络访问权限', requestedPermissions.length === 1 && requestedPermissions[0] === 'ohos.permission.INTERNET', requestedPermissions.join(', ') || '没有声明权限')
+check('只能声明网络与轻触觉反馈权限', requestedPermissions.length === 2 && requestedPermissions.includes('ohos.permission.INTERNET') && requestedPermissions.includes('ohos.permission.VIBRATE'), requestedPermissions.join(', ') || '没有声明权限')
 check('历史 ArkWeb 目标必须保留', pagesProfile.includes('pages/LegacyWeb') && legacyWeb.includes('ArkWeb'))
 check('原生默认入口必须连接共享服务', indexPage.includes('NativeResourceAdapter') && nativeAdapter.includes("SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com'"))
 check('原生默认入口不得加载 React 或 ArkWeb 页面', !indexPage.includes('Web({') && !indexPage.includes('@kit.ArkWeb'))
@@ -154,6 +159,14 @@ check('原生入口必须支持账号、家庭恢复和邀请', indexPage.includ
 check('原生入口必须显式呈现加载、失败、离线缓存和只读状态', indexPage.includes("'loading'") && indexPage.includes("'error'") && indexPage.includes('staleCache') && indexPage.includes('readOnly'))
 check('五个标签必须维护独立返回栈和临时输入', navigation.includes('stack') && navigation.includes('temporaryInput') && navigation.includes('repeat(tab:') && indexPage.includes('navigation.back(this.activeTab)'))
 check('共享合同必须包含错误恢复边界', nativeContract.includes('UNKNOWN_VERSION') && nativeContract.includes('MISSING_REQUIRED_FIELD') && nativeAdapter.includes('readResource()'))
+check('Issue 71 必须连接版本化今日页面模型', todayContractData?.contract === 'babyforge.native.today' && todayContractData?.contractVersion === '1.0.0' && nativeTodayContract.includes("NATIVE_TODAY_CONTRACT_VERSION: string = '1.0.0'") && nativeAdapter.includes('/api/native/today'))
+check('今天页必须按宝宝日期、摘要、相册、事项、最近事实呈现', indexPage.indexOf('早上好') < indexPage.indexOf('今日摘要') && indexPage.indexOf('今日摘要') < indexPage.indexOf('今日相册') && indexPage.indexOf('今日相册') < indexPage.indexOf('今天要留意') && indexPage.indexOf('今天要留意') < indexPage.indexOf('最近事实'))
+check('摘要不得把缺失事实显示为零', todayModel.includes("label: '未记录'") && todayModel.includes('value: null') && todayContract.includes('"summaryUnknown"'))
+check('相册必须覆盖选择、上传、浏览、下载、删除和隐私边界', indexPage.includes('PhotoViewPicker') && nativeAdapter.includes('multiFormDataList') && indexPage.includes('上一张') && indexPage.includes('下一张') && indexPage.includes('downloadSelectedPhoto') && indexPage.includes('deleteSelectedPhoto') && indexPage.includes('照片不会自动发送给 AI'))
+check('记录工作台必须提供六类统一事实入口', ['feeding', 'sleep', 'diaper', 'medication', 'temperature', 'growth'].every((type) => indexPage.includes(`recordCard('${type}'`)) && nativeTodayContract.includes('createNativeCareCommand'))
+check('保存必须等待服务端、处理响应不明、提供触觉反馈和五秒撤销', indexPage.includes('await this.adapter.createCareEvent') && indexPage.includes('findCareEvent') && indexPage.includes('lightHaptic') && indexPage.includes('5000') && indexPage.includes('undoRecord'))
+check('纠正、永久作废和本机草稿必须保留服务端边界', nativeAdapter.includes('correctCareEvent') && nativeAdapter.includes('voidCareEvent') && nativeSession.includes('RECORD_DRAFT_KEY') && indexPage.includes('不会离线排队'))
+check('今日服务端必须复用共享事实、计划、媒体与权限', todayEndpoint.includes('care_events') && todayEndpoint.includes('care_plan_items') && todayEndpoint.includes('baby_photos') && todayEndpoint.includes('workspace_records') && todayEndpoint.includes('buildNativeTodayModel'))
 check('外部 HTTPS 必须交给系统浏览器', indexPage.includes('context.openLink(url)'))
 check('返回键必须先处理当前原生标签栈', indexPage.includes('onBackPress()') && indexPage.includes('navigation.back(this.activeTab)') && !ability.includes('onBackPressed()'))
 check('ArkWeb 历史目标仍保留安全导航', legacyWeb.includes('isTrustedMainFrame') && legacyWeb.includes('onLoadIntercept') && legacyWeb.includes('onWindowNew'))
@@ -165,7 +178,7 @@ check('真机安装脚本必须实际验证 HAP 签名', installScript.includes(
 check('真机安装脚本必须校验目标 HAP 身份', installScript.includes('com.ni.babyforge') && installScript.includes('EntryAbility') && installScript.includes('portrait'))
 check('真机安装脚本必须拒绝过时的签名 HAP', installScript.includes('latestUnsignedHap') && installScript.includes('LastWriteTime') && installScript.includes('重新签名当前构建'))
 
-const sourceFiles = [appConfig, appStrings, moduleConfig, entryStrings, indexPage, legacyWeb, nativeContract, nativeAdapter, navigation, ability, shellState].join('\n')
+const sourceFiles = [appConfig, appStrings, moduleConfig, entryStrings, indexPage, legacyWeb, nativeContract, nativeTodayContract, nativeAdapter, navigation, ability, shellState].join('\n')
 check('Harmony 源码不应出现明文 HTTP 入口', !sourceFiles.includes('http://'))
 
 if (!sourceOnly) {
@@ -195,7 +208,7 @@ if (!sourceOnly) {
         const hapPermissions = hapModule.module?.requestPermissions?.map((permission) => permission.name) || []
         const hapAbility = hapModule.module?.abilities?.find((ability) => ability.name === 'EntryAbility')
         check('HAP Bundle Name 必须为 com.ni.babyforge', hapModule.app?.bundleName === 'com.ni.babyforge')
-        check('HAP 必须只声明 INTERNET 权限', hapPermissions.length === 1 && hapPermissions[0] === 'ohos.permission.INTERNET', hapPermissions.join(', '))
+        check('HAP 必须只声明 INTERNET 与 VIBRATE 权限', hapPermissions.length === 2 && hapPermissions.includes('ohos.permission.INTERNET') && hapPermissions.includes('ohos.permission.VIBRATE'), hapPermissions.join(', '))
         check('HAP 必须只面向 phone', JSON.stringify(hapModule.module?.deviceTypes || []) === '["phone"]')
         check('HAP EntryAbility 必须锁定 portrait', hapAbility?.orientation === 'portrait')
       } catch (error) {

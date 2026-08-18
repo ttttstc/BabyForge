@@ -8,6 +8,7 @@ import {
   NativeResourceContractError,
   validateNativeResourceEnvelope,
 } from '../src/domain/nativeResourceContract.js'
+import { buildNativeTodayModel } from '../src/domain/nativeToday.js'
 
 async function fixture() {
   return JSON.parse(await readFile(new URL('./fixtures/native-resource-bootstrap.json', import.meta.url), 'utf8'))
@@ -111,4 +112,23 @@ test('web native adapter exposes structured service failures without inventing r
     client.bootstrap(),
     (error) => error instanceof NativeResourceClientError && error.code === 'AUTH_REQUIRED' && error.status === 401 && !error.retryable,
   )
+})
+
+test('web native adapter validates the same today page contract used by ArkTS', async () => {
+  const today = buildNativeTodayModel({
+    baby: { id: 'baby-fixture', nickname: '小满', birthDate: '2026-08-01' },
+    timezone: 'Asia/Shanghai',
+    now: '2026-08-18T02:00:00.000Z',
+    permissions: { canEdit: true },
+    recorder: { id: 'user-fixture', displayName: '妈妈' },
+  })
+  const paths = []
+  const client = createNativeResourceClient({
+    fetchImpl: async (path) => {
+      paths.push(path)
+      return new Response(JSON.stringify(today), { status: 200 })
+    },
+  })
+  assert.equal((await client.today('2026-08-18')).summary.feeding.label, '未记录')
+  assert.deepEqual(paths, ['/api/native/today?day=2026-08-18'])
 })
