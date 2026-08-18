@@ -665,7 +665,7 @@ function AppContent() {
   }
 
   if (route === ROUTES.records) {
-    return <RecordCenter state={state} commitState={commitState} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
+    return <RecordCenter key={location.search} state={state} commitState={commitState} onLogout={handleLogout} readOnly={readOnly} role={session?.role} />
   }
 
   if ([ROUTES.healthDiseases, ROUTES.healthOrgans].includes(route)) {

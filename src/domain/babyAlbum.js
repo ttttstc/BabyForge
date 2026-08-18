@@ -69,8 +69,34 @@ async function listLocalPhotos(babyId) {
   if (!db) return []
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(PHOTO_STORE, 'readonly')
-    const request = transaction.objectStore(PHOTO_STORE).index('babyId').getAll(String(babyId))
-    request.onsuccess = () => resolve((request.result || []).sort((left, right) => left.createdAt.localeCompare(right.createdAt)))
+    const photos = []
+    const request = transaction.objectStore(PHOTO_STORE).index('babyId').openCursor(String(babyId))
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        resolve(photos.sort((left, right) => left.createdAt.localeCompare(right.createdAt)))
+        return
+      }
+      const photo = { ...cursor.value }
+      delete photo.blob
+      photos.push(photo)
+      cursor.continue()
+    }
+    request.onerror = () => reject(request.error)
+    transaction.oncomplete = () => db.close()
+  })
+}
+
+async function readLocalPhotoBlob({ babyId, photoId }) {
+  const db = await openAlbumDatabase()
+  if (!db) return null
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PHOTO_STORE, 'readonly')
+    const request = transaction.objectStore(PHOTO_STORE).get(String(photoId))
+    request.onsuccess = () => {
+      const record = request.result
+      resolve(record?.babyId === String(babyId) ? record.blob || null : null)
+    }
     request.onerror = () => reject(request.error)
     transaction.oncomplete = () => db.close()
   })
@@ -96,7 +122,9 @@ async function saveLocalPhoto({ babyId, file, takenAt, timeSource }) {
     transaction.oncomplete = () => { db.close(); resolve() }
     transaction.onerror = () => { db.close(); reject(transaction.error) }
   })
-  return record
+  const photo = { ...record }
+  delete photo.blob
+  return photo
 }
 
 async function deleteLocalPhoto({ babyId, photoId }) {
@@ -136,6 +164,11 @@ export async function listBabyPhotos(babyId, { remote = false, showcase = false 
   const endpoint = showcase ? '/api/demo-showcase/photos' : `/api/photos?babyId=${encodeURIComponent(babyId)}`
   const response = await fetch(endpoint, { credentials: 'include' })
   return (await responsePayload(response)).photos || []
+}
+
+export function getBabyPhotoBlob({ babyId, photoId }, { remote = false } = {}) {
+  if (remote || !babyId || !photoId) return Promise.resolve(null)
+  return readLocalPhotoBlob({ babyId, photoId })
 }
 
 export async function uploadBabyPhoto(input, { remote = false } = {}) {

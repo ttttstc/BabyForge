@@ -2,6 +2,7 @@ import { json, requireSession } from '../../_shared/auth.js'
 import { accessibleEvent, eventFromRow, legacySourceForEvent, legacyTypeForEvent, safeEventInput } from '../../_shared/care.js'
 import { conflict } from '../events.js'
 import { appAssetUrl, appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../../_shared/updateNotifications.js'
+import { mergeCorrectedPayload } from '../../../src/domain/careEvents.js'
 
 function readExpectedVersion(body, request) {
   const header = request.headers.get('if-match')
@@ -14,9 +15,12 @@ function readExpectedVersion(body, request) {
 function correctionPayload(currentEvent, patch, now) {
   // The replacement is a new recorded fact: occurredAt may be preserved,
   // while recordedAt/createdAt mark when this correction was entered.
+  const targetCategory = patch.category || currentEvent.category
   const merged = {
     ...currentEvent,
     ...patch,
+    category: targetCategory,
+    payload: mergeCorrectedPayload(currentEvent.category, targetCategory, currentEvent.payload, patch.payload),
     id: patch.id && patch.id !== currentEvent.id ? patch.id : undefined,
     babyId: currentEvent.babyId,
     recordedAt: patch.recordedAt || now,

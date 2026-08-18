@@ -1,3 +1,5 @@
+import { calendarDateKey } from './date.js'
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const CATEGORY_GROUPS = Object.freeze({
@@ -70,10 +72,11 @@ function normalizedGrowthType(value) {
 }
 
 export function localDayKey(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const offset = date.getTimezoneOffset() * 60_000
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10)
+  try {
+    return calendarDateKey(value)
+  } catch {
+    return ''
+  }
 }
 
 function localDayBounds(day = localDayKey()) {

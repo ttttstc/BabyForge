@@ -77,6 +77,42 @@ function clone(value) {
   try { return JSON.parse(JSON.stringify(value)) } catch { return {} }
 }
 
+// These keys belong to a specific quick-record business family. During a
+// correction the editor may switch category inside that family (for example
+// bottle feeding -> breastfeeding). Keep extension metadata such as
+// note/handoffTag, but do not carry category-owned facts that the target
+// category cannot represent.
+const CORRECTION_PAYLOAD_GROUPS = Object.freeze([
+  { categories: ['breastfeeding', 'bottle_feeding'], fields: ['mode', 'milkType', 'amountMl', 'unit'], allowed: { breastfeeding: new Set(['mode']), bottle_feeding: new Set(['milkType', 'amountMl', 'unit']) } },
+  { categories: ['temperature', 'temperature_observation'], fields: ['value', 'unit', 'method'], allowed: { temperature: new Set(['value', 'unit', 'method']), temperature_observation: new Set(['method']) } },
+  { categories: ['sleep'], fields: ['endedAt'], allowed: { sleep: new Set(['endedAt']) } },
+  { categories: ['diaper'], fields: ['kind'], allowed: { diaper: new Set(['kind']) } },
+  { categories: ['medication'], fields: ['medicationName', 'name', 'amount', 'unit', 'route'], allowed: { medication: new Set(['medicationName', 'name', 'amount', 'unit', 'route']) } },
+  { categories: ['growth_measurement'], fields: ['type', 'value', 'unit', 'measuredAt', 'source'], allowed: { growth_measurement: new Set(['type', 'value', 'unit', 'measuredAt', 'source']) } },
+])
+
+const correctionPayloadGroupFor = (category) => CORRECTION_PAYLOAD_GROUPS.find((group) => group.categories.includes(category))
+const CORRECTION_PAYLOAD_FIELDS = new Set(CORRECTION_PAYLOAD_GROUPS.flatMap((group) => group.fields))
+
+export function mergeCorrectedPayload(originalCategory, targetCategory, originalPayload = {}, patchPayload = {}) {
+  const original = originalPayload && typeof originalPayload === 'object' && !Array.isArray(originalPayload) ? clone(originalPayload) : {}
+  const patch = patchPayload && typeof patchPayload === 'object' && !Array.isArray(patchPayload) ? clone(patchPayload) : {}
+  if (originalCategory !== targetCategory) {
+    const originalGroup = correctionPayloadGroupFor(originalCategory)
+    const targetGroup = correctionPayloadGroupFor(targetCategory)
+    const allowedTargetKeys = targetGroup?.allowed[targetCategory] || new Set()
+    Object.keys(original).forEach((key) => {
+      if (!CORRECTION_PAYLOAD_FIELDS.has(key)) return
+      if (originalGroup && originalGroup === targetGroup) {
+        if (!allowedTargetKeys.has(key)) delete original[key]
+      } else {
+        delete original[key]
+      }
+    })
+  }
+  return { ...original, ...patch }
+}
+
 function timestamp(value, fallback) {
   if (!value) return fallback
   const date = new Date(value)
@@ -269,9 +305,12 @@ export function assertCareEvent(event) {
 
 export function createCorrectedCareEvent(original, patch = {}, options = {}) {
   const now = options.now || new Date().toISOString()
+  const targetCategory = patch.category || original.category
+  const payload = mergeCorrectedPayload(original.category, targetCategory, original.payload, patch.payload)
   return createCareEvent({
     ...original,
     ...patch,
+    payload,
     id: patch.id || options.id || makeId('event'),
     babyId: original.babyId,
     actor: patch.actor || patch.recordedBy || original.actor,
@@ -302,10 +341,16 @@ export function voidCareEvent(event, options = {}) {
 export function queryCareEvents(events = [], filters = {}) {
   const parseBoundary = (value, end = false) => {
     if (!value) return end ? Infinity : -Infinity
-    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(String(value))
-      ? `${value}T${end ? '23:59:59.999' : '00:00:00.000'}Z`
-      : value
-    return new Date(normalized).getTime()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+      const date = new Date(`${value}T00:00:00`)
+      if (Number.isNaN(date.getTime())) return Number.NaN
+      if (end) {
+        date.setDate(date.getDate() + 1)
+        return date.getTime() - 1
+      }
+      return date.getTime()
+    }
+    return new Date(value).getTime()
   }
   const from = parseBoundary(filters.from)
   const to = parseBoundary(filters.to, true)

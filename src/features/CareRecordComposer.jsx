@@ -38,6 +38,12 @@ function nowInputValue(offsetMinutes = 0) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 
+function localDateTimeForDay(day, offsetMinutes = 0) {
+  const fallback = nowInputValue(offsetMinutes)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day)) || day === localDayKey()) return fallback
+  return `${day}T${offsetMinutes < 0 ? '08:00' : '09:00'}`
+}
+
 function localInputValue(value, fallback = nowInputValue()) {
   const date = new Date(value || '')
   if (Number.isNaN(date.getTime())) return fallback
@@ -50,31 +56,32 @@ function isoValue(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString()
 }
 
-function initialForm(type, event, recentGrowth = {}, initialGrowthType = null) {
+function initialForm(type, event, recentGrowth = {}, initialGrowthType = null, selectedDay = localDayKey()) {
   const payload = event?.payload || {}
   if (type === 'feeding') {
     const mode = event?.category === 'breastfeeding'
       ? 'breastfeeding'
       : payload.milkType === 'breast_milk' ? 'bottle_breast_milk' : 'bottle_formula'
-    return { mode, occurredAt: localInputValue(event?.occurredAt), amountMl: payload.amountMl ?? 50 }
+    return { mode, occurredAt: localInputValue(event?.occurredAt, localDateTimeForDay(selectedDay)), amountMl: payload.amountMl ?? 50 }
   }
-  if (type === 'sleep') return { start: localInputValue(event?.occurredAt, nowInputValue(-60)), end: localInputValue(payload.endedAt, nowInputValue()) }
-  if (type === 'diaper') return { kind: payload.kind || 'urine', occurredAt: localInputValue(event?.occurredAt) }
-  if (type === 'medication') return { name: payload.medicationName || payload.name || '', amount: payload.amount || '', unit: payload.unit || 'mg', route: payload.route || '', occurredAt: localInputValue(event?.occurredAt), note: payload.note || '' }
-  if (type === 'temperature') return { value: payload.value ?? (event ? '' : '36.5'), unit: payload.unit || '°C', method: payload.method || (event ? '' : 'axillary'), occurredAt: localInputValue(event?.occurredAt) }
+  if (type === 'sleep') return { start: localInputValue(event?.occurredAt, localDateTimeForDay(selectedDay, -60)), end: localInputValue(payload.endedAt, localDateTimeForDay(selectedDay)) }
+  if (type === 'diaper') return { kind: payload.kind || 'urine', occurredAt: localInputValue(event?.occurredAt, localDateTimeForDay(selectedDay)) }
+  if (type === 'medication') return { name: payload.medicationName || payload.name || '', amount: payload.amount || '', unit: payload.unit || 'mg', route: payload.route || '', occurredAt: localInputValue(event?.occurredAt, localDateTimeForDay(selectedDay)), note: payload.note || '' }
+  if (type === 'temperature') return { value: payload.value ?? (event ? '' : '36.5'), unit: payload.unit || '°C', method: payload.method || (event ? '' : 'axillary'), occurredAt: localInputValue(event?.occurredAt, localDateTimeForDay(selectedDay)) }
   const growthType = GROWTH_TYPES.some((item) => item.id === payload.type)
     ? payload.type
     : GROWTH_TYPES.some((item) => item.id === initialGrowthType) ? initialGrowthType : 'weight'
-  return { type: growthType, value: payload.value ?? recentGrowth[growthType]?.value ?? '', measuredAt: String(payload.measuredAt || event?.occurredAt || localDayKey()).slice(0, 10), source: payload.source || 'caregiver_observation' }
+  const measuredAt = payload.measuredAt || (event?.occurredAt ? localDayKey(event.occurredAt) : selectedDay)
+  return { type: growthType, value: payload.value ?? recentGrowth[growthType]?.value ?? '', measuredAt: measuredAt || localDayKey(), source: payload.source || 'caregiver_observation' }
 }
 
 function saveErrorMessage(error, locale) {
   return error?.message || (locale === 'en-US' ? 'Save failed. Retry.' : '保存失败，请重试。')
 }
 
-export function P0RecordComposer({ type, locale = 'zh-CN', readOnly = false, initialEvent = null, recentGrowth = {}, initialGrowthType = null, onSave, onCancel }) {
+export function P0RecordComposer({ type, locale = 'zh-CN', readOnly = false, initialEvent = null, recentGrowth = {}, initialGrowthType = null, selectedDay = localDayKey(), onSave, onCancel }) {
   const isEnglish = locale === 'en-US'
-  const [form, setForm] = useState(() => initialForm(type, initialEvent, recentGrowth, initialGrowthType))
+  const [form, setForm] = useState(() => initialForm(type, initialEvent, recentGrowth, initialGrowthType, selectedDay))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const editing = Boolean(initialEvent)
@@ -91,7 +98,7 @@ export function P0RecordComposer({ type, locale = 'zh-CN', readOnly = false, ini
     setSaving(true)
     try {
       await onSave?.(input, message, initialEvent)
-      if (!editing) setForm(initialForm(type, null, recentGrowth, initialGrowthType))
+      if (!editing) setForm(initialForm(type, null, recentGrowth, initialGrowthType, selectedDay))
     } catch (saveError) {
       setError(saveErrorMessage(saveError, locale))
       throw saveError

@@ -1,4 +1,5 @@
 import { getInfantMonthlyGuidance } from '../content/cuiParenting.js'
+import { calendarDateKey } from './date.js'
 
 const DAY_MS = 86_400_000
 
@@ -253,9 +254,11 @@ function id(prefix) {
 }
 
 export function localDateKey(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value)
-  const offset = date.getTimezoneOffset() * 60_000
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10)
+  try {
+    return calendarDateKey(value)
+  } catch {
+    return ''
+  }
 }
 
 export function getDailyTasks(taskLogs = [], date = new Date(), stageId = 'newborn-early') {
