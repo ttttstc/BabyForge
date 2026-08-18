@@ -4,6 +4,7 @@ import {
   NativeResourceContractError,
   validateNativeResourceEnvelope,
 } from './nativeResourceContract.js'
+import { validateNativeTodayModel } from './nativeToday.js'
 
 export class NativeResourceClientError extends Error {
   constructor(code, message, { status = 0, retryable = false, details = null } = {}) {
@@ -80,6 +81,26 @@ export function createNativeResourceClient({ fetchImpl = globalThis.fetch, baseU
 
   return {
     bootstrap,
+    async today(day = '') {
+      const query = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `?day=${encodeURIComponent(day)}` : ''
+      return validateNativeTodayModel(await request(`/api/native/today${query}`))
+    },
+    async createCareEvent(event) {
+      return request('/api/events', { method: 'POST', body: { event } })
+    },
+    async findCareEvent(babyId, eventId) {
+      const payload = await request(`/api/events?babyId=${encodeURIComponent(babyId)}&includeVoided=true`)
+      return (payload.events || []).find((event) => event.id === eventId) || null
+    },
+    async voidCareEvent(eventId, version) {
+      return request(`/api/events/${encodeURIComponent(eventId)}`, { method: 'DELETE', body: { version } })
+    },
+    async photos(babyId) {
+      return request(`/api/photos?babyId=${encodeURIComponent(babyId)}`)
+    },
+    async deletePhoto(photoId) {
+      return request(`/api/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' })
+    },
     async signInEmail(email, password) {
       await request('/api/auth/sign-in/email', { method: 'POST', body: { email: String(email || '').trim().toLowerCase(), password, rememberMe: true } })
       return bootstrap()

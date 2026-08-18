@@ -1,0 +1,29 @@
+{
+  "contract": "babyforge.native.today",
+  "contractVersion": "1.0.0",
+  "endpoint": "/api/native/today",
+  "requiredFields": [
+    "generatedAt",
+    "dataTimezone",
+    "selectedDay",
+    "baby",
+    "permissions",
+    "recorder",
+    "summary",
+    "guidance",
+    "photos",
+    "photoPolicy",
+    "tasks",
+    "recentFacts",
+    "totalFacts"
+  ],
+  "summaryUnknown": { "recorded": false, "value": null, "label": "未记录" },
+  "writeEndpoint": "/api/events",
+  "idempotencyKey": "event.id",
+  "offlineQueue": false,
+  "photoPolicy": {
+    "aiUpload": "explicit-only",
+    "reportsIncludeOriginals": false,
+    "sharesIncludeOriginals": false
+  }
+}

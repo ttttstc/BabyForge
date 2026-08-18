@@ -15,6 +15,10 @@
     {
       "name": "internet_reason",
       "value": "访问 BabyForge 在线服务"
+    },
+    {
+      "name": "vibrate_reason",
+      "value": "用于记录保存成功后的轻触觉反馈"
     }
   ]
 }

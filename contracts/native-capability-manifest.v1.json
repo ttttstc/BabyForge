@@ -63,6 +63,9 @@
     "business-data-is-shared",
     "permissions-come-from-shared-resource",
     "native-shell-does-not-invent-records",
-    "offline-does-not-queue-facts"
+    "offline-does-not-queue-facts",
+    "missing-facts-are-not-zero",
+    "server-confirms-before-success",
+    "photos-are-not-implicitly-sent-to-ai"
   ]
 }

@@ -8,7 +8,7 @@ const LEGACY_TYPES = new Set(['breastfeeding', 'bottle_feeding', 'diaper', 'slee
 const P0_CATEGORIES = new Set(['breastfeeding', 'bottle_feeding', 'sleep', 'diaper', 'medication', 'temperature', 'temperature_observation', 'growth_measurement'])
 const DIAPER_KINDS = new Set(['urine', 'stool', 'both'])
 const MILK_TYPES = new Set(['breast_milk', 'formula'])
-const GROWTH_TYPES = new Set(['weight', 'length'])
+const GROWTH_TYPES = new Set(['weight', 'length', 'headCircumference'])
 
 export class EventInputError extends Error {
   constructor(field, message) {

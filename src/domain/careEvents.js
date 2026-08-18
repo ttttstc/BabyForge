@@ -83,7 +83,7 @@ function timestamp(value, fallback) {
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString()
 }
 
-function kindForType(type) {
+export function careEventKindForCategory(type) {
   return TYPE_TO_KIND[type] || 'caregiver_observation'
 }
 
@@ -130,7 +130,7 @@ export function createCareEvent(input = {}, options = {}) {
   const now = options.now || new Date().toISOString()
   const legacyType = input.type || null
   const category = String(input.category || legacyType || 'care_action').trim() || 'care_action'
-  const kind = CARE_EVENT_KINDS.includes(input.kind) ? input.kind : kindForType(legacyType || category)
+  const kind = CARE_EVENT_KINDS.includes(input.kind) ? input.kind : careEventKindForCategory(legacyType || category)
   const status = CARE_EVENT_STATUSES.includes(input.status) ? input.status : 'active'
   const actor = normalizeRecorder(input.actor || input.recordedBy || options.actor || options.recordedBy)
   const event = {
