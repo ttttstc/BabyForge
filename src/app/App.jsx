@@ -384,6 +384,7 @@ function AppContent() {
   // Login/logout transitions explicitly replace the in-memory state. Keeping
   // hydration to the initial boot prevents a slower IndexedDB read from
   // overwriting a freshly pulled account workspace after sign-in.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
