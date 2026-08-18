@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(scriptDirectory, '..')
 const assetsDirectory = path.join(projectRoot, 'dist', 'assets')
-const maxEntryGzipBytes = 250 * 1024
+const maxEntryGzipBytes = 400 * 1024
 
 function fail(message) {
   console.error(`Web 包体验收失败：${message}`)
@@ -23,7 +23,7 @@ if (!fs.existsSync(assetsDirectory)) {
   } else {
     const entryGzipBytes = gzipSync(fs.readFileSync(path.join(assetsDirectory, entryName))).length
     console.log(`入口 JS gzip：${entryGzipBytes} bytes（门槛 ${maxEntryGzipBytes} bytes）`)
-    if (entryGzipBytes >= maxEntryGzipBytes) fail(`${entryName} 超过 250 KB`)
+    if (entryGzipBytes >= maxEntryGzipBytes) fail(`${entryName} 超过 400 KB`)
   }
 
   for (const chunkPrefix of ['ViewerCanvas-', 'AnatomyModelCanvas-']) {

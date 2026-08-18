@@ -124,7 +124,7 @@ export function StageSurface({ topicMode, sex, sceneMode, onSceneModeChange, per
       <div className="scene-frame">
         {use3d && !viewerFailed ? (
           <ViewerErrorBoundary resetKey={viewerRetry} onError={handleViewerFailure} fallback={fallback}>
-              <Suspense fallback={<div className="scene-loading">正在准备 3D 结构…</div>}>
+            <Suspense fallback={<div className="scene-loading">正在准备 3D 结构…</div>}>
               <ViewerCanvas key={viewerRetry} stepIndex={topicMode ? stepIndex : 0} performanceMode={performanceMode} sex={sex} viewerAction={viewerAction} onContextLost={handleViewerFailure} />
             </Suspense>
           </ViewerErrorBoundary>
