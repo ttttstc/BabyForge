@@ -23,7 +23,7 @@ Change the shared WebGL probe, anatomy and newborn canvases, disease display uni
 1. Cache one WebGL capability result and release the detached probe context.
 2. Keep the organ page's `Canvas` stable while replacing only the model subtree.
 3. Start disease models near the viewport, retain their canvas after first mount, and stop its frame loop while off-screen.
-4. Use demand rendering whenever auto-rotation is off. Remove `preserveDrawingBuffer`; cap DPR and disable antialiasing on constrained devices or explicit low-performance mode.
+4. Use demand rendering whenever auto-rotation is off. Remove `preserveDrawingBuffer`; cap DPR and disable antialiasing in explicit low-performance mode, with automatic protection only for genuinely low-memory devices (reported `deviceMemory` ≤ 1 GB). Touch input and pixel density alone do not trigger a downgrade because the target phones are touch devices.
 5. Publish hotspot screen positions after controls settle or the viewport changes, not once per frame.
 6. Auto-rotate briefly as an interaction hint, then pause. Any user camera interaction pauses it immediately.
 7. Measure mount-to-ready time with the browser Performance API.

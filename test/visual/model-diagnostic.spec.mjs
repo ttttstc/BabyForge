@@ -25,6 +25,7 @@ async function createBaby(page) {
   await page.getByLabel('男孩').check()
   await page.getByLabel('喂养方式').selectOption('mixed')
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
+  await expect(page).toHaveURL(/#\/today$/)
 }
 
 test('all anatomy models load without entering the 2D fallback', async ({ page }) => {

@@ -1,4 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { Component, useEffect, useRef, useState } from 'react'
+import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
+import { acceptHouseholdInvite } from '../domain/householdAccess.js'
+import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
+import { pullShowcaseWorkspace, pullWorkspace, pushWorkspace } from '../domain/sync.js'
+import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
+import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
+import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
+import { clearExperienceCache } from '../domain/experienceApi.js'
+import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
+import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation, visitorTokenFromLocation } from './router.js'
 import { Onboarding } from '../features/Onboarding.jsx'
 import { Workspace } from '../features/Workspace.jsx'
 import { DoctorSummaryView } from '../features/DoctorSummaryView.jsx'
@@ -11,16 +21,6 @@ import { RecordCenter } from '../features/RecordCenter.jsx'
 import { NaibaAiView } from '../features/NaibaAiView.jsx'
 import { VaccineView } from '../features/VaccineView.jsx'
 import { VisitorView } from '../features/VisitorView.jsx'
-import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
-import { acceptHouseholdInvite } from '../domain/householdAccess.js'
-import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
-import { pullShowcaseWorkspace, pullWorkspace, pushWorkspace } from '../domain/sync.js'
-import { applyCareEventsToLegacy, createCareEvent, migrateLegacyState } from '../domain/careEvents.js'
-import { changedCareEvents, mergePulledState, pullCareActors, pullCareEvents, rollbackCareEventChanges, syncCareEventChanges } from '../domain/eventSync.js'
-import { createEvaluatedGrowthMeasurement } from '../domain/growth.js'
-import { clearExperienceCache } from '../domain/experienceApi.js'
-import { clearLocalBabyAlbum } from '../domain/babyAlbum.js'
-import { buildInviteRoute, inviteTokenFromLocation, navigate, resolveNaibaReturnTo, ROUTES, useHashLocation, visitorTokenFromLocation } from './router.js'
 
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
 
@@ -32,7 +32,33 @@ function sameValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
 }
 
-export function App() {
+class RouteErrorBoundary extends Component {
+  state = { error: null }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  componentDidCatch(error) {
+    console.error('[BabyForge] Route render failed', error)
+  }
+
+  handleRetry = () => {
+    if (typeof globalThis.location?.reload === 'function') {
+      globalThis.location.reload()
+      return
+    }
+    this.setState({ error: null })
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    const isEnglish = this.props.locale === 'en-US'
+    return <main className="login-shell" role="alert"><section className="login-card"><p className="eyebrow">BabyForge</p><h2>{isEnglish ? 'This page could not be loaded' : '页面加载失败'}</h2><p className="muted">{isEnglish ? 'The connection may have been interrupted. Reload and try again.' : '页面资源可能加载中断，请重新加载后重试。'}</p><button type="button" className="primary-button compact" onClick={this.handleRetry}>{isEnglish ? 'Reload' : '重新加载'}</button></section></main>
+  }
+}
+
+function AppContent() {
   const location = useHashLocation()
   const route = location.route
   const inviteToken = inviteTokenFromLocation(location)
@@ -352,6 +378,7 @@ export function App() {
   // Login/logout transitions explicitly replace the in-memory state. Keeping
   // hydration to the initial boot prevents a slower IndexedDB read from
   // overwriting a freshly pulled account workspace after sign-in.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -482,7 +509,7 @@ export function App() {
       }
       if (next.mode === 'cloudflare' && !next.household) {
         navigate(inviteToken ? buildInviteRoute(inviteToken) : ROUTES.household)
-      } else {
+      } else if ([ROUTES.login, ROUTES.onboarding, ROUTES.household, ROUTES.resetPassword].includes(route) || inviteToken) {
         navigate(current.baby ? ROUTES.today : ROUTES.onboarding)
       }
     } finally {
@@ -650,4 +677,8 @@ export function App() {
   }
 
   return <Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} showcaseMode={session?.mode === 'showcase'} />
+}
+
+export function App() {
+  return <RouteErrorBoundary><AppContent /></RouteErrorBoundary>
 }

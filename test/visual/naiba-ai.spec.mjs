@@ -22,6 +22,7 @@ async function createBaby(page, ageDays = 2, feedingMode = 'formula') {
   await page.getByLabel('男孩').check()
   await page.getByLabel('喂养方式').selectOption(feedingMode)
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
+  await expect(page).toHaveURL(/#\/today$/)
 }
 
 test.beforeEach(async ({ page }) => {
@@ -34,13 +35,14 @@ test('today stays factual and keeps intake entry in the record center', async ({
   await expect(page.getByTestId('today-feeding-recommendation')).toHaveCount(0)
   await expect(page.getByTestId('today-ai-analysis')).toHaveCount(0)
   await expect(page.getByTestId('today-growth-plan')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /去记录中心录入/ }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '记录', exact: true })).toBeVisible()
 })
 
 test('Naiba AI page asks about facts before making a health conclusion', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
-  await expect(page).toHaveURL(/#\/naiba-ai$/)
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
+  await expect(page).toHaveURL(/#\/naiba-ai(?:\?.*)?$/)
+  await expect(page.getByRole('button', { name: '奶爸 AI', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { name: '奶爸AI', exact: true })).toBeVisible()
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('宝宝呼吸好像不太对')
   await page.getByRole('button', { name: '发送' }).click()
@@ -56,7 +58,7 @@ test('Naiba AI page asks about facts before making a health conclusion', async (
 test('Naiba AI local mode answers a general message without waiting for a cloud endpoint', async ({ page }) => {
   await createBaby(page)
   await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"type":"message","delta":"本地模型已经收到问题并生成回答。"}\n\ndata: {"type":"done"}\n\n' }))
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   await expect(page.getByText('嗨，我在这儿陪你。你可以直接说宝宝吃、睡、排便，或者哪里和平时不一样，我们一起慢慢捋清楚。')).toBeVisible()
   await expect(page.getByText('围绕宝宝的吃睡排便、发育和健康观察，帮你理清事实、识别风险、做好照护记录。')).toBeVisible()
   for (const label of ['详细分析', '成长计划', '就医摘要', '照护交接']) await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0)
@@ -73,7 +75,7 @@ test('Naiba AI sends with Enter and keeps Shift+Enter for a newline', async ({ p
     const answer = `回答：${request.message}`
     await route.fulfill({ status: 200, contentType: 'text/event-stream', body: `data: ${JSON.stringify({ type: 'message', delta: answer })}\n\ndata: {"type":"done"}\n\n` })
   })
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   const composer = page.getByPlaceholder('自由提问，或描述刚刚发生的事…')
   await composer.fill('宝宝第一行')
   await composer.press('Shift+Enter')
@@ -89,7 +91,7 @@ test('Naiba AI can stop a pending response', async ({ page }) => {
     await new Promise((resolve) => setTimeout(resolve, 5_000))
     await route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"type":"message","delta":"不应显示的延迟回答"}\n\ndata: {"type":"done"}\n\n' })
   })
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   const composer = page.getByPlaceholder('自由提问，或描述刚刚发生的事…')
   await composer.fill('请开始一个较慢的宝宝照护回答')
   await page.getByRole('button', { name: '发送' }).click()
@@ -109,7 +111,7 @@ test('Naiba AI offers a jump-to-bottom control when reading older messages', asy
     const answer = `回答：${request.message}。${'请继续观察吃奶、尿便、精神状态和呼吸变化。'.repeat(14)}`
     await route.fulfill({ status: 200, contentType: 'text/event-stream', body: `data: ${JSON.stringify({ type: 'message', delta: answer })}\n\ndata: {"type":"done"}\n\n` })
   })
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   const composer = page.getByPlaceholder('自由提问，或描述刚刚发生的事…')
   for (let index = 0; index < 4; index += 1) {
     const question = `第${index + 1}个宝宝长问题`
@@ -133,7 +135,7 @@ test('Naiba AI keeps the composer in view after a long conversation and answers 
     const answer = `回答：${request.message}。${'请继续观察吃奶、尿便、精神状态和呼吸变化，并在需要时联系儿科医生。'.repeat(8)}`
     await route.fulfill({ status: 200, contentType: 'text/event-stream', body: `data: ${JSON.stringify({ type: 'message', delta: answer })}\n\ndata: {"type":"done"}\n\n` })
   })
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   const composer = page.getByPlaceholder('自由提问，或描述刚刚发生的事…')
   await expect(composer).toBeInViewport()
   await expect(page.getByRole('button', { name: '发送' })).toBeInViewport()
@@ -150,7 +152,7 @@ test('Naiba AI keeps the composer in view after a long conversation and answers 
 test('Naiba AI reports an error when the model endpoint is unavailable', async ({ page }) => {
   await createBaby(page)
   await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'model unavailable' }) }))
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好')
   await page.getByRole('button', { name: '发送' }).click()
   await expect(page.getByRole('alert')).toContainText('model unavailable')
@@ -161,7 +163,7 @@ test('Naiba AI reports an error when the model endpoint is unavailable', async (
 test('Naiba AI does not fabricate a topic answer when the model endpoint is unavailable', async ({ page }) => {
   await createBaby(page, 10, 'mixed')
   await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'model unavailable' }) }))
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('10天的宝宝照顾要注意什么？')
   await page.getByRole('button', { name: '发送' }).click()
   await expect(page.getByRole('alert')).toContainText('model unavailable')
@@ -172,7 +174,7 @@ test('Naiba AI does not fabricate a topic answer when the model endpoint is unav
 test('Naiba AI ignores fabricated SSE text when the server marks a fallback', async ({ page }) => {
   await createBaby(page)
   await page.route('**/api/ai/chat', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"type":"message","delta":"当前先显示本地回答。"}\n\ndata: {"type":"meta","fallback":true,"reason":"provider_endpoint_not_found"}\n\ndata: {"type":"done"}\n\n' }))
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('你好')
   await page.getByRole('button', { name: '发送' }).click()
   await expect(page.getByRole('alert')).toContainText('找不到模型接口')
@@ -182,14 +184,14 @@ test('Naiba AI ignores fabricated SSE text when the server marks a fallback', as
 
 test('today directs actual intake to the record center', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: /去记录中心录入/ }).first().click()
+  await page.getByRole('button', { name: '记录', exact: true }).click()
   await expect(page).toHaveURL(/#\/records$/)
   await expect(page.getByRole('heading', { name: '记录中心' })).toBeVisible()
 })
 
 test('natural language actual intake stays draft until caregiver confirms', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   const composer = page.getByPlaceholder('自由提问，或描述刚刚发生的事…')
   await composer.fill('刚才宝宝喝了 50 mL 配方奶')
   await page.getByRole('button', { name: '发送' }).click()
@@ -203,9 +205,9 @@ test('natural language actual intake stays draft until caregiver confirms', asyn
 
 test('plain-text medical report stays editable draft until confirmation', async ({ page }) => {
   await createBaby(page)
-  await page.getByRole('button', { name: '奶爸AI', exact: true }).click()
-  await expect(page).toHaveURL(/#\/naiba-ai$/)
-  const reportInput = page.locator('input[type="file"]')
+  await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
+  await expect(page).toHaveURL(/#\/naiba-ai(?:\?.*)?$/)
+  const reportInput = page.locator('.naiba-attach input[type="file"]')
   await expect(reportInput).toBeEnabled()
   await reportInput.setInputFiles({ name: '血常规.txt', mimeType: 'text/plain', buffer: Buffer.from('血红蛋白 135 g/L 参考范围: 110-160') })
   await expect(page.getByText('报告字段事实')).toBeVisible()

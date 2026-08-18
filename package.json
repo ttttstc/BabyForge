@@ -9,6 +9,10 @@
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
     "test:visual": "playwright test",
+    "verify:harmony": "node harmony/scripts/verify-harmony.mjs --source-only",
+    "verify:bundle": "node scripts/verify-web-bundle.mjs",
+    "verify:production": "node scripts/verify-production.mjs",
+    "audit:high": "npm audit --audit-level=high",
     "cloudflare:functions:build": "wrangler pages functions build --compatibility-date 2026-08-05 --compatibility-flag nodejs_compat",
     "cloudflare:db:migrate": "wrangler d1 migrations apply babyforge --remote",
     "cloudflare:deploy": "npm run build && wrangler pages deploy dist --project-name babyforge --branch main --commit-dirty=true"

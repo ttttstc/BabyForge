@@ -110,6 +110,7 @@ export function resolveNaibaReturnTo(value) {
 const LEGACY_ROUTE_ALIASES = {
   [ROUTES.health]: ROUTES.healthVaccines,
   [ROUTES.vaccines]: ROUTES.healthVaccines,
+  [ROUTES.pediatric]: ROUTES.healthDiseases,
   '#/stage': ROUTES.growth,
   '#/stage/newborn': ROUTES.growth,
 }
@@ -150,8 +151,8 @@ export function parseHashLocation(value = hashValue()) {
   const [pathname, query = ''] = normalized.slice(1).split('?')
   const rawRoute = `#${pathname || ROUTES.onboarding.slice(1)}`
   const params = new URLSearchParams(query)
-  const pediatricRoute = rawRoute === ROUTES.pediatric
-    ? (params.get('view') === 'organs' ? ROUTES.healthOrgans : ROUTES.healthDiseases)
+  const pediatricRoute = rawRoute === ROUTES.pediatric && params.get('view') === 'organs'
+    ? ROUTES.healthOrgans
     : null
   const route = pediatricRoute || LEGACY_ROUTE_ALIASES[rawRoute] || rawRoute
   const search = query ? `?${query}` : ''

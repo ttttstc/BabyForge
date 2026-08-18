@@ -40,6 +40,8 @@ jobs:
           npm test
           npm run lint
           npm run build
+          npm run verify:bundle
+          npm run verify:harmony
 
       - name: Verify required R2 buckets
         env:
@@ -112,6 +114,13 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name babyforge --branch main --commit-hash ${{ github.sha }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify deployed Web session build
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          test -n "$DEPLOYMENT_URL"
+          npm run verify:production -- "$DEPLOYMENT_URL"
 
       - name: Encrypt legacy account API keys
         env:

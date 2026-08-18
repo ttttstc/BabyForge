@@ -113,6 +113,23 @@ test('email registration needs only email and password and preserves the return 
   })
 })
 
+test('email login requests a remembered session for app cold starts', async () => {
+  const requests = []
+  const household = { id: 'household-existing', role: 'owner', baby: { id: 'baby-existing', nickname: '小舟', birthDate: '2026-08-01' } }
+  const session = await login(' Parent@Example.com ', 'abc123', {
+    storage: { setItem() {} },
+    fetchImpl: async (path, options) => {
+      requests.push({ path, options })
+      if (path === '/api/auth/sign-in/email') return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+      if (path === '/api/me') return new Response(JSON.stringify({ user: { id: 'user-existing', email: 'parent@example.com', nickname: '家长' }, household }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response(JSON.stringify({ household }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  assert.deepEqual(JSON.parse(requests[0].options.body), { email: 'parent@example.com', password: 'abc123', rememberMe: true })
+  assert.equal(session.userId, 'user-existing')
+  assert.deepEqual(requests.map(({ path }) => path), ['/api/auth/sign-in/email', '/api/me', '/api/household'])
+})
+
 test('password reset submits the link token and new password', async () => {
   let request
   await resetPassword({ token: 'reset-token', password: 'newpass1' }, {
@@ -153,6 +170,12 @@ test('new and legacy invite links resolve to the shared household route', () => 
   assert.equal(parseInviteToken(`https://babyforge.bbroot.com/${route}`), token)
   assert.equal(parseInviteToken(`https://babyforge.bbroot.com/invite/${token}`), token)
   assert.equal(parseInviteToken('not-an-invite'), '')
+})
+
+test('legacy pediatric links resolve to the canonical health routes', () => {
+  assert.equal(parseHashLocation('#/topic/pediatric-diseases').route, '#/health/diseases')
+  assert.equal(parseHashLocation('#/topic/pediatric-diseases?view=diseases').route, '#/health/diseases')
+  assert.equal(parseHashLocation('#/topic/pediatric-diseases?view=organs').route, '#/health/organs')
 })
 
 test('demo login uses server-side authentication then stays in the browser sandbox', async () => {

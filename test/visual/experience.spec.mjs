@@ -105,6 +105,20 @@ test('experience search failure stays inside the experience surface', async ({ p
   await expect(page.getByRole('button', { name: '成长', exact: true })).toBeVisible()
 })
 
+test('route navigation renders without waiting for a route chunk', async ({ page }) => {
+  const experienceModuleRequests = []
+  page.on('request', (request) => {
+    if (request.url().includes('/src/features/ExperienceView.jsx')) experienceModuleRequests.push(request.url())
+  })
+  await createBaby(page)
+  const initialModuleRequestCount = experienceModuleRequests.length
+  await page.getByRole('button', { name: '经验', exact: true }).click()
+  await expect(page).toHaveURL(/#\/experience$/)
+  await expect(page.getByRole('heading', { name: '经验', exact: true })).toBeVisible()
+  await expect(page.getByText('正在打开页面…', { exact: true })).toHaveCount(0)
+  expect(experienceModuleRequests).toHaveLength(initialModuleRequestCount)
+})
+
 test('Cui Yutao column is locally curated and shows every 0–12 month stage', async ({ page }) => {
   const requestedCategories = []
   await page.route('**/api/experience*', (route) => {

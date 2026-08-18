@@ -23,13 +23,16 @@ async function createBaby(page) {
   await page.getByLabel('男孩').check()
   await page.getByLabel('喂养方式').selectOption('mixed')
   await page.getByRole('button', { name: '进入 BabyForge' }).click()
+  await expect(page).toHaveURL(/#\/today$/)
 }
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await createBaby(page)
-  await page.goto('/#/health/diseases')
+  await page.getByRole('button', { name: '健康', exact: true }).click()
+  await expect(page).toHaveURL(/#\/health\/vaccines$/)
+  await page.getByRole('tab', { name: '常见儿科病', exact: true }).click()
   await expect(page.getByRole('tab', { name: '常见儿科病' })).toHaveAttribute('aria-selected', 'true')
 })
 
