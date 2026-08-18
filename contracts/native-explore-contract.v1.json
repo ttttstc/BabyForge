@@ -1,0 +1,27 @@
+{
+  "contract": "babyforge.native.explore",
+  "contractVersion": "1.0.0",
+  "endpoint": "/api/native/explore",
+  "requiredFields": [
+    "metadata",
+    "permissions",
+    "baby",
+    "vaccines",
+    "vaccineGuidance",
+    "diseases",
+    "diseaseSources",
+    "diseaseSearch",
+    "organs",
+    "anatomy",
+    "experience",
+    "experienceCategories",
+    "experienceSources",
+    "sourcePolicy"
+  ],
+  "writeEndpoint": "/api/events",
+  "vaccineSource": "shared-vaccine-standard",
+  "diseaseSource": "shared-disease-registry",
+  "thirdPartyPolicy": "external-source-with-raw-link",
+  "controlled3dFallback": "full-native-text",
+  "offlineQueue": false
+}
