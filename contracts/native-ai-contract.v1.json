@@ -25,11 +25,6 @@
     "shareIncludesOriginals": false,
     "originalRetention": "request-only"
   },
-  "conversationPolicy": {
-    "storage": "request-only",
-    "history": false,
-    "reloadStartsNew": true
-  },
   "sourcePolicy": {
     "knowledgePack": "server-provided",
     "approvedAuthorities": ["NHC", "WHO", "CDC"],
@@ -37,7 +32,7 @@
     "deterministicRules": "server-only"
   },
   "invariants": [
-    "chat-history-is-not-retained",
+    "sessions-are-continuity-not-facts",
     "missing-facts-are-not-zero",
     "safety-floor-cannot-be-lowered",
     "drafts-require-explicit-confirmation",

@@ -20,31 +20,31 @@
       "id": "today",
       "delivery": "issue-71",
       "entry": "today.root",
-      "desktopCapabilities": ["today-summary", "today-tasks", "album", "quick-record", "ai-care-analysis", "ai-feeding-reference"]
+      "desktopCapabilities": ["today-summary", "today-tasks", "album", "quick-record"]
     },
     {
       "id": "record",
       "delivery": "issue-71",
       "entry": "record.root",
-      "desktopCapabilities": ["high-frequency-records", "low-frequency-records", "correction", "void", "doctor-summary", "ai-visit-brief", "ai-care-handoff"]
+      "desktopCapabilities": ["high-frequency-records", "low-frequency-records", "correction", "void", "doctor-summary"]
     },
     {
       "id": "ai",
       "delivery": "issue-73",
       "entry": "ai.root",
-      "desktopCapabilities": ["temporary-chat", "sources", "draft-confirmation", "reports"]
+      "desktopCapabilities": ["capability-registry", "sessions", "sources", "draft-confirmation", "reports", "care-handoff"]
     },
     {
       "id": "growth",
       "delivery": "issue-72",
       "entry": "growth.root",
-      "desktopCapabilities": ["measurements", "curves", "stage-details", "history", "milestones", "care-plan", "ai-insight", "ai-growth-plan"]
+      "desktopCapabilities": ["measurements", "curves", "stage-details", "history", "milestones", "care-plan", "ai-insight"]
     },
     {
       "id": "explore",
       "delivery": "issue-72",
       "entry": "explore.root",
-      "desktopCapabilities": ["vaccines", "disease-topics", "organ-learning", "reviewed-knowledge", "third-party-sources", "ai-knowledge-entry"]
+      "desktopCapabilities": ["vaccines", "disease-topics", "organ-learning", "reviewed-knowledge", "third-party-sources"]
     },
     {
       "id": "settings",

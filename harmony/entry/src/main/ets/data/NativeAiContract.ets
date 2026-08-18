@@ -25,6 +25,17 @@ export interface NativeAiMessage {
   sources: Array<Object>;
 }
 
+export interface NativeAiSession {
+  id: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  preview: string;
+  messageCount: number;
+  messages: Array<NativeAiMessage>;
+}
+
 export interface NativeAiBootstrap {
   contract: string;
   contractVersion: string;
@@ -33,14 +44,9 @@ export interface NativeAiBootstrap {
   baby: Record<string, Object>;
   permissions: Record<string, Object>;
   capabilities: Array<NativeAiCapability>;
-  conversationPolicy: NativeAiConversationPolicy;
+  sessions: Array<NativeAiSession>;
+  activeSession: NativeAiSession | null;
   sourcePolicy: Record<string, Object>;
-}
-
-export interface NativeAiConversationPolicy {
-  storage: string;
-  history: boolean;
-  reloadStartsNew: boolean;
 }
 
 export interface NativeAiReply {
@@ -78,6 +84,11 @@ function text(value: Object | null, field: string, allowEmpty: boolean = false):
 function nullableText(value: Object | null, field: string): string | null {
   if (value === null) return null;
   return text(value, field);
+}
+
+function integer(value: Object | null, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`奶爸 AI 合同字段无效：${field}`);
+  return value;
 }
 
 function textList(value: Object | null): Array<string> {
@@ -118,11 +129,25 @@ function parseMessage(value: Object, index: number): NativeAiMessage {
   };
 }
 
+function parseSession(value: Object, index: number): NativeAiSession {
+  const item = record(value, `sessions[${index}]`);
+  return {
+    id: text(item.id, `sessions[${index}].id`),
+    title: text(item.title, `sessions[${index}].title`),
+    status: text(item.status, `sessions[${index}].status`),
+    createdAt: text(item.createdAt, `sessions[${index}].createdAt`),
+    updatedAt: text(item.updatedAt, `sessions[${index}].updatedAt`),
+    preview: text(item.preview, `sessions[${index}].preview`, true),
+    messageCount: integer(item.messageCount, `sessions[${index}].messageCount`),
+    messages: objectList(item.messages).map((message: Object, messageIndex: number) => parseMessage(message, messageIndex))
+  };
+}
+
 export function parseNativeAiBootstrap(value: Object): NativeAiBootstrap {
   const item = record(value, 'ai');
   if (item.contract !== NATIVE_AI_CONTRACT || item.contractVersion !== NATIVE_AI_CONTRACT_VERSION) throw new Error('奶爸 AI 合同版本不受支持。');
-  const conversationPolicy = record(item.conversationPolicy, 'conversationPolicy');
-  if (typeof conversationPolicy.history !== 'boolean' || typeof conversationPolicy.reloadStartsNew !== 'boolean') throw new Error('奶爸 AI 合同字段无效：conversationPolicy');
+  const sessions = objectList(item.sessions).map((session: Object, index: number) => parseSession(session, index));
+  const active = item.activeSession === null ? null : parseSession(item.activeSession as Object, 0);
   return {
     contract: text(item.contract, 'contract'),
     contractVersion: text(item.contractVersion, 'contractVersion'),
@@ -131,11 +156,8 @@ export function parseNativeAiBootstrap(value: Object): NativeAiBootstrap {
     baby: record(item.baby, 'baby'),
     permissions: record(item.permissions, 'permissions'),
     capabilities: objectList(item.capabilities).map((capability: Object, index: number) => parseCapability(capability, index)),
-    conversationPolicy: {
-      storage: text(conversationPolicy.storage, 'conversationPolicy.storage'),
-      history: conversationPolicy.history,
-      reloadStartsNew: conversationPolicy.reloadStartsNew
-    },
+    sessions,
+    activeSession: active,
     sourcePolicy: record(item.sourcePolicy, 'sourcePolicy')
   };
 }

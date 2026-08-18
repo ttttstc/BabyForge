@@ -32,7 +32,9 @@ import {
 import {
   NativeAiAttachment,
   NativeAiBootstrap,
+  NativeAiCapability,
   NativeAiMessage,
+  NativeAiSession,
   NativeAiStatus
 } from '../data/NativeAiContract';
 
@@ -51,6 +53,13 @@ interface NativeRecordDraft {
 interface NativePhotoTimestamp {
   takenAt: string;
   timeSource: string;
+}
+
+interface NativeAiContextCard {
+  kind: string;
+  title: string;
+  description: string;
+  sourceIds: Array<string>;
 }
 
 interface NativeAiReportFactPayload {
@@ -171,24 +180,20 @@ struct Index {
   @State private aiModel: NativeAiBootstrap | null = null;
   @State private aiConversationId: string = '';
   @State private aiMessages: Array<NativeAiMessage> = [];
-  @State private aiDecisionFacts: Object | null = null;
   @State private aiInput: string = '';
   @State private aiStatus: NativeAiStatus = 'idle';
   @State private aiError: string = '';
   @State private aiArtifact: Object | null = null;
   @State private aiArtifactSkill: string = '';
   @State private aiSources: Array<Object> = [];
+  @State private aiContext: NativeAiContextCard | null = null;
+  @State private aiContextVisible: boolean = false;
   @State private aiAttachment: NativeAiAttachment | null = null;
   @State private aiDraft: Object | null = null;
   @State private aiDraftId: string = '';
   @State private aiDraftValue: string = '';
   @State private aiSelectedSkillId: string = '';
-  @State private aiPageAnalysisSkillId: string = '';
-  @State private aiPageAnalysisData: Object | null = null;
-  @State private aiPageAnalysisSources: Array<Object> = [];
-  @State private aiPageAnalysisSurface: string = '';
-  @State private aiPageAnalysisBusy: boolean = false;
-  @State private aiPageAnalysisError: string = '';
+  @State private aiSessionsExpanded: boolean = false;
   private aiStopRequested: boolean = false;
   private aiCancelable: boolean = false;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
@@ -332,7 +337,7 @@ struct Index {
     return {
       id: this.nativeId('ai-welcome'),
       role: 'assistant',
-      text: '嗨，我是奶爸 AI。你可以直接问宝宝当前阶段、描述刚刚发生的事，或继续追问刚才的回答。缺失事实不会被当成 0，正式记录必须由你确认。',
+      text: '嗨，我是奶爸 AI。你可以问宝宝当前阶段、描述刚刚发生的事，或从下面的能力入口开始。缺失事实不会被当成 0，正式记录必须由你确认。',
       skillId: null,
       createdAt: new Date().toISOString(),
       artifact: null,
@@ -341,7 +346,7 @@ struct Index {
   }
 
   private aiStatusText(): string {
-    if (this.aiStatus === 'loading') return '正在准备奶爸 AI…';
+    if (this.aiStatus === 'loading') return '正在恢复最近会话…';
     if (this.aiStatus === 'sending') return '正在发送…';
     if (this.aiStatus === 'generating') return '正在生成，安全规则仍由服务端控制…';
     if (this.aiStatus === 'success') return '已完成';
@@ -364,8 +369,10 @@ struct Index {
     try {
       const model = await this.adapter.aiBootstrap();
       this.aiModel = model;
-      this.aiConversationId = '';
-      this.aiMessages = [this.aiWelcomeMessage()];
+      this.aiConversationId = model.activeSession?.id || '';
+      this.aiMessages = model.activeSession && model.activeSession.messages.length > 0
+        ? model.activeSession.messages
+        : [this.aiWelcomeMessage()];
       this.aiStatus = 'idle';
     } catch (error) {
       this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
@@ -373,9 +380,29 @@ struct Index {
     }
   }
 
-  private clearAiConversation(): void {
+  private async selectAiSession(session: NativeAiSession): Promise<void> {
+    if (this.adapter === null || this.busy) return;
+    this.aiStatus = 'loading';
+    this.aiError = '';
+    try {
+      const model = await this.adapter.aiBootstrap(session.id);
+      this.aiModel = model;
+      this.aiConversationId = model.activeSession?.id || session.id;
+      this.aiMessages = model.activeSession && model.activeSession.messages.length > 0
+        ? model.activeSession.messages
+        : [this.aiWelcomeMessage()];
+      this.aiArtifact = null;
+      this.aiDraft = null;
+      this.aiDraftId = '';
+      this.aiStatus = 'idle';
+    } catch (error) {
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '会话暂时无法读取，请重试。';
+    }
+  }
+
+  private newAiConversation(): void {
     this.aiConversationId = '';
-    this.aiDecisionFacts = null;
     this.aiSelectedSkillId = '';
     this.aiMessages = [this.aiWelcomeMessage()];
     this.aiInput = '';
@@ -394,38 +421,65 @@ struct Index {
     this.navigation.setTemporaryInput('ai', value);
   }
 
-  private emptyAiInput(): Object {
-    return JSON.parse('{}') as Object;
+  private aiContextForTab(tab: NativeTab): NativeAiContextCard {
+    const sourceIds = this.today === null ? [] : this.today.recentFacts.slice(0, 6).map((fact: NativeTodayFact) => fact.id);
+    if (tab === 'today') return { kind: tab, title: '来自今天', description: `${this.selectedDay || '今天'} 的摘要、事项和最新记录将作为可移除上下文。不会自动发送。`, sourceIds };
+    if (tab === 'record') return { kind: tab, title: '来自记录', description: '会话可以引用当前已确认事实和时间线；草稿不会自动写入。', sourceIds };
+    if (tab === 'growth') return { kind: tab, title: '来自成长', description: '会话可以引用成长测量、标准解释和限制；不会重新计算规则。', sourceIds };
+    return { kind: tab, title: '来自探索', description: '会话可以引用审核知识、疾病主题或器官内容；不会把知识当成当前宝宝诊断。', sourceIds };
   }
 
-  private async runPageAiAnalysis(skillId: string, input: Object | null = null, surface: string = ''): Promise<void> {
+  private async runAiCapability(capability: NativeAiCapability): Promise<void> {
     const adapter = this.adapter;
     const baby = this.resource?.household?.baby || null;
-    if (adapter === null || baby === null || this.busy || this.aiPageAnalysisBusy) return;
-    this.aiPageAnalysisBusy = true;
-    this.aiPageAnalysisSkillId = skillId;
-    this.aiPageAnalysisSurface = surface;
-    this.aiPageAnalysisData = null;
-    this.aiPageAnalysisSources = [];
-    this.aiPageAnalysisError = '';
-    try {
-      const payload = await adapter.aiCapability(skillId, String(baby.id), input === null ? this.emptyAiInput() : input);
-      const result = payload as Record<string, Object>;
-      this.aiPageAnalysisData = result['data'] || null;
-      const source = result['sources'];
-      this.aiPageAnalysisSources = source !== null && typeof source === 'object' ? [source] : [];
-    } catch (error) {
-      this.aiPageAnalysisError = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? '当前离线，分析未完成。' : error instanceof Error ? error.message : 'AI 分析暂时失败，请重试。';
-    } finally {
-      this.aiPageAnalysisBusy = false;
+    if (adapter === null || baby === null || this.busy) return;
+    this.aiCancelable = false;
+    this.aiSelectedSkillId = '';
+    const chatOnly = ['authority_knowledge_retriever', 'stage_parenting_qa', 'disease_explainer', 'triage_and_preassessment'];
+    if (chatOnly.includes(capability.id)) {
+      this.aiSelectedSkillId = capability.id;
+      if (capability.id === 'triage_and_preassessment') this.setAiInput(this.aiInput.length > 0 ? this.aiInput : '我担心宝宝现在不舒服，请先问我最关键的一件事');
+      else this.setAiInput(this.aiInput.length > 0 ? this.aiInput : `请使用${capability.label}回答我的问题`);
+      this.aiError = '入口已准备好；请核对输入后再发送，不会自动发送。';
+      return;
     }
-  }
-
-  private openAiPrompt(skillId: string, prompt: string): void {
-    this.selectTab('ai');
-    this.aiSelectedSkillId = skillId;
-    this.setAiInput(prompt);
-    this.aiError = '已带入当前页面问题；核对后发送，不会自动发送。';
+    if (capability.id === 'care_event_quick_logger') {
+      this.aiSelectedSkillId = capability.id;
+      this.setAiInput(this.aiInput.length > 0 ? this.aiInput : '帮我记录刚刚发生的事实');
+      this.aiError = '记录入口已准备好；请补充具体事实并发送，不会自动写入。';
+      return;
+    }
+    const input: Record<string, Object | null> = {};
+    if (capability.id === 'medical_report_interpreter') {
+      this.aiSelectedSkillId = capability.id;
+      this.setAiInput('请先选择报告或粘贴报告文本');
+      this.aiError = '报告需先选择文件或粘贴文本，再进行识别。原始文件不会进入报告或分享。';
+      return;
+    }
+    if (capability.id === 'authority_knowledge_retriever' || capability.id === 'stage_parenting_qa' || capability.id === 'disease_explainer') input['query'] = this.aiInput;
+    if (capability.id === 'visit_brief_generator' && this.aiInput.length > 0) input['questions'] = [this.aiInput] as Object;
+    this.busy = true;
+    this.aiStatus = 'sending';
+    this.aiError = '';
+    try {
+      const payload = await adapter.aiCapability(capability.id, String(baby.id), input as Object);
+      const result = payload as Record<string, Object>;
+      this.aiArtifact = result['data'] || null;
+      this.aiArtifactSkill = capability.id;
+      const source = result['sources'];
+      this.aiSources = source !== null && typeof source === 'object' ? [source] : [];
+      const data = result['data'];
+      if (capability.id === 'care_event_quick_logger' && data !== null && typeof data === 'object' && String((data as Record<string, Object>)['status'] || '') === 'draft_ready') {
+        await this.prepareAiDraft(data as Object);
+      } else {
+        this.aiStatus = 'success';
+      }
+    } catch (error) {
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '结构化能力暂时失败，请重试。';
+    } finally {
+      this.busy = false;
+    }
   }
 
   private async prepareAiDraft(value: Object): Promise<void> {
@@ -610,15 +664,13 @@ struct Index {
         await this.prepareAiReportDraft(data as Object, '粘贴文本报告');
         return;
       }
-      const reply = await adapter.aiChat(message, String(baby.id), this.aiConversationId, selectedSkillId, this.aiDecisionFacts);
+      const reply = await adapter.aiChat(message, String(baby.id), this.aiConversationId, selectedSkillId);
       if (this.aiStopRequested) return;
       if (reply.conversationId !== null) this.aiConversationId = reply.conversationId;
       this.aiSources = reply.sources;
       if (reply.decision !== null) {
         this.aiArtifact = reply.decision;
         this.aiArtifactSkill = selectedSkillId.length > 0 ? selectedSkillId : 'triage_and_preassessment';
-        const decision = reply.decision as Record<string, Object>;
-        this.aiDecisionFacts = decision['facts'] !== null && typeof decision['facts'] === 'object' ? decision['facts'] : this.aiDecisionFacts;
       }
       if (reply.text.length > 0) this.aiMessages = this.aiMessages.concat([{
         id: this.nativeId('ai-assistant'), role: 'assistant', text: reply.text, skillId: null, createdAt: new Date().toISOString(), artifact: reply.artifact !== null ? reply.artifact : reply.decision, sources: reply.sources
@@ -1334,8 +1386,11 @@ struct Index {
   }
 
   private selectTab(tab: NativeTab): void {
+    const previousTab = this.activeTab;
     if (this.activeTab === tab) this.navigation.repeat(tab);
-    if (tab === 'ai') {
+    if (tab === 'ai' && previousTab !== 'ai') {
+      this.aiContext = this.aiContextForTab(previousTab);
+      this.aiContextVisible = true;
       this.aiInput = this.navigation.state('ai').temporaryInput;
       if (this.aiModel === null) this.loadAi();
     }
@@ -1395,85 +1450,6 @@ struct Index {
     return String(value['url'] || value['knowledgePackVersion'] || value['eventIds'] || '共享事实与审核规则');
   }
 
-  private aiPageAnalysisTitle(): string {
-    if (this.aiPageAnalysisSkillId === 'daily_care_analysis') return '今日照护分析';
-    if (this.aiPageAnalysisSkillId === 'daily_feeding_recommender') return '今日饮食建议';
-    if (this.aiPageAnalysisSkillId === 'daily_growth_plan_builder') return '今日成长计划';
-    if (this.aiPageAnalysisSkillId === 'growth_and_development_interpreter') return '成长发育解读';
-    if (this.aiPageAnalysisSkillId === 'visit_brief_generator') return '就医摘要';
-    if (this.aiPageAnalysisSkillId === 'caregiver_handoff_builder') return '照护交接';
-    return 'AI 分析结果';
-  }
-
-  private aiPageAnalysisSummary(): string {
-    if (this.aiPageAnalysisData === null || typeof this.aiPageAnalysisData !== 'object') return '';
-    const data = this.aiPageAnalysisData as Record<string, Object>;
-    return String(data['summary'] || data['message'] || data['currentSituation'] || data['trend'] || data['disclaimer'] || '已按当前页面事实完成整理。');
-  }
-
-  private aiPageAnalysisLines(): Array<string> {
-    if (this.aiPageAnalysisData === null || typeof this.aiPageAnalysisData !== 'object') return [];
-    const data = this.aiPageAnalysisData as Record<string, Object>;
-    const recommendations = data['recommendations'];
-    if (Array.isArray(recommendations)) return (recommendations as Array<Object>).slice(0, 3).map((item: Object) => {
-      const value = item as Record<string, Object>;
-      return `${String(value['title'] || '参考')}：${String(value['quantity'] || value['detail'] || '')}`;
-    });
-    const plans = data['plans'];
-    if (Array.isArray(plans)) return (plans as Array<Object>).slice(0, 3).map((item: Object) => {
-      const value = item as Record<string, Object>;
-      return `${String(value['action'] || '行动')}：${String(value['reason'] || '')}`;
-    });
-    const actions = data['actions'];
-    if (Array.isArray(actions)) return (actions as Array<Object>).slice(0, 3).map((item: Object) => String(item));
-    const facts = data['facts'];
-    if (Array.isArray(facts)) return (facts as Array<Object>).slice(0, 3).map((item: Object) => {
-      if (typeof item === 'string') return item;
-      const value = item as Record<string, Object>;
-      return String(value['text'] || value['fact'] || value['label'] || '已确认事实');
-    });
-    return [];
-  }
-
-  @Builder
-  private aiPageAnalysisResult(surface: string): void {
-    if (this.aiPageAnalysisSurface === surface && this.aiPageAnalysisData !== null) {
-      Column({ space: 7 }) {
-        Row() { Text(this.aiPageAnalysisTitle()).fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text('按需生成').fontSize(11).fontColor('#7A9A80'); }
-        Text(this.aiPageAnalysisSummary()).fontSize(this.largeText ? 14 : 12).fontColor('#806E68').width('100%');
-        ForEach(this.aiPageAnalysisLines(), (line: string) => { Text(`• ${line}`).fontSize(this.largeText ? 14 : 11).fontColor('#4E3B35').width('100%').textAlign(TextAlign.Start); }, (line: string, index: number) => `${index}-${line}`);
-        if (this.aiPageAnalysisSources.length > 0) Text(`依据：${this.aiSourcePreview(this.aiPageAnalysisSources[0])}`).fontSize(11).fontColor('#806E68').width('100%');
-        Text('只整理当前页面可用事实；不会写入聊天历史或自动改变正式记录。').fontSize(11).fontColor('#806E68').width('100%');
-      }.width('100%').padding(12).backgroundColor('#EEF5EC').borderRadius(14).accessibilityGroup(true);
-    }
-  }
-
-  @Builder
-  private contextualAiPanel(surface: string): void {
-    Column({ space: 9 }) {
-      Row() { Column() { Text('AI 分析').fontSize(this.largeText ? 21 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('复用桌面端同一能力与安全边界，按需生成').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text('不保存历史').fontSize(11).fontColor('#7A9A80'); }
-      if (surface === 'today') {
-        Row({ space: 8 }) {
-          Button('今日照护分析').layoutWeight(1).height(38).onClick(() => this.runPageAiAnalysis('daily_care_analysis', this.emptyAiInput(), 'today'));
-          Button('饮食建议').layoutWeight(1).height(38).onClick(() => this.runPageAiAnalysis('daily_feeding_recommender', this.emptyAiInput(), 'today'));
-        }.width('100%');
-      } else if (surface === 'record') {
-        Row({ space: 8 }) {
-          Button('生成就医摘要').layoutWeight(1).height(38).onClick(() => this.runPageAiAnalysis('visit_brief_generator', this.emptyAiInput(), 'record'));
-          Button('整理照护交接').layoutWeight(1).height(38).onClick(() => this.runPageAiAnalysis('caregiver_handoff_builder', this.emptyAiInput(), 'record'));
-        }.width('100%');
-      } else if (surface === 'growth') {
-        Row({ space: 8 }) {
-          Button('解读成长').layoutWeight(1).height(38).onClick(() => this.runPageAiAnalysis('growth_and_development_interpreter', this.emptyAiInput(), 'growth'));
-          Button('今日成长计划').layoutWeight(1).height(38).onClick(() => this.runPageAiAnalysis('daily_growth_plan_builder', this.emptyAiInput(), 'growth'));
-        }.width('100%');
-      }
-      if (this.aiPageAnalysisSurface === surface && this.aiPageAnalysisBusy) Row({ space: 8 }) { LoadingProgress().width(20).height(20); Text('正在按当前事实整理…').fontSize(12).fontColor('#806E68'); }.width('100%');
-      this.aiPageAnalysisResult(surface);
-      if (this.aiPageAnalysisSurface === surface && this.aiPageAnalysisError.length > 0) Text(this.aiPageAnalysisError).fontSize(12).fontColor('#B85F53').width('100%').accessibilityLevel('yes');
-    }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
-  }
-
   @Builder
   private aiMessageCard(message: NativeAiMessage): void {
     Row({ space: 10 }) {
@@ -1486,18 +1462,47 @@ struct Index {
   }
 
   @Builder
+  private aiCapabilityEntry(capability: NativeAiCapability): void {
+    Button() {
+      Column({ space: 4 }) {
+        Text(capability.label).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
+        Text(capability.boundary).fontSize(this.largeText ? 13 : 10).fontColor('#806E68').maxLines(2).textAlign(TextAlign.Start);
+      }.width('100%').alignItems(HorizontalAlign.Start).padding(10);
+    }.width('100%').height(this.largeText ? 78 : 66).backgroundColor('#FFF8F3').borderRadius(14).onClick(() => this.runAiCapability(capability)).accessibilityText(`打开${capability.label}`);
+  }
+
+  @Builder
   private aiSurface(): void {
     Column({ space: 14 }) {
       this.nativeHeader('奶爸 AI', `${String(this.today?.baby['nickname'] || this.resource?.household?.baby?.nickname || '宝宝')} · ${this.aiStatusText()}`);
       Row({ space: 8 }) {
-        Button('清空本次对话').layoutWeight(1).height(38).backgroundColor('#FFE8DE').onClick(() => this.clearAiConversation());
-        Text('不保存历史').fontSize(12).fontColor('#806E68').layoutWeight(1).textAlign(TextAlign.End);
+        Button('新对话').layoutWeight(1).height(38).backgroundColor('#FFE8DE').onClick(() => this.newAiConversation());
+        Button(this.aiSessionsExpanded ? '收起会话' : '最近会话').layoutWeight(1).height(38).onClick(() => this.aiSessionsExpanded = !this.aiSessionsExpanded);
       }.width('100%');
+      if (this.aiContextVisible && this.aiContext !== null) {
+        Row({ space: 8 }) {
+          Column({ space: 4 }) { Text(this.aiContext.title).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.aiContext.description).fontSize(this.largeText ? 14 : 11).fontColor('#806E68').maxLines(3).textAlign(TextAlign.Start); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+          Button('移除').height(32).fontSize(11).backgroundColor(Color.Transparent).fontColor('#A65E51').onClick(() => this.aiContextVisible = false);
+        }.width('100%').padding(12).backgroundColor('#F2EEFA').borderRadius(14).accessibilityGroup(true);
+      }
       if (this.aiModel === null) {
         Column({ space: 10 }) { LoadingProgress().width(28).height(28); Text(this.aiStatusText()).fontSize(this.largeText ? 16 : 13).fontColor('#806E68'); }.width('100%').padding(28);
       } else {
         Column({ space: 8 }) {
-          Row() { Text('临时问答').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text('只保留当前页面').fontSize(11).fontColor('#806E68'); }
+          Row() { Text('能力入口').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text('来自共享注册表').fontSize(11).fontColor('#7A9A80'); }
+          ForEach(this.aiModel.capabilities, (capability: NativeAiCapability) => { this.aiCapabilityEntry(capability); }, (capability: NativeAiCapability) => capability.id);
+        }.width('100%').padding(14).backgroundColor('#FFFCF8').borderRadius(20);
+        if (this.aiSessionsExpanded) {
+          Column({ space: 7 }) {
+            Text('最近会话').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+            if (this.aiModel.sessions.length === 0) Text('还没有可续接的云端会话；新对话会在首次发送后建立。').fontSize(12).fontColor('#806E68').width('100%');
+            ForEach(this.aiModel.sessions.slice(0, 8), (session: NativeAiSession) => {
+              Button() { Column({ space: 3 }) { Text(session.title).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(session.preview || '尚无消息').fontSize(11).fontColor('#806E68').maxLines(2).textAlign(TextAlign.Start); }.width('100%').alignItems(HorizontalAlign.Start).padding(10); }.width('100%').backgroundColor(session.id === this.aiConversationId ? '#FFE8DE' : '#FFF8F3').borderRadius(13).onClick(() => this.selectAiSession(session));
+            }, (session: NativeAiSession) => session.id);
+          }.width('100%').padding(14).backgroundColor('#FFFCF8').borderRadius(20);
+        }
+        Column({ space: 8 }) {
+          Row() { Text('持续会话').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text(this.aiConversationId.length > 0 ? '默认续接最近会话' : '新会话').fontSize(11).fontColor('#806E68'); }
           Scroll() { Column({ space: 8 }) { ForEach(this.aiMessages, (message: NativeAiMessage) => { this.aiMessageCard(message); }, (message: NativeAiMessage) => message.id); } }.width('100%').height(this.largeText ? 360 : 290).scrollBar(BarState.Auto);
           if (this.aiArtifact !== null) {
             Column({ space: 7 }) { Row() { Text(this.aiArtifactSkill === 'medical_report_interpreter' ? '报告字段结果' : '结构化能力产物').fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text('可核对').fontSize(11).fontColor('#7A9A80'); }; Text(this.aiArtifactPreview()).fontSize(this.largeText ? 13 : 11).fontColor('#806E68').maxLines(9).textAlign(TextAlign.Start); Text('结构化结果只用于解释或准备草稿，不会自动写入事实。').fontSize(11).fontColor('#806E68'); }.width('100%').padding(12).backgroundColor('#EEF5EC').borderRadius(14).accessibilityGroup(true);
@@ -1778,7 +1783,6 @@ struct Index {
           Text(String(this.today.guidance['feeding'])).fontSize(this.largeText ? 14 : 11).fontColor('#806E68');
           Text(String(this.today.guidance['analysis'])).fontSize(this.largeText ? 14 : 11).fontColor('#806E68');
         }.width('100%').padding(16).backgroundColor('#FFFCF8').borderRadius(20);
-        this.contextualAiPanel('today');
 
         Column({ space: 10 }) {
           Row() { Column() { Text('今日相册').fontSize(12).fontColor('#A65E51'); Text('刚刚好的小日子').fontSize(this.largeText ? 21 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Button('按日期浏览').fontSize(12).onClick(() => this.feedbackMessage = '使用上方日期条浏览当地自然日照片。'); }
@@ -1823,35 +1827,9 @@ struct Index {
           }, (fact: NativeTodayFact) => fact.id);
         }.width('100%').padding(16).backgroundColor('#FFFCF8').borderRadius(20);
 
+        Row({ space: 8 }) { Button('饮食建议').layoutWeight(1); Button('今日分析').layoutWeight(1); Button('成长计划').layoutWeight(1); Button('就医摘要').layoutWeight(1).onClick(() => { this.selectTab('record'); this.openSurfaceDetail('record.doctor-summary'); }); }.width('100%');
         Text(String(this.today.guidance['source'])).fontSize(11).fontColor('#806E68').textAlign(TextAlign.Center).width('100%');
       }
-    }.width('100%');
-  }
-
-  @Builder
-  private growthSurface(): void {
-    Column({ space: 16 }) {
-      this.nativeHeader('成长', `${String(this.today?.baby['nickname'] || '宝宝')} · 只看已确认测量`);
-      Text('成长标准、测量事实和解释能力沿用桌面端同一套规则；这里提供页面内按需解读。').fontSize(this.largeText ? 14 : 11).fontColor('#806E68').width('100%');
-      Column({ space: 9 }) {
-        Row() { Text('成长记录概览').fontSize(this.largeText ? 21 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text('不把缺失当作零').fontSize(11).fontColor('#7A9A80'); }
-        Text(this.today === null ? '正在读取共享事实…' : `当前页面已读取 ${this.today.recentFacts.filter((fact: NativeTodayFact) => fact.category === 'growth_measurement').length} 条成长测量事实。`).fontSize(13).fontColor('#806E68').width('100%');
-        Button('去记录成长测量').width('100%').height(40).backgroundColor('#FFF8F3').fontColor('#4E3B35').onClick(() => { this.selectTab('record'); this.openRecord('growth'); });
-      }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
-      this.contextualAiPanel('growth');
-    }.width('100%');
-  }
-
-  @Builder
-  private exploreSurface(): void {
-    Column({ space: 16 }) {
-      this.nativeHeader('探索', `${String(this.today?.baby['nickname'] || '宝宝')} · 经过审核的知识入口`);
-      Text('知识解释仍由奶爸 AI 统一完成；探索页只提供有上下文的入口，不复制一套问答能力。').fontSize(this.largeText ? 14 : 11).fontColor('#806E68').width('100%');
-      Column({ space: 8 }) {
-        Text('从这里开始').fontSize(this.largeText ? 21 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
-        Button() { Column({ space: 3 }) { Text('阶段育儿问答').fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('结合宝宝当前月龄解释照护问题').fontSize(12).fontColor('#806E68'); }.width('100%').alignItems(HorizontalAlign.Start).padding(11); }.width('100%').backgroundColor('#FFF8F3').borderRadius(14).onClick(() => this.openAiPrompt('stage_parenting_qa', '请结合宝宝当前月龄回答我的育儿问题：'));
-        Button() { Column({ space: 3 }) { Text('疾病概念解释').fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('解释概念与观察重点，不把知识当成诊断').fontSize(12).fontColor('#806E68'); }.width('100%').alignItems(HorizontalAlign.Start).padding(11); }.width('100%').backgroundColor('#F2EEFA').borderRadius(14).onClick(() => this.openAiPrompt('disease_explainer', '我想了解一个疾病或医学概念，请先解释它，再说明照护中可以观察什么：'));
-      }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
     }.width('100%');
   }
 
@@ -1871,7 +1849,6 @@ struct Index {
     Column({ space: 16 }) {
       this.nativeHeader('统一记录工作台', `${this.selectedDay} · ${String(this.today?.recorder['displayName'] || '家庭成员')}记录`);
       Text('每张卡只有一个主要动作。已确认身体局部水彩插画仅帮助识别入口，不承载数值或医学状态。').fontSize(this.largeText ? 14 : 11).fontColor('#806E68').width('100%');
-      this.contextualAiPanel('record');
       Grid() {
         GridItem() { this.recordCard('feeding', '#FFF0E8'); }
         GridItem() { this.recordCard('sleep', '#F2EEFA'); }
@@ -1928,8 +1905,6 @@ struct Index {
     else if (this.activeTab === 'record' && this.selectedRoute === 'record.root') this.recordSurface();
     else if (this.activeTab === 'record') this.recordDetailSurface();
     else if (this.activeTab === 'ai') this.aiSurface();
-    else if (this.activeTab === 'growth') this.growthSurface();
-    else if (this.activeTab === 'explore') this.exploreSurface();
     else this.placeholderSurface();
   }
 

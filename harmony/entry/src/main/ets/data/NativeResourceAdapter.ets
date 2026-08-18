@@ -248,8 +248,9 @@ export class NativeResourceAdapter {
     return parseNativeToday(await this.request(`/api/native/today${query}`));
   }
 
-  async aiBootstrap(): Promise<NativeAiBootstrap> {
-    return parseNativeAiBootstrap(await this.request('/api/native/ai/bootstrap'));
+  async aiBootstrap(conversationId: string = ''): Promise<NativeAiBootstrap> {
+    const query = conversationId.length > 0 ? `?conversationId=${encodeURIComponent(conversationId)}` : '';
+    return parseNativeAiBootstrap(await this.request(`/api/native/ai/bootstrap${query}`));
   }
 
   async aiChat(message: string, babyId: string, conversationId: string = '', skillId: string = '', decisionFacts: Object | null = null): Promise<NativeAiReply> {
