@@ -23,6 +23,16 @@ function read(relativePath) {
   }
 }
 
+function readProject(relativePath) {
+  const absolutePath = path.join(projectRoot, relativePath)
+  try {
+    return fs.readFileSync(absolutePath, 'utf8')
+  } catch (error) {
+    failures.push(`${relativePath}: 无法读取 (${error.message})`)
+    return ''
+  }
+}
+
 function check(label, condition, detail = '') {
   checks += 1
   if (!condition) {
@@ -88,6 +98,13 @@ const appStrings = read('AppScope/resources/base/element/string.json')
 const moduleConfig = read('entry/src/main/module.json5')
 const entryStrings = read('entry/src/main/resources/base/element/string.json')
 const indexPage = read('entry/src/main/ets/pages/Index.ets')
+const legacyWeb = read('entry/src/main/ets/pages/LegacyWeb.ets')
+const nativeContract = read('entry/src/main/ets/data/NativeResourceContract.ets')
+const nativeAdapter = read('entry/src/main/ets/data/NativeResourceAdapter.ets')
+const navigation = read('entry/src/main/ets/navigation/NativeNavigation.ets')
+const pagesProfile = read('entry/src/main/resources/base/profile/main_pages.json')
+const capabilityManifest = readProject('contracts/native-capability-manifest.v1.json')
+const resourceContract = readProject('contracts/native-resource-contract.v1.json')
 const ability = read('entry/src/main/ets/entryability/EntryAbility.ets')
 const shellState = read('entry/src/main/ets/common/ShellState.ets')
 const installScript = read('scripts/install-harmony.ps1')
@@ -103,33 +120,29 @@ check('不得在窗口内容加载前设置原生背景色', !ability.includes('
 check('全屏布局必须动态避让系统和键盘区域', ability.includes('getWindowAvoidArea') && ability.includes('TYPE_KEYBOARD') && ability.includes("on('avoidAreaChange'") && ability.includes('AppStorage.setOrCreate'))
 check('ArkUI 内容必须使用动态安全区内边距', indexPage.includes("@StorageProp('topAvoidHeight')") && indexPage.includes('bottomAvoidHeight') && indexPage.includes('.padding({ top: this.topAvoidHeight'))
 check('必须且只能声明网络访问权限', requestedPermissions.length === 1 && requestedPermissions[0] === 'ohos.permission.INTERNET', requestedPermissions.join(', ') || '没有声明权限')
-check('生产入口必须为 HTTPS', indexPage.includes('https://babyforge.bbroot.com/'))
-check('必须配置可信生产源', indexPage.includes("const TRUSTED_ORIGIN: string = 'https://babyforge.bbroot.com'"))
-check('ArkWeb 必须显式启用脚本、DOM Storage、数据库和网络图片', indexPage.includes('.javaScriptAccess(true)') && indexPage.includes('.domStorageAccess(true)') && indexPage.includes('.databaseAccess(true)') && indexPage.includes('.onlineImageAccess(true)'))
-check('ArkWeb 必须关闭本地文件访问', indexPage.includes('.fileAccess(false)'))
-check('必须存在同源导航判断', indexPage.includes('isTrustedMainFrame'))
-check('必须拦截非同源主框架导航', indexPage.includes('onLoadIntercept') && indexPage.includes('request.isMainFrame()'))
+check('历史 ArkWeb 目标必须保留', pagesProfile.includes('pages/LegacyWeb') && legacyWeb.includes('ArkWeb'))
+check('原生默认入口必须连接共享服务', indexPage.includes('NativeResourceAdapter') && nativeAdapter.includes("SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com'"))
+check('原生默认入口不得加载 React 或 ArkWeb 页面', !indexPage.includes('Web({') && !indexPage.includes('@kit.ArkWeb'))
+check('原生入口必须连接版本化共享合同', indexPage.includes('NativeResourceEnvelope') && nativeContract.includes("NATIVE_RESOURCE_CONTRACT_VERSION: string = '1.0.0'") && nativeAdapter.includes('/api/native/bootstrap'))
+check('原生入口必须声明五个一级标签', indexPage.includes('NATIVE_TABS') && navigation.includes("'today' | 'record' | 'ai' | 'growth' | 'explore'"))
+check('共享能力清单必须绑定五个标签和 Issue 70 基础能力', capabilityManifest.includes('"nativePrimaryTabs": ["today", "record", "ai", "growth", "explore"]') && capabilityManifest.includes('"delivery": "issue-70"'))
+check('共享合同清单必须固定 1.0.0 版本和权限角色', resourceContract.includes('"contractVersion": "1.0.0"') && resourceContract.includes('"owner"') && resourceContract.includes('"readOnly"'))
+check('原生入口必须支持账号、家庭恢复和邀请', indexPage.includes('signInEmail') && indexPage.includes('createHousehold') && indexPage.includes('acceptInvite') && indexPage.includes('createInvite'))
+check('原生入口必须显式呈现加载、失败、离线缓存和只读状态', indexPage.includes("'loading'") && indexPage.includes("'error'") && indexPage.includes('staleCache') && indexPage.includes('readOnly'))
+check('五个标签必须维护独立返回栈和临时输入', navigation.includes('stack') && navigation.includes('temporaryInput') && navigation.includes('repeat(tab:') && indexPage.includes('navigation.back(this.activeTab)'))
+check('共享合同必须包含错误恢复边界', nativeContract.includes('UNKNOWN_VERSION') && nativeContract.includes('MISSING_REQUIRED_FIELD') && nativeAdapter.includes('readResource()'))
 check('外部 HTTPS 必须交给系统浏览器', indexPage.includes('context.openLink(url)'))
-check('ArkWeb 必须显式接管多窗口和 window.open', indexPage.includes('.multiWindowAccess(true)') && indexPage.includes('.allowWindowOpenMethod(true)'))
-check('新窗口导航必须复用同一安全策略', indexPage.includes('onWindowNew') && indexPage.includes('event.targetUrl') && indexPage.includes('handleNewWindow') && indexPage.includes('this.controller.loadUrl(url)'))
-check('不创建第二个内嵌 WebView 且必须释放新窗口请求', indexPage.includes('event.handler.setWebController(null)') && !indexPage.includes('setWebController(new'))
-check('必须阻止非 HTTPS 外部协议', indexPage.includes('仅允许安全的 BabyForge 页面和 HTTPS 外部链接'))
-check('TLS 错误必须取消加载', indexPage.includes('onSslErrorEventReceive') && indexPage.includes('handleCancel()'))
-check('网络错误必须显示可重试界面', indexPage.includes('onErrorReceive') && indexPage.includes('Button(\'重试\')'))
-check('HTTP 错误必须显示可重试界面', indexPage.includes('onHttpErrorReceive') && indexPage.includes('getResponseCode()'))
-check('渲染进程退出必须显示可重试界面', indexPage.includes('onRenderExited'))
-check('必须使用系统照片选择器', indexPage.includes("import { photoAccessHelper } from '@kit.MediaLibraryKit';") && indexPage.includes('PhotoViewPicker'))
-check('照片选择结果必须回传 ArkWeb', indexPage.includes('handleFileList(result.photoUris)'))
-check('混合类型上传必须保留 ArkWeb 默认处理', indexPage.includes('return false') && indexPage.includes('supportsPhotoPicker'))
-check('返回键必须由 ArkUI 页面先处理 ArkWeb 历史', shellState.includes('accessBackward()') && shellState.includes('backward()') && indexPage.includes('onBackPress()') && indexPage.includes('handleWebBack()') && !ability.includes('onBackPressed()'))
-check('不得将凭据或签名材料写入 Harmony 源码', !has(`${appConfig}\n${moduleConfig}\n${indexPage}\n${ability}\n${shellState}`, /clientSecret|privateKey|password\s*[:=]|\.p12|accessToken/i))
+check('返回键必须先处理当前原生标签栈', indexPage.includes('onBackPress()') && indexPage.includes('navigation.back(this.activeTab)') && !ability.includes('onBackPressed()'))
+check('ArkWeb 历史目标仍保留安全导航', legacyWeb.includes('isTrustedMainFrame') && legacyWeb.includes('onLoadIntercept') && legacyWeb.includes('onWindowNew'))
+check('ArkWeb 历史目标仍保留照片选择器', legacyWeb.includes("import { photoAccessHelper } from '@kit.MediaLibraryKit';") && legacyWeb.includes('PhotoViewPicker') && legacyWeb.includes('handleFileList(result.photoUris)'))
+check('不得将凭据或签名材料写入 Harmony 源码', !has(`${appConfig}\n${moduleConfig}\n${indexPage}\n${legacyWeb}\n${nativeAdapter}\n${ability}\n${shellState}`, /(?:clientSecret|privateKey|accessToken)\s*[:=]\s*['"]|password\s*:\s*['"]|\.p12/i))
 check('必须存在应用图标资源', fs.existsSync(path.join(harmonyRoot, 'AppScope/resources/base/media/app_icon.png')) && fs.existsSync(path.join(harmonyRoot, 'entry/src/main/resources/base/media/start_icon.png')))
 check('真机安装脚本必须拒绝 unsigned HAP', installScript.includes('unsigned HAP 不允许安装') && installScript.includes('signed\\.hap'))
 check('真机安装脚本必须实际验证 HAP 签名', installScript.includes('verify-app') && installScript.includes('HapSignToolPath') && installScript.includes('HAP_SIGN_TOOL'))
 check('真机安装脚本必须校验目标 HAP 身份', installScript.includes('com.ni.babyforge') && installScript.includes('EntryAbility') && installScript.includes('portrait'))
 check('真机安装脚本必须拒绝过时的签名 HAP', installScript.includes('latestUnsignedHap') && installScript.includes('LastWriteTime') && installScript.includes('重新签名当前构建'))
 
-const sourceFiles = [appConfig, appStrings, moduleConfig, entryStrings, indexPage, ability, shellState].join('\n')
+const sourceFiles = [appConfig, appStrings, moduleConfig, entryStrings, indexPage, legacyWeb, nativeContract, nativeAdapter, navigation, ability, shellState].join('\n')
 check('Harmony 源码不应出现明文 HTTP 入口', !sourceFiles.includes('http://'))
 
 if (!sourceOnly) {

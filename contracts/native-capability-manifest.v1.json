@@ -1,0 +1,68 @@
+{
+  "contract": "babyforge.native.capabilities",
+  "contractVersion": "1.0.0",
+  "sourceOfTruth": "docs/harmonyos-native-app-spec.md",
+  "nativePrimaryTabs": ["today", "record", "ai", "growth", "explore"],
+  "surfaces": [
+    {
+      "id": "auth",
+      "delivery": "issue-70",
+      "entry": "native:auth",
+      "desktopCapabilities": ["sign-in", "register", "email-verification", "password-reset", "social-login"]
+    },
+    {
+      "id": "household",
+      "delivery": "issue-70",
+      "entry": "native:family",
+      "desktopCapabilities": ["create-household", "accept-invite", "create-invite", "member-permissions", "remove-member"]
+    },
+    {
+      "id": "today",
+      "delivery": "issue-71",
+      "entry": "today.root",
+      "desktopCapabilities": ["today-summary", "today-tasks", "album", "quick-record"]
+    },
+    {
+      "id": "record",
+      "delivery": "issue-71",
+      "entry": "record.root",
+      "desktopCapabilities": ["high-frequency-records", "low-frequency-records", "correction", "void", "doctor-summary"]
+    },
+    {
+      "id": "ai",
+      "delivery": "issue-73",
+      "entry": "ai.root",
+      "desktopCapabilities": ["capability-registry", "sessions", "sources", "draft-confirmation", "reports", "care-handoff"]
+    },
+    {
+      "id": "growth",
+      "delivery": "issue-72",
+      "entry": "growth.root",
+      "desktopCapabilities": ["measurements", "curves", "stage-details", "history", "milestones", "care-plan", "ai-insight"]
+    },
+    {
+      "id": "explore",
+      "delivery": "issue-72",
+      "entry": "explore.root",
+      "desktopCapabilities": ["vaccines", "disease-topics", "organ-learning", "reviewed-knowledge", "third-party-sources"]
+    },
+    {
+      "id": "settings",
+      "delivery": "issue-72",
+      "entry": "settings.secondary",
+      "desktopCapabilities": ["account", "baby-profile", "notification-contacts", "visitor-links", "model-settings", "sync", "local-cache"]
+    },
+    {
+      "id": "legacy-web",
+      "delivery": "historical-only",
+      "entry": "pages/LegacyWeb",
+      "desktopCapabilities": ["arkweb-compatibility-research"]
+    }
+  ],
+  "invariants": [
+    "business-data-is-shared",
+    "permissions-come-from-shared-resource",
+    "native-shell-does-not-invent-records",
+    "offline-does-not-queue-facts"
+  ]
+}
