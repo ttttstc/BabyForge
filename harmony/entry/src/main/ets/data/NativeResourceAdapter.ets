@@ -178,6 +178,42 @@ export class NativeResourceAdapter {
     }
   }
 
+  private canUseSurfaceCache(error: Error): boolean {
+    if (!(error instanceof NativeTransportError)) return false;
+    if (error.status === 401 || error.status === 403) return false;
+    return error.retryable;
+  }
+
+  private exploreCacheKey(babyId: string, category: string, query: string, organId: string): string {
+    return [babyId, category, query.trim(), organId.trim()]
+      .map((value: string) => encodeURIComponent(value))
+      .join('|');
+  }
+
+  private async currentBabyId(): Promise<string> {
+    const resource = await this.session.readResource();
+    return resource?.household?.baby?.id || '';
+  }
+
+  private async readExploreCache(cacheKey: string): Promise<Object | null> {
+    const saved = await this.session.readSurfaceCache('exploreCache');
+    if (saved === null || typeof saved !== 'object' || Array.isArray(saved)) return null;
+    const cache = record(saved);
+    const value = cache[cacheKey];
+    return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  }
+
+  private async saveExploreCache(cacheKey: string, model: NativeExploreModel): Promise<void> {
+    const saved = await this.session.readSurfaceCache('exploreCache');
+    const cache: Record<string, Object> = saved !== null && typeof saved === 'object' && !Array.isArray(saved)
+      ? record(saved)
+      : emptyRecord();
+    cache[cacheKey] = model as Object;
+    const keys = Object.keys(cache);
+    if (keys.length > 12) delete cache[keys[0]];
+    await this.session.saveSurfaceCache('exploreCache', cache as Object);
+  }
+
   async bootstrap(): Promise<NativeBootstrapResult> {
     try {
       const payload = await this.request('/api/native/bootstrap');
@@ -204,6 +240,7 @@ export class NativeResourceAdapter {
       await this.session.saveSurfaceCache('growthCache', model as Object);
       return { model, source: 'network', stale: false };
     } catch (error) {
+      if (!this.canUseSurfaceCache(error as Error)) throw error as Error;
       const cached = await this.session.readSurfaceCache('growthCache');
       if (cached !== null) return { model: parseNativeGrowth(cached), source: 'cache', stale: true };
       throw error as Error;
@@ -216,10 +253,14 @@ export class NativeResourceAdapter {
     if (organId.trim().length > 0) params.push(`organ=${encodeURIComponent(organId)}`);
     try {
       const model = parseNativeExplore(await this.request(`/api/native/explore?${params.join('&')}`));
-      await this.session.saveSurfaceCache('exploreCache', model as Object);
+      await this.saveExploreCache(this.exploreCacheKey(model.baby.id, category, query, organId), model);
       return { model, source: 'network', stale: false };
     } catch (error) {
-      const cached = await this.session.readSurfaceCache('exploreCache');
+      if (!this.canUseSurfaceCache(error as Error)) throw error as Error;
+      const babyId = await this.currentBabyId();
+      const cached = babyId.length > 0
+        ? await this.readExploreCache(this.exploreCacheKey(babyId, category, query, organId))
+        : null;
       if (cached !== null) return { model: parseNativeExplore(cached), source: 'cache', stale: true };
       throw error as Error;
     }
@@ -231,6 +272,7 @@ export class NativeResourceAdapter {
       await this.session.saveSurfaceCache('settingsCache', model as Object);
       return { model, source: 'network', stale: false };
     } catch (error) {
+      if (!this.canUseSurfaceCache(error as Error)) throw error as Error;
       const cached = await this.session.readSurfaceCache('settingsCache');
       if (cached !== null) return { model: parseNativeSettings(cached), source: 'cache', stale: true };
       throw error as Error;
@@ -260,7 +302,15 @@ export class NativeResourceAdapter {
   }
 
   async createVisitorLink(): Promise<Object> {
-    return this.request('/api/visitor-links', http.RequestMethod.POST);
+    const payload = record(await this.request('/api/visitor-links', http.RequestMethod.POST));
+    const link = payload['link'];
+    if (link !== null && link !== undefined && typeof link === 'object' && !Array.isArray(link)) {
+      const linkRecord = record(link);
+      if (typeof linkRecord['url'] === 'string' && String(linkRecord['url']).startsWith('/')) {
+        linkRecord['url'] = `${SERVICE_ORIGIN}${String(linkRecord['url'])}`;
+      }
+    }
+    return payload as Object;
   }
 
   async revokeVisitorLink(id: string): Promise<Object> {

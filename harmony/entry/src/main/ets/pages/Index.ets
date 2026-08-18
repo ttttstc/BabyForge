@@ -3,6 +3,7 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import { camera, cameraPicker } from '@kit.CameraKit';
+import { i18n } from '@kit.LocalizationKit';
 import vibrator from '@ohos.vibrator';
 import {
   NativeBootstrapResult,
@@ -122,6 +123,24 @@ function nestedText(item: Object | null, field: string, fallback: string = ''): 
   return localizedText(record[field], fallback);
 }
 
+function deviceDateKey(value: Date = new Date()): string {
+  let timezone = 'UTC';
+  try {
+    const candidate = i18n.getTimeZone().getID();
+    if (candidate.trim().length > 0) timezone = candidate;
+  } catch {
+    timezone = 'UTC';
+  }
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(value);
+  const get = (type: string): string => parts.find((part) => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 @Entry
 @Component
 struct Index {
@@ -171,7 +190,10 @@ struct Index {
   @State private settingsLlmModel: string = '';
   @State private settingsLlmProtocol: string = 'openai-compatible';
   @State private settingsLlmApiKey: string = '';
+  @State private visitorShareUrl: string = '';
+  @State private visitorShareLinkId: string = '';
   @State private selectedDay: string = '';
+  @State private recordDay: string = '';
   @State private selectedPhotoIndex: number = 0;
   @State private selectedRecordType: NativeRecordType | null = null;
   @State private recordValue: string = '';
@@ -182,6 +204,7 @@ struct Index {
   @State private feedbackMessage: string = '';
   @State private undoEventId: string = '';
   @State private undoEventVersion: number = 1;
+  @State private undoEventCategory: string = '';
   @State private photoMessage: string = '';
   @State private factFilter: string = 'all';
   @State private correctionEventId: string = '';
@@ -198,6 +221,8 @@ struct Index {
   private correctionOccurredAt: string = '';
   private correctionOriginalEvent: NativeCareEvent | null = null;
   private undoCorrectionOriginal: NativeCareEvent | null = null;
+  private readonly chartSettings: RenderingContextSettings = new RenderingContextSettings(true);
+  private readonly chartContexts: Map<string, CanvasRenderingContext2D> = new Map<string, CanvasRenderingContext2D>();
 
   aboutToAppear(): void {
     this.adapter = new NativeResourceAdapter(getContext(this) as common.UIAbilityContext);
@@ -245,7 +270,7 @@ struct Index {
     this.statusMessage = '';
     try {
       const result: NativeBootstrapResult = await this.adapter.bootstrap();
-      this.applyResource(result);
+      await this.applyResource(result);
     } catch (error) {
       const transport = error instanceof NativeTransportError ? error : null;
       if (transport !== null && (transport.status === 401 || transport.status === 403)) {
@@ -258,13 +283,27 @@ struct Index {
     }
   }
 
-  private applyResource(result: NativeBootstrapResult): void {
+  private resetSurfaceModels(): void {
+    this.growth = null;
+    this.growthPhase = 'idle';
+    this.growthStale = false;
+    this.explore = null;
+    this.explorePhase = 'idle';
+    this.exploreStale = false;
+    this.settings = null;
+    this.settingsPhase = 'idle';
+    this.settingsStale = false;
+    this.chartContexts.clear();
+  }
+
+  private async applyResource(result: NativeBootstrapResult): Promise<void> {
+    this.resetSurfaceModels();
     this.resource = result.resource;
     this.staleCache = result.stale;
     this.phase = result.resource.household === null ? 'household' : 'ready';
     this.showFamilyPanel = false;
     this.statusMessage = result.stale ? '当前显示最近一次成功同步的内容；恢复网络后可重新读取。' : '';
-    if (this.phase === 'ready') this.loadToday();
+    if (this.phase === 'ready') await this.loadToday();
   }
 
   private async loadToday(day: string = this.selectedDay): Promise<void> {
@@ -293,6 +332,11 @@ struct Index {
       this.growthPhase = 'ready';
       if (result.stale) this.statusMessage = '成长页面显示最近一次成功同步的缓存；恢复网络后可重试。';
     } catch (error) {
+      const transport = error instanceof NativeTransportError ? error : null;
+      if (transport !== null && (transport.status === 401 || transport.status === 403)) {
+        this.phase = 'login';
+        this.statusMessage = transport.message;
+      }
       this.growthPhase = 'error';
       this.statusMessage = error instanceof Error ? error.message : '成长页面模型读取失败，请重试。';
     }
@@ -310,6 +354,11 @@ struct Index {
       if (this.selectedDiseaseId.length === 0 && result.model.diseases.length > 0) this.selectedDiseaseId = itemText(result.model.diseases[0], 'id');
       if (result.stale) this.statusMessage = '探索页面显示最近一次成功同步的缓存；第三方经验源恢复后可重试。';
     } catch (error) {
+      const transport = error instanceof NativeTransportError ? error : null;
+      if (transport !== null && (transport.status === 401 || transport.status === 403)) {
+        this.phase = 'login';
+        this.statusMessage = transport.message;
+      }
       this.explorePhase = 'error';
       this.statusMessage = error instanceof Error ? error.message : '探索页面模型读取失败，请重试。';
     }
@@ -338,6 +387,11 @@ struct Index {
       this.settingsPhase = 'ready';
       if (result.stale) this.settingsMessage = '当前显示最近一次成功同步的设置缓存；保存前请先恢复网络。';
     } catch (error) {
+      const transport = error instanceof NativeTransportError ? error : null;
+      if (transport !== null && (transport.status === 401 || transport.status === 403)) {
+        this.phase = 'login';
+        this.statusMessage = transport.message;
+      }
       this.settingsPhase = 'error';
       this.settingsMessage = error instanceof Error ? error.message : '设置页面模型读取失败，请重试。';
     }
@@ -392,6 +446,7 @@ struct Index {
     this.recordExtra = String(draft['extra'] || '');
     this.recordOption = String(draft['option'] || '');
     this.recordCommandId = String(draft['commandId'] || '');
+    this.recordDay = type === 'growth' ? deviceDateKey() : this.selectedDay;
     this.feedbackMessage = '已恢复未提交的本机草稿；不会离线排队创建事实。';
   }
 
@@ -400,6 +455,7 @@ struct Index {
     this.recordValue = '';
     this.recordExtra = '';
     this.recordOption = type === 'feeding' ? 'formula' : type === 'diaper' ? 'urine' : type === 'growth' ? 'weight' : '';
+    this.recordDay = type === 'growth' ? deviceDateKey() : this.selectedDay;
     this.recordCommandId = `native-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     this.recordError = '';
     this.correctionEventId = '';
@@ -425,6 +481,7 @@ struct Index {
       this.correctionEventVersion = event.version;
       this.correctionOccurredAt = event.occurredAt;
       this.correctionOriginalEvent = event;
+      if (type === 'growth') this.recordDay = String(payload['measuredAt'] || event.occurredAt).slice(0, 10);
       if (type === 'feeding') {
         this.recordOption = event.category === 'breastfeeding' ? 'breastfeeding' : String(payload['milkType'] || 'formula');
         this.recordValue = payload['amountMl'] === null || payload['amountMl'] === undefined ? '' : String(payload['amountMl']);
@@ -479,16 +536,28 @@ struct Index {
     if (this.selectedRecordType === 'medication') return this.correctionPayload(jsonRecord(`{"medicationName":${JSON.stringify(this.recordValue.trim())},"amount":${JSON.stringify(this.recordExtra.trim())}}`), ['medicationName', 'name', 'amount']);
     if (this.selectedRecordType === 'temperature') return this.correctionPayload(this.recordValue.trim().length === 0 ? jsonRecord('{"value":null}') : jsonRecord(`{"value":${Number(this.recordValue)},"unit":"°C","method":${JSON.stringify(this.recordOption || 'axillary')}}`), ['value', 'unit', 'method']);
     const unit = this.recordOption === 'weight' ? 'kg' : 'cm';
-    return this.correctionPayload(jsonRecord(`{"type":${JSON.stringify(this.recordOption || 'weight')},"value":${Number(this.recordValue)},"unit":${JSON.stringify(unit)},"measuredAt":${JSON.stringify(this.selectedDay)}}`), ['type', 'value', 'unit', 'measuredAt']);
+    return this.correctionPayload(jsonRecord(`{"type":${JSON.stringify(this.recordOption || 'weight')},"value":${Number(this.recordValue)},"unit":${JSON.stringify(unit)},"measuredAt":${JSON.stringify(this.recordDay || this.selectedDay)}}`), ['type', 'value', 'unit', 'measuredAt']);
   }
 
   private recordOccurredAt(): string {
     if (this.correctionOccurredAt.length > 0) return this.correctionOccurredAt;
     if (this.selectedRecordType === 'sleep' && this.recordValue.length > 0) return this.recordValue;
-    const parts = this.selectedDay.split('-').map((value: string) => Number(value));
+    const occurredDay = this.selectedRecordType === 'growth' ? this.recordDay || deviceDateKey() : this.selectedDay;
+    const parts = occurredDay.split('-').map((value: string) => Number(value));
     if (parts.length !== 3 || parts.some((value: number) => !Number.isInteger(value))) return new Date().toISOString();
     const now = new Date();
     return new Date(parts[0], parts[1] - 1, parts[2], now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()).toISOString();
+  }
+
+  private async refreshAfterMutation(refreshGrowth: boolean, refreshExplore: boolean): Promise<void> {
+    await this.loadToday();
+    if (refreshGrowth && (this.growth !== null || this.activeTab === 'growth')) {
+      this.chartContexts.clear();
+      await this.loadGrowth();
+    }
+    if (refreshExplore && (this.explore !== null || this.activeTab === 'explore')) {
+      await this.loadExplore();
+    }
   }
 
   private restoreEvent(original: NativeCareEvent): NativeCareEvent {
@@ -510,12 +579,14 @@ struct Index {
   private armUndo(saved: Record<string, Object>, original: NativeCareEvent | null): void {
     this.undoEventId = String(saved['id']);
     this.undoEventVersion = Number(saved['version'] || 1);
+    this.undoEventCategory = String(saved['category'] || original?.category || '');
     this.undoCorrectionOriginal = original;
     this.feedbackMessage = original === null ? '保存成功 · 已同步。约五秒内可撤销。' : '纠正成功 · 已同步。约五秒内可恢复原事实。';
     this.lightHaptic();
     setTimeout(() => {
       if (this.undoEventId === String(saved['id'])) {
         this.undoEventId = '';
+        this.undoEventCategory = '';
         this.undoCorrectionOriginal = null;
       }
     }, 5000);
@@ -526,6 +597,7 @@ struct Index {
     this.busy = true;
     this.recordError = '';
     const original = this.correctionOriginalEvent;
+    const refreshGrowth = this.selectedRecordType === 'growth';
     try {
       const command: NativeCareCommand = createNativeCareCommand({
         type: this.selectedRecordType,
@@ -547,7 +619,7 @@ struct Index {
       this.correctionOriginalEvent = null;
       this.correctionOccurredAt = '';
       await this.adapter.saveRecordDraft(null);
-      await this.loadToday();
+      await this.refreshAfterMutation(refreshGrowth, false);
     } catch (error) {
       const found = await this.adapter.findCareEvent(String(this.today.baby['id']), this.recordCommandId).catch(() => null);
       if (found !== null) {
@@ -557,7 +629,7 @@ struct Index {
         this.correctionOriginalEvent = null;
         this.correctionOccurredAt = '';
         await this.adapter.saveRecordDraft(null);
-        await this.loadToday();
+        await this.refreshAfterMutation(refreshGrowth, false);
         return;
       }
       this.recordError = error instanceof Error ? error.message : '保存未完成，请核对后重试。';
@@ -573,7 +645,7 @@ struct Index {
     try {
       await this.adapter.voidCareEvent(fact.id, fact.version);
       this.feedbackMessage = '事实已永久作废；原记录人、版本与审计关系保留。';
-      await this.loadToday();
+      await this.refreshAfterMutation(fact.category === 'growth_measurement', fact.category === 'vaccine');
     } catch (error) {
       this.feedbackMessage = error instanceof Error ? error.message : '作废未完成，请刷新后核对。';
     } finally {
@@ -590,6 +662,7 @@ struct Index {
   private async undoRecord(): Promise<void> {
     if (this.adapter === null || this.undoEventId.length === 0) return;
     this.busy = true;
+    const undoCategory = this.undoEventCategory;
     try {
       if (this.undoCorrectionOriginal !== null) {
         await this.adapter.correctCareEvent(this.undoEventId, this.undoEventVersion, this.restoreEvent(this.undoCorrectionOriginal));
@@ -599,8 +672,9 @@ struct Index {
         this.feedbackMessage = '已撤销，事实永久作废；历史记录人和版本仍保留。';
       }
       this.undoEventId = '';
+      this.undoEventCategory = '';
       this.undoCorrectionOriginal = null;
-      await this.loadToday();
+      await this.refreshAfterMutation(undoCategory === 'growth_measurement', undoCategory === 'vaccine');
     } catch (error) {
       this.feedbackMessage = error instanceof Error ? error.message : '撤销未完成，请刷新时间线核对。';
     } finally {
@@ -914,9 +988,7 @@ struct Index {
       };
       await this.adapter.createNativeEvent(event);
       this.feedbackMessage = '已提交共享记录，正在读取最新页面模型…';
-      if (this.activeTab === 'growth') await this.loadGrowth();
-      if (this.activeTab === 'explore') await this.loadExplore();
-      await this.loadToday();
+      await this.refreshAfterMutation(category === 'milestone' || category === 'admin_task', category === 'vaccine');
     } catch (error) {
       this.feedbackMessage = error instanceof Error ? error.message : '共享记录未完成，请重试。';
     } finally {
@@ -944,11 +1016,20 @@ struct Index {
     baby['locale'] = this.settingsLocale;
     this.busy = true;
     this.settingsMessage = '';
+    const refreshGrowth = this.growth !== null || this.activeTab === 'growth';
+    const refreshExplore = this.explore !== null || this.activeTab === 'explore';
     try {
       const patch: NativeSettingsPatch = { nickname: this.settingsNickname.trim(), baby };
       const model = await this.adapter.updateSettings(patch);
       this.settings = model;
       this.applySettingsForm(model);
+      await this.loadResource();
+      await this.loadSettings();
+      if (refreshGrowth) {
+        this.chartContexts.clear();
+        await this.loadGrowth();
+      }
+      if (refreshExplore) await this.loadExplore();
       this.settingsMessage = '账号与宝宝资料已保存，并已重新计算年龄、阶段和时间计划。';
     } catch (error) {
       this.settingsMessage = error instanceof Error ? error.message : '设置保存未完成，请重试。';
@@ -1004,8 +1085,13 @@ struct Index {
     if (this.adapter === null || this.settings?.permissions.canManageHousehold !== true || this.busy) return;
     this.busy = true;
     try {
-      await this.adapter.createVisitorLink();
-      this.settingsMessage = '临时只读访客链接已生成；请从设置页面复制分享信息。';
+      const response = await this.adapter.createVisitorLink();
+      const link = itemRecord(response)['link'];
+      this.visitorShareUrl = itemText(link, 'url');
+      this.visitorShareLinkId = itemText(link, 'id');
+      this.settingsMessage = this.visitorShareUrl.length > 0
+        ? '临时只读访客链接已生成；请复制下方链接分享。'
+        : '临时只读访客链接已生成，但服务端未返回可复制链接，请重试。';
       await this.loadSettings();
     } catch (error) {
       this.settingsMessage = error instanceof Error ? error.message : '访客链接生成未完成，请重试。';
@@ -1019,6 +1105,10 @@ struct Index {
     this.busy = true;
     try {
       await this.adapter.revokeVisitorLink(id);
+      if (this.visitorShareLinkId === id) {
+        this.visitorShareLinkId = '';
+        this.visitorShareUrl = '';
+      }
       this.settingsMessage = '访客链接已撤销。';
       await this.loadSettings();
     } catch (error) {
@@ -1082,8 +1172,8 @@ struct Index {
     if (this.activeTab === tab) this.navigation.repeat(tab);
     this.activeTab = tab;
     this.selectedRoute = this.navigation.state(tab).stack[this.navigation.state(tab).stack.length - 1];
-    if (tab === 'growth' && this.growthPhase === 'idle') this.loadGrowth();
-    if (tab === 'explore' && this.explorePhase === 'idle') this.loadExplore();
+    if (tab === 'growth') this.loadGrowth();
+    if (tab === 'explore') this.loadExplore();
     this.syncNavigation();
   }
 
@@ -1464,6 +1554,128 @@ struct Index {
     }.layoutWeight(1).padding({ top: 13, bottom: 10, left: 6, right: 6 }).backgroundColor('#FFF5EE').borderRadius(16).accessibilityText(`${localizedText(metric.label, metric.id)}成长事实`);
   }
 
+  private chartContext(id: string): CanvasRenderingContext2D {
+    const existing = this.chartContexts.get(id);
+    if (existing !== undefined) return existing;
+    const context = new CanvasRenderingContext2D(this.chartSettings);
+    this.chartContexts.set(id, context);
+    return context;
+  }
+
+  private chartNumber(value: Object | null): number | null {
+    if (value === null || value === undefined || String(value).trim().length === 0) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private drawGrowthChart(chart: NativeGrowthItem, context: CanvasRenderingContext2D): void {
+    const reference = itemList(itemRecord(chart)['reference']);
+    const points = itemList(itemRecord(chart)['points']);
+    const range = itemRecord(chart)['range'];
+    const endMonthValue = this.chartNumber(itemRecord(range)['endMonth']);
+    const endMonth = Math.max(1, endMonthValue === null ? 83 : endMonthValue);
+    const width = 320;
+    const height = this.largeText ? 230 : 210;
+    const padLeft = 32;
+    const padRight = 12;
+    const padTop = 16;
+    const padBottom = 28;
+    const plotWidth = width - padLeft - padRight;
+    const plotHeight = height - padTop - padBottom;
+    const values: Array<number> = [];
+    for (const line of reference) {
+      for (const point of itemList(itemRecord(line)['points'])) {
+        const value = this.chartNumber(itemRecord(point)['value']);
+        if (value !== null) values.push(value);
+      }
+    }
+    for (const point of points) {
+      const value = this.chartNumber(itemRecord(point)['value']);
+      if (value !== null) values.push(value);
+    }
+
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = '#806E68';
+    context.font = '10px sans-serif';
+    if (values.length === 0) {
+      context.fillText('录入有效测量后绘制宝宝轨迹', 16, 32);
+      return;
+    }
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const margin = Math.max((maxValue - minValue) * 0.12, 0.2);
+    const yMin = Math.max(0, minValue - margin);
+    const yMax = maxValue + margin;
+    const x = (month: number): number => padLeft + (month / endMonth) * plotWidth;
+    const y = (value: number): number => height - padBottom - ((value - yMin) / Math.max(0.01, yMax - yMin)) * plotHeight;
+    const ticks: Array<number> = [];
+    if (endMonth <= 12) {
+      for (let tick = 0; tick <= Math.floor(endMonth); tick += 1) ticks.push(tick);
+    } else {
+      ticks.push(...[0, 3, 6, 9, 12, 18, 24, 36, 48, 60, 72, 83].filter((tick: number) => tick <= endMonth));
+    }
+
+    context.strokeStyle = '#E7DCD3';
+    context.lineWidth = 1;
+    context.strokeRect(padLeft, padTop, plotWidth, plotHeight);
+    for (const tick of ticks) {
+      context.beginPath();
+      context.moveTo(x(tick), padTop);
+      context.lineTo(x(tick), height - padBottom);
+      context.stroke();
+      context.fillStyle = '#806E68';
+      context.fillText(String(tick), x(tick) - 5, height - 9);
+    }
+
+    const lineColor = (percentile: number): string => percentile === 50 ? '#52746B' : percentile === 3 || percentile === 97 ? '#D67E67' : '#B9A680';
+    const drawPath = (linePoints: Array<Object>, color: string, lineWidth: number): void => {
+      let started = false;
+      context.beginPath();
+      for (const point of linePoints) {
+        const month = this.chartNumber(itemRecord(point)['month']);
+        const value = this.chartNumber(itemRecord(point)['value']);
+        if (month === null || value === null) continue;
+        if (!started) {
+          context.moveTo(x(month), y(value));
+          started = true;
+        } else {
+          context.lineTo(x(month), y(value));
+        }
+      }
+      if (!started) return;
+      context.strokeStyle = color;
+      context.lineWidth = lineWidth;
+      context.stroke();
+    };
+
+    for (const line of reference) {
+      const percentile = this.chartNumber(itemRecord(line)['percentile']) || 50;
+      drawPath(itemList(itemRecord(line)['points']), lineColor(percentile), percentile === 50 ? 2.5 : 1.2);
+    }
+    let segment: Array<Object> = [];
+    for (const point of points) {
+      if (Boolean(itemRecord(point)['conflicted'])) {
+        drawPath(segment, '#273F3A', 3.5);
+        segment = [];
+      } else {
+        segment.push(point);
+      }
+    }
+    drawPath(segment, '#273F3A', 3.5);
+    for (const point of points) {
+      const month = this.chartNumber(itemRecord(point)['month']);
+      const value = this.chartNumber(itemRecord(point)['value']);
+      if (month === null || value === null) continue;
+      context.beginPath();
+      context.arc(x(month), y(value), Boolean(itemRecord(point)['conflicted']) ? 5 : 3.5, 0, Math.PI * 2);
+      context.fillStyle = Boolean(itemRecord(point)['conflicted']) ? '#B85F53' : '#273F3A';
+      context.fill();
+    }
+    context.fillStyle = '#806E68';
+    context.fillText(itemText(chart, 'unit'), 5, padTop + 3);
+    context.fillText('月龄', width - 28, height - 9);
+  }
+
   @Builder
   private growthChart(chart: NativeGrowthItem): void {
     const reference = itemList(itemRecord(chart)['reference']);
@@ -1473,6 +1685,12 @@ struct Index {
       if (reference.length === 0) {
         Text('当前没有可用的国家标准参考线；不会用 0 或猜测值替代。').fontSize(12).fontColor('#806E68').width('100%');
       } else {
+        const context = this.chartContext(itemText(chart, 'metric'));
+        Canvas(context)
+          .width('100%')
+          .height(this.largeText ? 230 : 210)
+          .onReady(() => this.drawGrowthChart(chart, context))
+          .accessibilityText(`${itemText(chart, 'metric', '成长')}国家标准参考曲线与宝宝测量轨迹`);
         ForEach(reference, (line: Object) => {
           const linePoints = itemList(itemRecord(line)['points']);
           Row({ space: 8 }) {
@@ -1702,6 +1920,7 @@ struct Index {
           ForEach(this.settings.contacts, (contact: NativeSettingsItem) => Row() { Text(itemText(contact, 'email')).fontSize(13).fontColor('#4E3B35').layoutWeight(1); Button('移除').height(30).fontSize(10).enabled(!readOnly && this.settings?.permissions.canManageHousehold === true).onClick(() => this.removeContact(itemText(contact, 'id'))); }.width('100%').padding(8).backgroundColor('#F2F6EE').borderRadius(10), (contact: NativeSettingsItem) => itemText(contact, 'id'));
           if (this.settings.permissions.canManageHousehold) {
             Button('生成临时只读访客链接').width('100%').height(40).enabled(!this.busy).onClick(() => this.createVisitorLink());
+            if (this.visitorShareUrl.length > 0) Column({ space: 4 }) { Text('本次生成的可复制链接').fontSize(11).fontColor('#A65E51').width('100%'); Text(this.visitorShareUrl).fontSize(11).fontColor('#4E3B35').width('100%').maxLines(3).accessibilityText('新生成的访客分享链接'); }.width('100%').padding(10).backgroundColor('#F2F6EE').borderRadius(10);
             ForEach(this.settings.visitorLinks, (link: NativeSettingsItem) => Row() { Column() { Text(`${itemText(link, 'status')} · ${itemText(link, 'expiresAt')}`).fontSize(12).fontColor('#4E3B35'); Text('只读 · 去标识分享').fontSize(10).fontColor('#806E68'); }.layoutWeight(1); Button('撤销').height(30).fontSize(10).onClick(() => this.revokeVisitorLink(itemText(link, 'id'))); }.width('100%').padding(8).backgroundColor('#FFF8F3').borderRadius(10), (link: NativeSettingsItem) => itemText(link, 'id'));
           } else Text('当前成员没有访客链接管理权限。').fontSize(11).fontColor('#806E68').width('100%');
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
@@ -1719,7 +1938,7 @@ struct Index {
           Text(`同步状态：${itemText(this.settings.sync, 'status', 'unknown')} · ${itemText(this.settings.sync, 'lastSyncedAt', '未知')}`).fontSize(12).fontColor('#806E68').width('100%');
           Row({ space: 8 }) { Button('重试同步').layoutWeight(1).onClick(() => { this.loadResource(); this.loadSettings(); }); Button('清除本机缓存').layoutWeight(1).onClick(() => this.clearNativeCache()); }.width('100%');
           Button('安全退出').width('100%').height(42).fontColor(Color.White).backgroundColor('#C36B63').borderRadius(21).onClick(() => this.logout());
-          Row({ space: 8 }) { Button(`大字号：${this.largeText ? '开' : '关'}`).layoutWeight(1).onClick(() => this.largeText = !this.largeText); Button(`减少动态：${this.reducedMotion ? '开' : '关'}`).layoutWeight(1).onClick(() => this.reducedMotion = !this.reducedMotion); }.width('100%');
+          Row({ space: 8 }) { Button(`大字号：${this.largeText ? '开' : '关'}`).layoutWeight(1).onClick(() => { this.largeText = !this.largeText; this.chartContexts.clear(); }); Button(`减少动态：${this.reducedMotion ? '开' : '关'}`).layoutWeight(1).onClick(() => this.reducedMotion = !this.reducedMotion); }.width('100%');
           Text('清除本机缓存不会删除云端事实、计划、媒体或家庭记录。').fontSize(11).fontColor('#806E68').width('100%');
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
         if (readOnly) Text('当前为只读 / 无写入权限：设置写入、联系人、模型配置和状态变更均已禁用。').fontSize(12).fontColor('#B85F53').width('100%').padding(11).backgroundColor('#FFF3D8').borderRadius(12);

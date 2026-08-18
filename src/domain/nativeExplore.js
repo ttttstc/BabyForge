@@ -27,10 +27,23 @@ const safeDate = (value, fallback = new Date()) => {
 
 const dateKey = date => safeDate(date).toISOString().slice(0, 10)
 
+const daysInMonth = (year, month) => new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+
 const addMonths = (date, months) => {
-  const result = new Date(date)
-  result.setUTCMonth(result.getUTCMonth() + Number(months || 0))
-  return result
+  const source = new Date(date)
+  const targetMonth = source.getUTCMonth() + Number(months || 0)
+  const year = source.getUTCFullYear() + Math.floor(targetMonth / 12)
+  const month = ((targetMonth % 12) + 12) % 12
+  const day = Math.min(source.getUTCDate(), daysInMonth(year, month))
+  return new Date(Date.UTC(
+    year,
+    month,
+    day,
+    source.getUTCHours(),
+    source.getUTCMinutes(),
+    source.getUTCSeconds(),
+    source.getUTCMilliseconds(),
+  ))
 }
 
 const addDays = (date, days) => {

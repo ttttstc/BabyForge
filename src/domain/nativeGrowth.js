@@ -8,6 +8,7 @@ import {
 } from './growth.js'
 import { buildGrowthInterpretation } from './naibaCapabilities.js'
 import { getGrowthStageContent } from '../content/growthStages.js'
+import { localDayForTimezone } from './nativeToday.js'
 
 export const NATIVE_GROWTH_CONTRACT = 'babyforge.native.growth'
 export const NATIVE_GROWTH_CONTRACT_VERSION = '1.0.0'
@@ -67,8 +68,13 @@ const buildMetric = (definition, measurements, conflictIds) => {
   const previousWithConflict = previous
     ? { ...previous, conflict: conflictIds.has(previous.id) }
     : null
-  const latestValue = Number(latest?.value)
-  const previousValue = Number(previous?.value)
+  const numericValue = value => {
+    if (value === null || value === undefined || String(value).trim() === '') return null
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  const latestValue = numericValue(latest?.value)
+  const previousValue = numericValue(previous?.value)
   const hasChange = Number.isFinite(latestValue)
     && Number.isFinite(previousValue)
     && !latestWithConflict?.conflict
@@ -137,7 +143,9 @@ export function buildNativeGrowthModel({
   if (!baby?.id) throw new TypeError('A baby is required to build native growth model')
 
   const generatedAt = safeDate(now)
-  const age = resolveAgeContext({ baby, at: generatedAt, purpose: 'growth-dashboard' })
+  let generatedDay = generatedAt.toISOString().slice(0, 10)
+  try { generatedDay = localDayForTimezone(generatedAt, dataTimezone) || generatedDay } catch { /* API validates timezone; keep deterministic UTC fallback */ }
+  const age = resolveAgeContext({ baby, at: generatedDay, purpose: 'growth-dashboard' })
   const stageAgeDays = Number.isFinite(age.chronological?.days) ? age.chronological.days : age.ageDays
   const stage = getStage(Number.isFinite(stageAgeDays) ? Math.max(0, stageAgeDays) : -1)
   const sourceMeasurements = asArray(measurements)
@@ -148,7 +156,7 @@ export function buildNativeGrowthModel({
   const superseded = new Set(measurementList.map(item => item.correctedFromId).filter(Boolean))
   const currentMeasurementList = measurementList.filter(item => isActiveMeasurement(item) && !superseded.has(item.id))
   const metrics = GROWTH_TYPES.map(definition => buildMetric(definition, currentMeasurementList, conflictIds))
-  const charts = GROWTH_TYPES.map(definition => buildChart(definition, baby, measurementList, generatedAt))
+  const charts = GROWTH_TYPES.map(definition => buildChart(definition, baby, measurementList, generatedDay))
   const milestones = getStageMilestones(stage.id, milestoneRecords)
   const adminTasks = getAdminTasks(stage.id, Number.isFinite(stageAgeDays) ? Math.max(0, stageAgeDays) : 0, adminTaskRecords)
   const interpretation = buildGrowthInterpretation({
@@ -158,7 +166,7 @@ export function buildNativeGrowthModel({
     metric: metrics.find(metric => metric.latest)?.id || 'weight',
     type: metrics.find(metric => metric.latest)?.id || 'weight',
     locale,
-    now: generatedAt,
+    now: generatedDay,
   })
 
   return validateNativeGrowthModel({

@@ -61,6 +61,23 @@ test('native growth model keeps missing metrics unknown and never invents a zero
   assert.equal(model.interpretation.status, 'needs_information')
 })
 
+test('native growth change ignores blank and nonnumeric values', () => {
+  const model = buildNativeGrowthModel({
+    baby,
+    now,
+    permissions,
+    measurements: [
+      measurement('weight-missing', '', '2026-08-01'),
+      measurement('weight-invalid', 'not-a-number', '2026-08-10'),
+    ],
+  })
+  const weight = model.metrics.find(metric => metric.id === 'weight')
+  assert.equal(weight.latest.value, null)
+  assert.equal(weight.previous.value, null)
+  assert.equal(weight.change.available, false)
+  assert.equal(weight.change.value, null)
+})
+
 test('native explore model exposes vaccine status, full reviewed topics, anatomy fallback, and source policy', () => {
   const model = buildNativeExploreModel({
     baby,
@@ -96,6 +113,26 @@ test('native explore model exposes vaccine status, full reviewed topics, anatomy
   assert.equal(model.experience.cacheState, 'stale')
   assert.equal(model.sourcePolicy.thirdPartyExperience, 'external-source')
   assert.equal(model.sourcePolicy.rawSourceRequired, true)
+})
+
+test('native vaccine due dates clamp month arithmetic to the target month', () => {
+  const model = buildNativeExploreModel({
+    baby: { ...baby, birthDate: '2026-01-31' },
+    now: '2026-08-18T02:00:00.000Z',
+    permissions,
+  })
+  assert.equal(model.vaccines.find(item => item.id === 'hepb-2').dueAt, '2026-02-28')
+})
+
+test('native growth age uses requested timezone calendar day at midnight boundaries', () => {
+  const boundaryBaby = { ...baby, birthDate: '2026-08-17' }
+  const instant = '2026-08-17T16:30:00.000Z'
+  const shanghai = buildNativeGrowthModel({ baby: boundaryBaby, now: instant, dataTimezone: 'Asia/Shanghai', permissions })
+  const losAngeles = buildNativeGrowthModel({ baby: boundaryBaby, now: instant, dataTimezone: 'America/Los_Angeles', permissions })
+  assert.equal(shanghai.age.at, '2026-08-18')
+  assert.equal(shanghai.age.chronological.days, 1)
+  assert.equal(losAngeles.age.at, '2026-08-17')
+  assert.equal(losAngeles.age.chronological.days, 0)
 })
 
 test('native settings model never returns a raw API key and preserves permissions/cache policy', () => {

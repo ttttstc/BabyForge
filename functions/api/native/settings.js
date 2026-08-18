@@ -166,9 +166,14 @@ function validNickname(value) {
 }
 
 function validBirthDate(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(date.getTime()) && date.getTime() <= Date.now()
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''))
+  if (!match) return false
+  const [, year, month, day] = match.map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    && date.getTime() <= Date.now()
 }
 
 export async function onRequestPatch({ request, env }) {
@@ -189,14 +194,14 @@ export async function onRequestPatch({ request, env }) {
   if (!currentBaby) return errorResponse(403, 'BABY_FORBIDDEN', '无权访问该宝宝档案。', source)
   const now = new Date().toISOString()
   let updatedNickname = context.principal.displayName || '家长'
+  let nicknameUpdate = null
+  let babyUpdate = null
 
   if (body?.nickname !== undefined) {
     const nickname = normalizeNickname(body.nickname)
     if (!validNickname(nickname)) return errorResponse(422, 'INVALID_NICKNAME', '昵称需为 1–30 个常用字符。', source)
     updatedNickname = nickname
-    if (context.principal.userId) {
-      await env.DB.prepare('UPDATE "user" SET name = ?, updatedAt = ? WHERE id = ?').bind(nickname, now, context.principal.userId).run()
-    }
+    nicknameUpdate = nickname
   }
 
   if (body?.baby && typeof body.baby === 'object') {
@@ -213,20 +218,39 @@ export async function onRequestPatch({ request, env }) {
     if (!Number.isInteger(gestationalDays) || gestationalDays < 0 || gestationalDays > 6) return errorResponse(422, 'INVALID_GESTATION_DAYS', '出生孕天不正确。', source)
     if (!['chronological', 'corrected', 'postmenstrual'].includes(growthAgeBasis)) return errorResponse(422, 'INVALID_AGE_BASIS', '年龄口径不正确。', source)
     if (!['singleton', 'multiple'].includes(birthMultiplicity)) return errorResponse(422, 'INVALID_MULTIPLICITY', '胎数信息不正确。', source)
-    await env.DB.prepare(`
-      UPDATE baby_profiles
-      SET nickname = ?, birth_date = ?, gestational_weeks = ?, gestational_days = ?, growth_age_basis = ?, birth_multiplicity = ?, sex = ?, feeding_mode = ?, locale = ?, updated_at = ?, updated_by = ?
-      WHERE id = ? AND household_id = ?
-    `).bind(
+    babyUpdate = {
       nickname,
       birthDate,
       gestationalWeeks,
       gestationalDays,
       growthAgeBasis,
       birthMultiplicity,
-      input.sex === undefined ? currentBaby.sex || null : input.sex || null,
-      input.feedingMode === undefined ? currentBaby.feedingMode || null : input.feedingMode || null,
-      input.locale === undefined ? currentBaby.locale || 'zh-CN' : input.locale || 'zh-CN',
+      sex: input.sex === undefined ? currentBaby.sex || null : input.sex || null,
+      feedingMode: input.feedingMode === undefined ? currentBaby.feedingMode || null : input.feedingMode || null,
+      locale: input.locale === undefined ? currentBaby.locale || 'zh-CN' : input.locale || 'zh-CN',
+    }
+  }
+
+  // Validate complete patch before touching either account or baby row.
+  if (nicknameUpdate !== null && context.principal.userId) {
+    await env.DB.prepare('UPDATE "user" SET name = ?, updatedAt = ? WHERE id = ?').bind(nicknameUpdate, now, context.principal.userId).run()
+  }
+
+  if (babyUpdate !== null) {
+    await env.DB.prepare(`
+      UPDATE baby_profiles
+      SET nickname = ?, birth_date = ?, gestational_weeks = ?, gestational_days = ?, growth_age_basis = ?, birth_multiplicity = ?, sex = ?, feeding_mode = ?, locale = ?, updated_at = ?, updated_by = ?
+      WHERE id = ? AND household_id = ?
+    `).bind(
+      babyUpdate.nickname,
+      babyUpdate.birthDate,
+      babyUpdate.gestationalWeeks,
+      babyUpdate.gestationalDays,
+      babyUpdate.growthAgeBasis,
+      babyUpdate.birthMultiplicity,
+      babyUpdate.sex,
+      babyUpdate.feedingMode,
+      babyUpdate.locale,
       now,
       context.principal.accountId,
       currentBaby.id,
