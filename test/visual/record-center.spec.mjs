@@ -126,6 +126,11 @@ test('historical date becomes the P0 default and remains selected after save and
   const historicalDay = dateDaysAgo(2)
   await page.goto(`/#/records?date=${historicalDay}`)
   await expect(page.locator('input[type="date"]').first()).toHaveValue(historicalDay)
+  const switchedQueryDay = dateDaysAgo(3)
+  await page.evaluate((date) => { window.location.hash = `/records?date=${date}` }, switchedQueryDay)
+  await expect(page.locator('input[type="date"]').first()).toHaveValue(switchedQueryDay)
+  await page.goto(`/#/records?date=${historicalDay}`)
+  await expect(page.locator('input[type="date"]').first()).toHaveValue(historicalDay)
 
   await page.locator('.record-card').filter({ hasText: '喂奶' }).click()
   await page.getByTestId('record-entry-feeding').getByRole('button', { name: '配方奶' }).click()
@@ -143,6 +148,12 @@ test('historical date becomes the P0 default and remains selected after save and
   const corrected = await page.evaluate(() => JSON.parse(localStorage.getItem('babyforge:workspace:visual-test-user') || '{}').careEvents.filter((event) => event.category === 'bottle_feeding'))
   expect(corrected.find((event) => event.id === original.id).status).toBe('corrected')
   expect(corrected.find((event) => event.correctedFromId === original.id).occurredAt).toBe(original.occurredAt)
+
+  const correctedEventId = corrected.find((event) => event.correctedFromId === original.id).id
+  await page.evaluate((eventId) => { window.location.hash = `/records?event=${encodeURIComponent(eventId)}&mode=detail` }, correctedEventId)
+  await expect(page.getByTestId('record-event-detail')).toBeVisible()
+  await expect(page.locator('input[type="date"]').first()).toHaveValue(historicalDay)
+  await page.goto(`/#/records?date=${historicalDay}`)
 
   await page.locator('.record-card').filter({ hasText: '睡眠' }).click()
   await expect(page.getByLabel('开始时间')).toHaveValue(new RegExp(`^${historicalDay}T`))

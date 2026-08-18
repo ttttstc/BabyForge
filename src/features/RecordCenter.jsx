@@ -82,7 +82,7 @@ export function RecordCenter({ state, commitState, onLogout, readOnly = false, r
   })
   const [editingEvent, setEditingEvent] = useState(null)
   const [eventDetailId, setEventDetailId] = useState(() => recordQuery.get('event') || '')
-  const [selectedDay, setSelectedDay] = useState(() => selectedDayFromQuery(recordQuery.get('date')))
+  const [selectedDayOverride, setSelectedDayOverride] = useState(null)
   const [timelineFilter, setTimelineFilter] = useState(() => recordQuery.get('filter') || '')
   const [toast, setToast] = useState('')
   const [entryError, setEntryError] = useState('')
@@ -92,8 +92,11 @@ export function RecordCenter({ state, commitState, onLogout, readOnly = false, r
   const dailyTasks = useMemo(() => getDailyTasks(state.taskLogs, undefined, stage.id), [state.taskLogs, stage.id])
   const adminTasks = useMemo(() => getAdminTasks(stage.id, ageDays, state.adminTaskRecords), [stage.id, ageDays, state.adminTaskRecords])
   const milestones = useMemo(() => getStageMilestones(stage.id, state.milestoneRecords), [stage.id, state.milestoneRecords])
-  const dailySummary = useMemo(() => getDailyCareSummary(state.careEvents, selectedDay), [state.careEvents, selectedDay])
   const eventDetail = useMemo(() => eventDetailId ? state.careEvents.find((event) => event.id === eventDetailId) || null : null, [eventDetailId, state.careEvents])
+  const requestedDate = recordQuery.get('date')
+  const selectedDay = selectedDayOverride
+    || (requestedDate ? selectedDayFromQuery(requestedDate) : recordQuery.get('event') && eventDetail ? localDayKey(eventDetail.occurredAt) : localDayKey())
+  const dailySummary = useMemo(() => getDailyCareSummary(state.careEvents, selectedDay), [state.careEvents, selectedDay])
   const recentGrowth = useMemo(() => {
     const latest = {}
     state.careEvents
@@ -318,7 +321,7 @@ export function RecordCenter({ state, commitState, onLogout, readOnly = false, r
           </div>
         </section>
 
-        <DailyCareTimeline events={state.careEvents} locale={locale} selectedDay={selectedDay} filter={timelineFilter} onDayChange={setSelectedDay} onFilterChange={setTimelineFilter} onDetail={showEventDetail} onEdit={editRecord} onVoid={voidRecord} readOnly={readOnly} />
+        <DailyCareTimeline events={state.careEvents} locale={locale} selectedDay={selectedDay} filter={timelineFilter} onDayChange={setSelectedDayOverride} onFilterChange={setTimelineFilter} onDetail={showEventDetail} onEdit={editRecord} onVoid={voidRecord} readOnly={readOnly} />
 
         <section className="record-card-section record-more-section" aria-labelledby="record-more-heading">
           <div className="record-section-heading"><div><p className="eyebrow">{isEnglish ? 'More to add' : '还可以记录'}</p><h2 id="record-more-heading">{isEnglish ? 'Other moments worth keeping' : '其他想留下的宝宝情况'}</h2></div><span>{isEnglish ? 'Keep related moments together' : '把相关情况放在一起，更方便回看'}</span></div>
