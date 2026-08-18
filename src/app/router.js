@@ -24,6 +24,7 @@ export const ROUTES = {
   naibaAi: '#/naiba-ai',
   summary: '#/doctor-summary',
   settings: '#/settings',
+  harmonyPrototype: '#/prototype/harmony-native',
   visitor: '#/visit',
 }
 
