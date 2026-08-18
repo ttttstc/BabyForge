@@ -10,7 +10,8 @@ import {
 const APP_URL: string = 'https://babyforge.bbroot.com/';
 const TRUSTED_ORIGIN: string = 'https://babyforge.bbroot.com';
 
-// Historical ArkWeb research target. Native beta starts from pages/Index.
+// Legacy fallback ONLY: retained for compatibility research and safe navigation.
+// The active native beta shell starts from pages/Index.
 @Entry
 @Component
 struct LegacyWeb {

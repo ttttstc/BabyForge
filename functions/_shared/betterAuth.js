@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth'
 import { sendTransactionalEmail } from './email.js'
 
 const authByDatabase = new WeakMap()
+const NATIVE_AUTH_ORIGIN = 'babyforge://auth'
 
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (character) => ({
@@ -100,7 +101,7 @@ function createBetterAuth(env, waitUntil) {
       },
       useSecureCookies: Boolean(baseURL?.startsWith('https://')),
     },
-    trustedOrigins: [baseURL, 'http://localhost:8788', 'http://localhost:5173'].filter(Boolean),
+    trustedOrigins: [baseURL, NATIVE_AUTH_ORIGIN, 'http://localhost:8788', 'http://localhost:5173'].filter(Boolean),
   })
 }
 

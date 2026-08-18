@@ -56,9 +56,27 @@ struct Index {
   @State private busy: boolean = false;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
   @StorageProp('bottomAvoidHeight') private bottomAvoidHeight: number = 0;
+  @StorageProp('nativeAuthCallback') private nativeAuthCallback: string = '';
+  private handledNativeAuthCallback: string = '';
 
   aboutToAppear(): void {
     this.adapter = new NativeResourceAdapter(getContext(this) as common.UIAbilityContext);
+    if (this.nativeAuthCallback.length === 0) this.loadResource();
+    this.consumeNativeAuthCallback();
+  }
+
+  onPageShow(): void {
+    this.consumeNativeAuthCallback();
+  }
+
+  private consumeNativeAuthCallback(): void {
+    if (this.nativeAuthCallback.length === 0 || this.nativeAuthCallback === this.handledNativeAuthCallback) return;
+    const callback = this.nativeAuthCallback;
+    this.handledNativeAuthCallback = callback;
+    AppStorage.setOrCreate('nativeAuthCallback', '');
+    this.statusMessage = callback.includes('error=')
+      ? 'Google 登录未完成，请重试。'
+      : 'Google 登录已返回，正在同步账户…';
     this.loadResource();
   }
 

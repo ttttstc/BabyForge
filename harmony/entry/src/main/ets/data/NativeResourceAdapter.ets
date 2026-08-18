@@ -8,6 +8,7 @@ import {
 import { NativeSessionStore } from './NativeSessionStore';
 
 const SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com';
+const NATIVE_AUTH_CALLBACK_URL: string = 'babyforge://auth/callback';
 
 export interface NativeBootstrapResult {
   resource: NativeResourceEnvelope;
@@ -166,7 +167,7 @@ export class NativeResourceAdapter {
   }
 
   async startSocialLogin(provider: string = 'google'): Promise<string> {
-    const payload = record(await this.request('/api/auth/sign-in/social', http.RequestMethod.POST, requestBody({ provider, callbackURL: SERVICE_ORIGIN })));
+    const payload = record(await this.request('/api/auth/sign-in/social', http.RequestMethod.POST, requestBody({ provider, callbackURL: NATIVE_AUTH_CALLBACK_URL })));
     if (typeof payload['url'] !== 'string') throw new NativeTransportError('INVALID_RESPONSE', '第三方登录未返回跳转地址。');
     return String(payload['url']);
   }

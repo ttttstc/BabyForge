@@ -101,15 +101,36 @@ const indexPage = read('entry/src/main/ets/pages/Index.ets')
 const legacyWeb = read('entry/src/main/ets/pages/LegacyWeb.ets')
 const nativeContract = read('entry/src/main/ets/data/NativeResourceContract.ets')
 const nativeAdapter = read('entry/src/main/ets/data/NativeResourceAdapter.ets')
+const nativeSession = read('entry/src/main/ets/data/NativeSessionStore.ets')
 const navigation = read('entry/src/main/ets/navigation/NativeNavigation.ets')
 const pagesProfile = read('entry/src/main/resources/base/profile/main_pages.json')
 const capabilityManifest = readProject('contracts/native-capability-manifest.v1.json')
 const resourceContract = readProject('contracts/native-resource-contract.v1.json')
+const betterAuthConfig = readProject('functions/_shared/betterAuth.js')
 const ability = read('entry/src/main/ets/entryability/EntryAbility.ets')
 const shellState = read('entry/src/main/ets/common/ShellState.ets')
 const installScript = read('scripts/install-harmony.ps1')
 const permissionsBlock = moduleConfig.match(/"requestPermissions"\s*:\s*\[([\s\S]*?)\]/)?.[1] || ''
 const requestedPermissions = [...permissionsBlock.matchAll(/"name"\s*:\s*"([^"]+)"/g)].map((match) => match[1])
+
+function parseProjectJson(text, relativePath) {
+  try {
+    return JSON.parse(text)
+  } catch (error) {
+    failures.push(`${relativePath}: 必须是有效 JSON (${error.message})`)
+    return null
+  }
+}
+
+const capabilityManifestData = parseProjectJson(capabilityManifest, 'contracts/native-capability-manifest.v1.json')
+const resourceContractData = parseProjectJson(resourceContract, 'contracts/native-resource-contract.v1.json')
+const resourceContractVersion = typeof resourceContractData?.contractVersion === 'string'
+  ? resourceContractData.contractVersion
+  : ''
+const expectedNativeTabs = ['today', 'record', 'ai', 'growth', 'explore']
+const manifestNativeTabs = Array.isArray(capabilityManifestData?.nativePrimaryTabs)
+  ? capabilityManifestData.nativePrimaryTabs
+  : []
 
 check('Bundle Name 必须固定为 com.ni.babyforge', appConfig.includes('com.ni.babyforge'))
 check('应用名称必须为 BabyForge', appStrings.includes('BabyForge') && entryStrings.includes('BabyForge'))
@@ -123,10 +144,12 @@ check('必须且只能声明网络访问权限', requestedPermissions.length ===
 check('历史 ArkWeb 目标必须保留', pagesProfile.includes('pages/LegacyWeb') && legacyWeb.includes('ArkWeb'))
 check('原生默认入口必须连接共享服务', indexPage.includes('NativeResourceAdapter') && nativeAdapter.includes("SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com'"))
 check('原生默认入口不得加载 React 或 ArkWeb 页面', !indexPage.includes('Web({') && !indexPage.includes('@kit.ArkWeb'))
-check('原生入口必须连接版本化共享合同', indexPage.includes('NativeResourceEnvelope') && nativeContract.includes("NATIVE_RESOURCE_CONTRACT_VERSION: string = '1.0.0'") && nativeAdapter.includes('/api/native/bootstrap'))
 check('原生入口必须声明五个一级标签', indexPage.includes('NATIVE_TABS') && navigation.includes("'today' | 'record' | 'ai' | 'growth' | 'explore'"))
-check('共享能力清单必须绑定五个标签和 Issue 70 基础能力', capabilityManifest.includes('"nativePrimaryTabs": ["today", "record", "ai", "growth", "explore"]') && capabilityManifest.includes('"delivery": "issue-70"'))
-check('共享合同清单必须固定 1.0.0 版本和权限角色', resourceContract.includes('"contractVersion": "1.0.0"') && resourceContract.includes('"owner"') && resourceContract.includes('"readOnly"'))
+check('原生会话必须合并多 Cookie 并处理失效 Cookie', nativeSession.includes('parseCookies') && nativeSession.includes('mergeCookies') && nativeSession.includes('set-cookie'))
+check('原生 OAuth 必须注册回调深链并允许受信来源', nativeAdapter.includes('babyforge://auth/callback') && moduleConfig.includes('"scheme": "babyforge"') && moduleConfig.includes('"host": "auth"') && ability.includes('onNewWant') && betterAuthConfig.includes("NATIVE_AUTH_ORIGIN = 'babyforge://auth'"))
+check('原生入口必须连接版本化共享合同', indexPage.includes('NativeResourceEnvelope') && resourceContractVersion.length > 0 && nativeContract.includes(`NATIVE_RESOURCE_CONTRACT_VERSION: string = '${resourceContractVersion}'`) && nativeAdapter.includes('/api/native/bootstrap'))
+check('共享能力清单必须绑定五个标签和 Issue 70 基础能力', manifestNativeTabs.join('|') === expectedNativeTabs.join('|') && capabilityManifest.includes('"delivery": "issue-70"'))
+check('共享合同清单必须读取实际版本和权限角色', resourceContractVersion.length > 0 && Array.isArray(resourceContractData?.roles) && resourceContractData.roles.includes('owner') && resourceContractData.roles.includes('readOnly'))
 check('原生入口必须支持账号、家庭恢复和邀请', indexPage.includes('signInEmail') && indexPage.includes('createHousehold') && indexPage.includes('acceptInvite') && indexPage.includes('createInvite'))
 check('原生入口必须显式呈现加载、失败、离线缓存和只读状态', indexPage.includes("'loading'") && indexPage.includes("'error'") && indexPage.includes('staleCache') && indexPage.includes('readOnly'))
 check('五个标签必须维护独立返回栈和临时输入', navigation.includes('stack') && navigation.includes('temporaryInput') && navigation.includes('repeat(tab:') && indexPage.includes('navigation.back(this.activeTab)'))
