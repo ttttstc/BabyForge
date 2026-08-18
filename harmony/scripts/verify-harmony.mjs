@@ -103,6 +103,7 @@ const nativeContract = read('entry/src/main/ets/data/NativeResourceContract.ets'
 const nativeAdapter = read('entry/src/main/ets/data/NativeResourceAdapter.ets')
 const nativeSession = read('entry/src/main/ets/data/NativeSessionStore.ets')
 const nativeTodayContract = read('entry/src/main/ets/data/NativeTodayContract.ets')
+const nativeAiContract = read('entry/src/main/ets/data/NativeAiContract.ets')
 const navigation = read('entry/src/main/ets/navigation/NativeNavigation.ets')
 const pagesProfile = read('entry/src/main/resources/base/profile/main_pages.json')
 const capabilityManifest = readProject('contracts/native-capability-manifest.v1.json')
@@ -110,6 +111,12 @@ const resourceContract = readProject('contracts/native-resource-contract.v1.json
 const todayContract = readProject('contracts/native-today-contract.v1.json')
 const todayModel = readProject('src/domain/nativeToday.js')
 const todayEndpoint = readProject('functions/api/native/today.js')
+const aiContract = readProject('contracts/native-ai-contract.v1.json')
+const aiBootstrapEndpoint = readProject('functions/api/native/ai/bootstrap.js')
+const aiChatEndpoint = readProject('functions/api/native/ai/chat.js')
+const aiCapabilityEndpoint = readProject('functions/api/native/ai/capability.js')
+const aiNativeContract = readProject('src/domain/nativeAiContract.js')
+const aiAnchor = path.join(harmonyRoot, 'entry', 'src', 'main', 'resources', 'base', 'media', 'ai_baby_anchor.png')
 const betterAuthConfig = readProject('functions/_shared/betterAuth.js')
 const ability = read('entry/src/main/ets/entryability/EntryAbility.ets')
 const shellState = read('entry/src/main/ets/common/ShellState.ets')
@@ -129,6 +136,7 @@ function parseProjectJson(text, relativePath) {
 const capabilityManifestData = parseProjectJson(capabilityManifest, 'contracts/native-capability-manifest.v1.json')
 const resourceContractData = parseProjectJson(resourceContract, 'contracts/native-resource-contract.v1.json')
 const todayContractData = parseProjectJson(todayContract, 'contracts/native-today-contract.v1.json')
+const aiContractData = parseProjectJson(aiContract, 'contracts/native-ai-contract.v1.json')
 const resourceContractVersion = typeof resourceContractData?.contractVersion === 'string'
   ? resourceContractData.contractVersion
   : ''
@@ -161,6 +169,14 @@ check('五个标签必须维护独立返回栈和临时输入', navigation.inclu
 check('共享合同必须包含错误恢复边界', nativeContract.includes('UNKNOWN_VERSION') && nativeContract.includes('MISSING_REQUIRED_FIELD') && nativeAdapter.includes('readResource()'))
 check('Issue 71 必须连接版本化今日页面模型', todayContractData?.contract === 'babyforge.native.today' && todayContractData?.contractVersion === '1.0.0' && nativeTodayContract.includes("NATIVE_TODAY_CONTRACT_VERSION: string = '1.0.0'") && nativeAdapter.includes('/api/native/today'))
 check('今天页必须按宝宝日期、摘要、相册、事项、最近事实呈现', indexPage.indexOf('早上好') < indexPage.indexOf('今日摘要') && indexPage.indexOf('今日摘要') < indexPage.indexOf('今日相册') && indexPage.indexOf('今日相册') < indexPage.indexOf('今天要留意') && indexPage.indexOf('今天要留意') < indexPage.indexOf('最近事实'))
+check('Issue 73 必须连接版本化奶爸 AI 合同和 ArkTS 解析器', aiContractData?.contract === 'babyforge.native.ai' && aiContractData?.contractVersion === '1.0.0' && nativeAiContract.includes("NATIVE_AI_CONTRACT_VERSION: string = '1.0.0'") && nativeAiContract.includes('parseNativeAiBootstrap') && nativeAiContract.includes('parseNativeAiReply'))
+check('奶爸 AI 根页面必须续接会话、支持新对话和可移除上下文', indexPage.includes('aiSurface()') && indexPage.includes('loadAi()') && indexPage.includes('新对话') && indexPage.includes('最近会话') && indexPage.includes('aiContextVisible') && indexPage.includes('不会自动发送'))
+check('奶爸 AI 必须由共享 14 能力注册表驱动', aiBootstrapEndpoint.includes('listSkillContracts()') && aiNativeContract.includes("NATIVE_AI_CONTRACT = 'babyforge.native.ai'") && aiCapabilityEndpoint.includes('executeNaibaSkill') && aiCapabilityEndpoint.includes('getNaibaSkill'))
+check('奶爸 AI 必须覆盖发送、生成、停止、离线、工具失败和只读状态', nativeAiContract.includes("'generating'") && nativeAiContract.includes("'stopped'") && nativeAiContract.includes("'offline'") && nativeAiContract.includes("'tool_failed'") && nativeAiContract.includes("'read_only'") && indexPage.includes('cancelAiChat'))
+check('照片和报告必须预览后显式发送且原图不得进入产物或分享', aiContractData?.attachmentPolicy?.photos === 'explicit-send-only' && aiContractData?.attachmentPolicy?.photoPreview === 'required-before-send' && aiContractData?.attachmentPolicy?.reportsIncludeOriginals === false && aiContractData?.attachmentPolicy?.shareIncludesOriginals === false && indexPage.includes('再次发送并识别') && aiBootstrapEndpoint.includes('photosImplicitlySent: false'))
+check('事实草稿必须支持编辑、确认、丢弃和过期', nativeAiContract.includes('draft_expired') && indexPage.includes('updateAiDraftValue') && indexPage.includes('confirmAiDraft') && indexPage.includes('discardAiDraft') && nativeAdapter.includes('aiConfirmDraft') && nativeAdapter.includes('aiDiscardDraft'))
+check('奶爸 AI 必须保留服务端安全下限和来源卡片', aiContractData?.invariants?.includes('missing-facts-are-not-zero') && aiContractData?.invariants?.includes('safety-floor-cannot-be-lowered') && aiContractData?.sourcePolicy?.deterministicRules === 'server-only' && aiChatEndpoint.includes('isApprovedAuthorityUrl') && indexPage.includes('来源与依据'))
+check('奶爸 AI 必须使用仓内婴儿锚点资源', indexPage.includes("$r('app.media.ai_baby_anchor')") && fs.existsSync(aiAnchor) && fs.statSync(aiAnchor).size > 100_000)
 check('摘要不得把缺失事实显示为零', todayModel.includes("label: '未记录'") && todayModel.includes('value: null') && todayContract.includes('"summaryUnknown"'))
 check('相册必须覆盖选择、上传、浏览、下载、删除和隐私边界', indexPage.includes('PhotoViewPicker') && nativeAdapter.includes('multiFormDataList') && indexPage.includes('上一张') && indexPage.includes('下一张') && indexPage.includes('downloadSelectedPhoto') && indexPage.includes('deleteSelectedPhoto') && indexPage.includes('照片不会自动发送给 AI'))
 check('记录工作台必须提供六类统一事实入口', ['feeding', 'sleep', 'diaper', 'medication', 'temperature', 'growth'].every((type) => indexPage.includes(`recordCard('${type}'`)) && nativeTodayContract.includes('createNativeCareCommand'))
@@ -178,7 +194,7 @@ check('真机安装脚本必须实际验证 HAP 签名', installScript.includes(
 check('真机安装脚本必须校验目标 HAP 身份', installScript.includes('com.ni.babyforge') && installScript.includes('EntryAbility') && installScript.includes('portrait'))
 check('真机安装脚本必须拒绝过时的签名 HAP', installScript.includes('latestUnsignedHap') && installScript.includes('LastWriteTime') && installScript.includes('重新签名当前构建'))
 
-const sourceFiles = [appConfig, appStrings, moduleConfig, entryStrings, indexPage, legacyWeb, nativeContract, nativeTodayContract, nativeAdapter, navigation, ability, shellState].join('\n')
+const sourceFiles = [appConfig, appStrings, moduleConfig, entryStrings, indexPage, legacyWeb, nativeContract, nativeTodayContract, nativeAiContract, nativeAdapter, navigation, ability, shellState].join('\n')
 check('Harmony 源码不应出现明文 HTTP 入口', !sourceFiles.includes('http://'))
 
 if (!sourceOnly) {

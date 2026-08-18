@@ -8,6 +8,7 @@ import {
 } from './NativeResourceContract';
 import { NativeSessionStore } from './NativeSessionStore';
 import { NativeCareCommand, NativeCareEvent, NativeTodayModel, parseNativeToday } from './NativeTodayContract';
+import { NativeAiBootstrap, NativeAiReply, parseNativeAiBootstrap, parseNativeAiReply } from './NativeAiContract';
 
 const SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com';
 const NATIVE_AUTH_CALLBACK_URL: string = 'babyforge://auth/callback';
@@ -39,6 +40,51 @@ interface NativeRequestBody {
   callbackURL?: string;
   baby?: NativeBabyInput | null;
 }
+
+interface NativeAiBabyRequest {
+  id: string;
+}
+
+interface NativeAiChatRequest {
+  message: string;
+  baby: NativeAiBabyRequest;
+  conversationId: string;
+  skillId: string;
+  decisionFacts: Object | null;
+}
+
+interface NativeAiCapabilityRequest {
+  skillId: string;
+  babyId: string;
+  input: Object;
+}
+
+interface NativeAiReportRequest {
+  babyId: string;
+  name: string;
+  mimeType: string;
+  text: string;
+  dataUrl: string;
+  thirdPartyProcessingConsent: boolean;
+}
+
+interface NativeAiCreateDraftRequest {
+  event: Object;
+  draftType: string;
+}
+
+interface NativeAiConfirmDraftRequest {
+  confirmed: boolean;
+  draftId: string;
+  event: Object;
+}
+
+interface NativeAiDiscardDraftRequest {
+  draftId: string;
+  status: string;
+}
+
+const PATCH_METHOD: http.RequestMethod = 'PATCH' as http.RequestMethod;
 
 export interface NativePhotoDownload {
   data: ArrayBuffer;
@@ -110,6 +156,7 @@ export class NativeResourceAdapter {
   private readonly session: NativeSessionStore;
   private readonly timezone: string = deviceTimezone();
   private opened: boolean = false;
+  private activeAiRequest: http.HttpRequest | null = null;
 
   constructor(context: common.UIAbilityContext) {
     this.session = new NativeSessionStore(context);
@@ -121,9 +168,10 @@ export class NativeResourceAdapter {
     this.opened = true;
   }
 
-  private async request(path: string, method: http.RequestMethod = http.RequestMethod.GET, body: Object | null = null): Promise<Object> {
+  private async request(path: string, method: http.RequestMethod = http.RequestMethod.GET, body: Object | null = null, cancellable: boolean = false): Promise<Object> {
     await this.ensureOpened();
     const request = http.createHttp();
+    if (cancellable) this.activeAiRequest = request;
     const headers: NativeHeaders = body !== null
       ? {
         accept: 'application/json',
@@ -175,6 +223,7 @@ export class NativeResourceAdapter {
       if (error instanceof NativeTransportError || error instanceof NativeContractError) throw error as Error;
       throw new NativeTransportError('NETWORK_UNAVAILABLE', '无法连接共享业务服务，请检查网络后重试。', 0, true);
     } finally {
+      if (this.activeAiRequest === request) this.activeAiRequest = null;
       request.destroy();
     }
   }
@@ -197,6 +246,58 @@ export class NativeResourceAdapter {
   async today(day: string = ''): Promise<NativeTodayModel> {
     const query = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `?day=${encodeURIComponent(day)}` : '';
     return parseNativeToday(await this.request(`/api/native/today${query}`));
+  }
+
+  async aiBootstrap(conversationId: string = ''): Promise<NativeAiBootstrap> {
+    const query = conversationId.length > 0 ? `?conversationId=${encodeURIComponent(conversationId)}` : '';
+    return parseNativeAiBootstrap(await this.request(`/api/native/ai/bootstrap${query}`));
+  }
+
+  async aiChat(message: string, babyId: string, conversationId: string = '', skillId: string = '', decisionFacts: Object | null = null): Promise<NativeAiReply> {
+    const payload: NativeAiChatRequest = {
+      message,
+      baby: { id: babyId },
+      conversationId,
+      skillId,
+      decisionFacts
+    };
+    return parseNativeAiReply(await this.request('/api/native/ai/chat', http.RequestMethod.POST, payload, true));
+  }
+
+  cancelAiChat(): void {
+    if (this.activeAiRequest !== null) this.activeAiRequest.destroy();
+  }
+
+  async aiCapability(skillId: string, babyId: string, input: Object | null = null): Promise<Object> {
+    const payload: NativeAiCapabilityRequest = { skillId, babyId, input: input === null ? emptyRecord() : input };
+    return this.request('/api/native/ai/capability', http.RequestMethod.POST, payload as Object);
+  }
+
+  async aiReport(babyId: string, name: string, mimeType: string, text: string = '', dataUrl: string = ''): Promise<Object> {
+    const payload: NativeAiReportRequest = {
+      babyId,
+      name,
+      mimeType,
+      text,
+      dataUrl,
+      thirdPartyProcessingConsent: mimeType !== 'text/plain'
+    };
+    return this.request('/api/ai/report', http.RequestMethod.POST, payload as Object);
+  }
+
+  async aiCreateDraft(event: Object, draftType: string): Promise<Object> {
+    const payload: NativeAiCreateDraftRequest = { event, draftType };
+    return this.request('/api/ai/drafts', http.RequestMethod.POST, payload as Object);
+  }
+
+  async aiConfirmDraft(draftId: string, event: Object): Promise<Object> {
+    const payload: NativeAiConfirmDraftRequest = { confirmed: true, draftId, event };
+    return this.request('/api/ai/confirm-draft', http.RequestMethod.POST, payload as Object);
+  }
+
+  async aiDiscardDraft(draftId: string): Promise<Object> {
+    const payload: NativeAiDiscardDraftRequest = { draftId, status: 'discarded' };
+    return this.request('/api/ai/drafts', PATCH_METHOD, payload as Object);
   }
 
   async createCareEvent(command: NativeCareCommand): Promise<Object> {

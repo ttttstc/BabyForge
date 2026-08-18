@@ -8,10 +8,12 @@ import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionF
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
 import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
+import { NATIVE_AI_CONTRACT, NATIVE_AI_CONTRACT_VERSION } from '../../../src/domain/nativeAiContract.js'
 import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 
 function sse(events, status = 200) {
-  const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
+  const contractMeta = { type: 'meta', contract: NATIVE_AI_CONTRACT, contractVersion: NATIVE_AI_CONTRACT_VERSION }
+  const body = [contractMeta, ...events].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
   return new Response(body, { status, headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' } })
 }
 

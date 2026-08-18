@@ -4,6 +4,8 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import { camera, cameraPicker } from '@kit.CameraKit';
 import vibrator from '@ohos.vibrator';
+import util from '@ohos.util';
+import inputMethod from '@ohos.inputMethod';
 import {
   NativeBootstrapResult,
   NativeBabyInput,
@@ -27,6 +29,14 @@ import {
   NativeTodayTask,
   createNativeCareCommand
 } from '../data/NativeTodayContract';
+import {
+  NativeAiAttachment,
+  NativeAiBootstrap,
+  NativeAiCapability,
+  NativeAiMessage,
+  NativeAiSession,
+  NativeAiStatus
+} from '../data/NativeAiContract';
 
 type NativePhase = 'loading' | 'login' | 'household' | 'ready' | 'error';
 type LoginMode = 'login' | 'register' | 'reset';
@@ -43,6 +53,47 @@ interface NativeRecordDraft {
 interface NativePhotoTimestamp {
   takenAt: string;
   timeSource: string;
+}
+
+interface NativeAiContextCard {
+  kind: string;
+  title: string;
+  description: string;
+  sourceIds: Array<string>;
+}
+
+interface NativeAiReportFactPayload {
+  reportName: string;
+  fields: Object;
+  uncertainties: Object;
+  extractedAt: string;
+}
+
+interface NativeAiFactActor {
+  id: string;
+  displayName: string;
+}
+
+interface NativeAiFactEvent {
+  id: string;
+  babyId: string;
+  kind: string;
+  category: string;
+  occurredAt: string;
+  recordedAt: string;
+  actor: NativeAiFactActor;
+  source: string;
+  payload: NativeAiReportFactPayload;
+  status: string;
+  version: number;
+}
+
+interface NativeAiReportDraft {
+  status: string;
+  title: string;
+  summary: string;
+  event: NativeAiFactEvent;
+  needsConfirmation: boolean;
 }
 
 function jsonRecord(value: string): Record<string, Object | null> {
@@ -126,6 +177,25 @@ struct Index {
   @State private photoPixel: image.PixelMap | null = null;
   @State private photoLoading: boolean = false;
   @State private photoLoadFailed: boolean = false;
+  @State private aiModel: NativeAiBootstrap | null = null;
+  @State private aiConversationId: string = '';
+  @State private aiMessages: Array<NativeAiMessage> = [];
+  @State private aiInput: string = '';
+  @State private aiStatus: NativeAiStatus = 'idle';
+  @State private aiError: string = '';
+  @State private aiArtifact: Object | null = null;
+  @State private aiArtifactSkill: string = '';
+  @State private aiSources: Array<Object> = [];
+  @State private aiContext: NativeAiContextCard | null = null;
+  @State private aiContextVisible: boolean = false;
+  @State private aiAttachment: NativeAiAttachment | null = null;
+  @State private aiDraft: Object | null = null;
+  @State private aiDraftId: string = '';
+  @State private aiDraftValue: string = '';
+  @State private aiSelectedSkillId: string = '';
+  @State private aiSessionsExpanded: boolean = false;
+  private aiStopRequested: boolean = false;
+  private aiCancelable: boolean = false;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
   @StorageProp('bottomAvoidHeight') private bottomAvoidHeight: number = 0;
   @StorageProp('nativeAuthCallback') private nativeAuthCallback: string = '';
@@ -200,7 +270,10 @@ struct Index {
     this.phase = result.resource.household === null ? 'household' : 'ready';
     this.showFamilyPanel = false;
     this.statusMessage = result.stale ? '当前显示最近一次成功同步的内容；恢复网络后可重新读取。' : '';
-    if (this.phase === 'ready') this.loadToday();
+    if (this.phase === 'ready') {
+      this.loadToday();
+      this.loadAi();
+    }
   }
 
   private async loadToday(day: string = this.selectedDay): Promise<void> {
@@ -254,6 +327,555 @@ struct Index {
     this.selectedPhotoIndex = index;
     this.showPhotoViewer = showViewer || this.showPhotoViewer;
     this.loadPhotoPixel(index);
+  }
+
+  private nativeId(prefix: string): string {
+    return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+  }
+
+  private aiWelcomeMessage(): NativeAiMessage {
+    return {
+      id: this.nativeId('ai-welcome'),
+      role: 'assistant',
+      text: '嗨，我是奶爸 AI。你可以问宝宝当前阶段、描述刚刚发生的事，或从下面的能力入口开始。缺失事实不会被当成 0，正式记录必须由你确认。',
+      skillId: null,
+      createdAt: new Date().toISOString(),
+      artifact: null,
+      sources: []
+    };
+  }
+
+  private aiStatusText(): string {
+    if (this.aiStatus === 'loading') return '正在恢复最近会话…';
+    if (this.aiStatus === 'sending') return '正在发送…';
+    if (this.aiStatus === 'generating') return '正在生成，安全规则仍由服务端控制…';
+    if (this.aiStatus === 'success') return '已完成';
+    if (this.aiStatus === 'fallback') return '已切换到受限结果';
+    if (this.aiStatus === 'tool_failed') return '工具或模型暂时失败';
+    if (this.aiStatus === 'stopped') return '已停止生成';
+    if (this.aiStatus === 'offline') return '当前离线';
+    if (this.aiStatus === 'read_only') return '只读账号';
+    if (this.aiStatus === 'draft_pending') return '草稿待确认';
+    if (this.aiStatus === 'draft_expired') return '草稿已过期';
+    if (this.aiStatus === 'draft_confirmed') return '事实已确认写入';
+    if (this.aiStatus === 'draft_discarded') return '草稿已丢弃';
+    return '可开始对话';
+  }
+
+  private async loadAi(): Promise<void> {
+    if (this.adapter === null || this.resource?.household?.baby === null) return;
+    this.aiStatus = 'loading';
+    this.aiError = '';
+    try {
+      const model = await this.adapter.aiBootstrap();
+      this.aiModel = model;
+      this.aiConversationId = model.activeSession?.id || '';
+      this.aiMessages = model.activeSession && model.activeSession.messages.length > 0
+        ? model.activeSession.messages
+        : [this.aiWelcomeMessage()];
+      this.aiStatus = 'idle';
+    } catch (error) {
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '奶爸 AI 暂时无法读取，请重试。';
+    }
+  }
+
+  private async selectAiSession(session: NativeAiSession): Promise<void> {
+    if (this.adapter === null || this.busy) return;
+    this.aiStatus = 'loading';
+    this.aiError = '';
+    try {
+      const model = await this.adapter.aiBootstrap(session.id);
+      this.aiModel = model;
+      this.aiConversationId = model.activeSession?.id || session.id;
+      this.aiMessages = model.activeSession && model.activeSession.messages.length > 0
+        ? model.activeSession.messages
+        : [this.aiWelcomeMessage()];
+      this.aiArtifact = null;
+      this.aiDraft = null;
+      this.aiDraftId = '';
+      this.aiStatus = 'idle';
+    } catch (error) {
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '会话暂时无法读取，请重试。';
+    }
+  }
+
+  private newAiConversation(): void {
+    this.aiConversationId = '';
+    this.aiSelectedSkillId = '';
+    this.aiMessages = [this.aiWelcomeMessage()];
+    this.aiInput = '';
+    this.navigation.clearTemporaryInput('ai');
+    this.aiArtifact = null;
+    this.aiArtifactSkill = '';
+    this.aiSources = [];
+    this.aiDraft = null;
+    this.aiDraftId = '';
+    this.aiError = '';
+    this.aiStatus = 'idle';
+  }
+
+  private setAiInput(value: string): void {
+    this.aiInput = value;
+    this.navigation.setTemporaryInput('ai', value);
+  }
+
+  private aiContextForTab(tab: NativeTab): NativeAiContextCard {
+    const sourceIds = this.today === null ? [] : this.today.recentFacts.slice(0, 6).map((fact: NativeTodayFact) => fact.id);
+    if (tab === 'today') return { kind: tab, title: '来自今天', description: `${this.selectedDay || '今天'} 的摘要、事项和最新记录将作为可移除上下文。不会自动发送。`, sourceIds };
+    if (tab === 'record') return { kind: tab, title: '来自记录', description: '会话可以引用当前已确认事实和时间线；草稿不会自动写入。', sourceIds };
+    if (tab === 'growth') return { kind: tab, title: '来自成长', description: '会话可以引用成长测量、标准解释和限制；不会重新计算规则。', sourceIds };
+    return { kind: tab, title: '来自探索', description: '会话可以引用审核知识、疾病主题或器官内容；不会把知识当成当前宝宝诊断。', sourceIds };
+  }
+
+  private async runAiCapability(capability: NativeAiCapability): Promise<void> {
+    const adapter = this.adapter;
+    const baby = this.resource?.household?.baby || null;
+    if (adapter === null || baby === null || this.busy) return;
+    this.aiCancelable = false;
+    this.aiSelectedSkillId = '';
+    const chatOnly = ['authority_knowledge_retriever', 'stage_parenting_qa', 'disease_explainer', 'triage_and_preassessment'];
+    if (chatOnly.includes(capability.id)) {
+      this.aiSelectedSkillId = capability.id;
+      if (capability.id === 'triage_and_preassessment') this.setAiInput(this.aiInput.length > 0 ? this.aiInput : '我担心宝宝现在不舒服，请先问我最关键的一件事');
+      else this.setAiInput(this.aiInput.length > 0 ? this.aiInput : `请使用${capability.label}回答我的问题`);
+      this.aiError = '入口已准备好；请核对输入后再发送，不会自动发送。';
+      return;
+    }
+    if (capability.id === 'care_event_quick_logger') {
+      this.aiSelectedSkillId = capability.id;
+      this.setAiInput(this.aiInput.length > 0 ? this.aiInput : '帮我记录刚刚发生的事实');
+      this.aiError = '记录入口已准备好；请补充具体事实并发送，不会自动写入。';
+      return;
+    }
+    const input: Record<string, Object | null> = {};
+    if (capability.id === 'medical_report_interpreter') {
+      this.aiSelectedSkillId = capability.id;
+      this.setAiInput('请先选择报告或粘贴报告文本');
+      this.aiError = '报告需先选择文件或粘贴文本，再进行识别。原始文件不会进入报告或分享。';
+      return;
+    }
+    if (capability.id === 'authority_knowledge_retriever' || capability.id === 'stage_parenting_qa' || capability.id === 'disease_explainer') input['query'] = this.aiInput;
+    if (capability.id === 'visit_brief_generator' && this.aiInput.length > 0) input['questions'] = [this.aiInput] as Object;
+    this.busy = true;
+    this.aiStatus = 'sending';
+    this.aiError = '';
+    try {
+      const payload = await adapter.aiCapability(capability.id, String(baby.id), input as Object);
+      const result = payload as Record<string, Object>;
+      this.aiArtifact = result['data'] || null;
+      this.aiArtifactSkill = capability.id;
+      const source = result['sources'];
+      this.aiSources = source !== null && typeof source === 'object' ? [source] : [];
+      const data = result['data'];
+      if (capability.id === 'care_event_quick_logger' && data !== null && typeof data === 'object' && String((data as Record<string, Object>)['status'] || '') === 'draft_ready') {
+        await this.prepareAiDraft(data as Object);
+      } else {
+        this.aiStatus = 'success';
+      }
+    } catch (error) {
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '结构化能力暂时失败，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async prepareAiDraft(value: Object): Promise<void> {
+    this.aiDraft = value;
+    const draft = value as Record<string, Object>;
+    const event = draft['event'];
+    this.aiDraftValue = this.draftValue(event);
+    if (this.resource?.permissions.readOnly === true) {
+      this.aiStatus = 'read_only';
+      return;
+    }
+    if (this.adapter === null || event === null || typeof event !== 'object') {
+      this.aiStatus = 'tool_failed';
+      this.aiError = '记录草稿缺少事实事件，不能确认。';
+      return;
+    }
+    try {
+      const saved = await this.adapter.aiCreateDraft(event as Object, String((event as Record<string, Object>)['category'] || 'care_event'));
+      const savedRecord = saved as Record<string, Object>;
+      this.aiDraftId = String(savedRecord['draftId'] || '');
+      this.aiStatus = this.aiDraftId.length > 0 ? 'draft_pending' : 'tool_failed';
+      if (this.aiDraftId.length === 0) this.aiError = '服务端没有返回草稿编号，未显示确认成功。';
+    } catch (error) {
+      this.aiStatus = 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '记录草稿创建失败。';
+    }
+  }
+
+  private draftValue(value: Object | null): string {
+    if (value === null || typeof value !== 'object') return '';
+    const event = value as Record<string, Object>;
+    const payload = event['payload'];
+    if (payload === null || typeof payload !== 'object') return '';
+    const fields = payload as Record<string, Object>;
+    if (fields['amountMl'] !== undefined && fields['amountMl'] !== null) return String(fields['amountMl']);
+    if (fields['value'] !== undefined && fields['value'] !== null) return String(fields['value']);
+    if (fields['note'] !== undefined && fields['note'] !== null) return String(fields['note']);
+    if (fields['symptomNotes'] !== undefined && fields['symptomNotes'] !== null) return String(fields['symptomNotes']);
+    return '';
+  }
+
+  private updateAiDraftValue(value: string): void {
+    this.aiDraftValue = value;
+    if (this.aiDraft === null || typeof this.aiDraft !== 'object') return;
+    const draft = this.aiDraft as Record<string, Object>;
+    const event = draft['event'];
+    if (event === null || typeof event !== 'object') return;
+    const eventRecord = event as Record<string, Object>;
+    const payload = eventRecord['payload'];
+    if (payload === null || typeof payload !== 'object') return;
+    const payloadRecord = payload as Record<string, Object | null>;
+    const category = String(eventRecord['category'] || '');
+    if (category === 'bottle_feeding') payloadRecord['amountMl'] = value.length > 0 ? Number(value) : null;
+    else if (category === 'temperature' || category === 'growth_measurement') payloadRecord['value'] = value.length > 0 ? Number(value) : null;
+    else payloadRecord['note'] = value;
+    this.aiDraft = draft;
+  }
+
+  private aiReportFields(): Array<Object> {
+    if (this.aiDraft === null || typeof this.aiDraft !== 'object') return [];
+    const draft = this.aiDraft as Record<string, Object>;
+    const event = draft['event'];
+    if (event === null || typeof event !== 'object') return [];
+    const payload = (event as Record<string, Object>)['payload'];
+    if (payload === null || typeof payload !== 'object') return [];
+    const fields = (payload as Record<string, Object>)['fields'];
+    return Array.isArray(fields) ? fields as Array<Object> : [];
+  }
+
+  private aiReportFieldValue(index: number, key: string): string {
+    const fields = this.aiReportFields();
+    if (index < 0 || index >= fields.length) return '';
+    const field = fields[index];
+    if (field === null || typeof field !== 'object') return '';
+    return String((field as Record<string, Object>)[key] || '');
+  }
+
+  private updateAiReportField(index: number, key: string, value: string): void {
+    if (this.aiDraft === null || typeof this.aiDraft !== 'object') return;
+    const draft = this.aiDraft as Record<string, Object>;
+    const event = draft['event'];
+    if (event === null || typeof event !== 'object') return;
+    const eventRecord = event as Record<string, Object>;
+    const payload = eventRecord['payload'];
+    if (payload === null || typeof payload !== 'object') return;
+    const fields = (payload as Record<string, Object>)['fields'];
+    if (!Array.isArray(fields) || index < 0 || index >= fields.length) return;
+    const reportFields = fields as Array<Object>;
+    const field = reportFields[index];
+    if (field === null || typeof field !== 'object') return;
+    (field as Record<string, Object>)[key] = value;
+    this.aiDraft = draft;
+  }
+
+  private async confirmAiDraft(): Promise<void> {
+    if (this.adapter === null || this.aiDraft === null || this.aiDraftId.length === 0 || this.busy) return;
+    if (this.resource?.permissions.readOnly === true) {
+      this.aiStatus = 'read_only';
+      this.aiError = '当前账号只读，不能确认写入事实。';
+      return;
+    }
+    const draft = this.aiDraft as Record<string, Object>;
+    const event = draft['event'];
+    if (event === null || typeof event !== 'object') return;
+    this.busy = true;
+    try {
+      const saved = await this.adapter.aiConfirmDraft(this.aiDraftId, event as Object);
+      const savedEvent = (saved as Record<string, Object>)['event'];
+      draft['status'] = 'confirmed';
+      if (savedEvent !== null && typeof savedEvent === 'object') draft['event'] = savedEvent;
+      this.aiDraft = draft;
+      this.aiStatus = 'draft_confirmed';
+      this.aiError = '事实已由服务端确认写入；它仍是观察事实，不是诊断。';
+      await this.loadToday();
+    } catch (error) {
+      this.aiStatus = error instanceof NativeTransportError && error.status === 409 ? 'draft_expired' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '事实保存失败，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async discardAiDraft(): Promise<void> {
+    if (this.adapter !== null && this.aiDraftId.length > 0) {
+      try { await this.adapter.aiDiscardDraft(this.aiDraftId); } catch { /* 草稿会自动过期 */ }
+    }
+    this.aiDraft = null;
+    this.aiDraftId = '';
+    this.aiStatus = 'draft_discarded';
+    this.aiError = '草稿已丢弃，未写入正式事实。';
+  }
+
+  private async sendAiMessage(): Promise<void> {
+    const message = this.aiInput.trim();
+    const adapter = this.adapter;
+    const baby = this.resource?.household?.baby || null;
+    if (adapter === null || baby === null || message.length === 0 || this.busy) return;
+    this.setAiInput('');
+    this.aiMessages = this.aiMessages.concat([{
+      id: this.nativeId('ai-user'), role: 'user', text: message, skillId: null, createdAt: new Date().toISOString(), artifact: null, sources: []
+    }]);
+    this.aiArtifact = null;
+    this.aiArtifactSkill = '';
+    this.aiSources = [];
+    this.aiError = '';
+    this.aiStopRequested = false;
+    const selectedSkillId = this.aiSelectedSkillId;
+    this.aiSelectedSkillId = '';
+    this.aiCancelable = selectedSkillId !== 'care_event_quick_logger' && selectedSkillId !== 'medical_report_interpreter';
+    this.busy = true;
+    this.aiStatus = 'generating';
+    try {
+      if (selectedSkillId === 'care_event_quick_logger') {
+        const messageInput: Record<string, Object> = {};
+        messageInput['message'] = message;
+        const payload = await adapter.aiCapability(selectedSkillId, String(baby.id), messageInput as Object);
+        if (this.aiStopRequested) return;
+        const result = payload as Record<string, Object>;
+        const data = result['data'];
+        this.aiArtifact = data || null;
+        this.aiArtifactSkill = selectedSkillId;
+        if (data !== null && typeof data === 'object' && String((data as Record<string, Object>)['status'] || '') === 'draft_ready') {
+          await this.prepareAiDraft(data as Object);
+        } else {
+          this.aiStatus = 'success';
+          const dataRecord = data !== null && typeof data === 'object' ? data as Record<string, Object> : null;
+          this.aiError = dataRecord === null ? '还需要一条具体事实才能准备草稿。' : String(dataRecord['question'] || dataRecord['message'] || '还需要一条具体事实才能准备草稿。');
+        }
+        return;
+      }
+      if (selectedSkillId === 'medical_report_interpreter') {
+        const reportInput: Record<string, Object> = {};
+        reportInput['text'] = message;
+        reportInput['name'] = '粘贴文本报告';
+        const payload = await adapter.aiCapability(selectedSkillId, String(baby.id), reportInput as Object);
+        const result = payload as Record<string, Object>;
+        const data = result['data'];
+        if (this.aiStopRequested) return;
+        if (data === null || typeof data !== 'object') throw new Error('没有收到可核对的报告字段。');
+        this.aiArtifact = data;
+        this.aiArtifactSkill = selectedSkillId;
+        await this.prepareAiReportDraft(data as Object, '粘贴文本报告');
+        return;
+      }
+      const reply = await adapter.aiChat(message, String(baby.id), this.aiConversationId, selectedSkillId);
+      if (this.aiStopRequested) return;
+      if (reply.conversationId !== null) this.aiConversationId = reply.conversationId;
+      this.aiSources = reply.sources;
+      if (reply.decision !== null) {
+        this.aiArtifact = reply.decision;
+        this.aiArtifactSkill = selectedSkillId.length > 0 ? selectedSkillId : 'triage_and_preassessment';
+      }
+      if (reply.text.length > 0) this.aiMessages = this.aiMessages.concat([{
+        id: this.nativeId('ai-assistant'), role: 'assistant', text: reply.text, skillId: null, createdAt: new Date().toISOString(), artifact: reply.artifact !== null ? reply.artifact : reply.decision, sources: reply.sources
+      }]);
+      this.aiStatus = reply.status === 'fallback' ? 'fallback' : reply.status === 'tool_failed' ? 'tool_failed' : 'success';
+      if (reply.reason !== null && reply.status !== 'success') this.aiError = `服务端状态：${reply.reason}。可保留输入后重试。`;
+    } catch (error) {
+      if (this.aiStopRequested) return;
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : 'AI 请求失败，输入仍保留在会话中。';
+      this.setAiInput(message);
+    } finally {
+      this.busy = false;
+      this.aiCancelable = false;
+    }
+  }
+
+  private stopAi(): void {
+    if (!this.busy || !this.aiCancelable || this.adapter === null) return;
+    this.aiStopRequested = true;
+    this.adapter.cancelAiChat();
+    this.aiStatus = 'stopped';
+    this.aiError = '已停止生成；没有部分正式事实被写入。';
+    this.busy = false;
+    this.aiCancelable = false;
+  }
+
+  private async openSystemVoiceInput(): Promise<void> {
+    try {
+      await inputMethod.getController().showTextInput();
+      this.aiError = '系统键盘已打开；可使用键盘语音入口输入，内容仍需你确认后发送。';
+    } catch {
+      this.aiError = '系统语音入口暂不可用，请使用文字输入。';
+    }
+  }
+
+  private attachmentMime(uri: string): string {
+    const lower = uri.toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  private async chooseAiPhoto(): Promise<void> {
+    if (this.busy) return;
+    try {
+      const result = await new photoAccessHelper.PhotoViewPicker().select({ MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE, maxSelectNumber: 1 });
+      if (result.photoUris.length === 0) return;
+      this.aiAttachment = {
+        kind: 'photo',
+        name: '宝宝照片',
+        uri: result.photoUris[0],
+        mimeType: this.attachmentMime(result.photoUris[0]),
+        purpose: '仅用于本次奶爸 AI 识别，不会自动进入相册、事实或分享材料。',
+        explicitSendRequired: true,
+        confirmed: false
+      };
+      this.aiError = '照片已显示缩略图；只有点击“再次发送并识别”后才会发送给已配置的 AI 服务商。';
+    } catch {
+      this.aiError = '照片选择未完成；照片未发送。';
+    }
+  }
+
+  private async chooseAiReport(): Promise<void> {
+    if (this.busy) return;
+    try {
+      const pickerInstance = new picker.DocumentViewPicker(getContext(this));
+      const result = await pickerInstance.select({ fileSuffixFilters: ['.txt', '.pdf', '.jpg', '.jpeg', '.png', '.webp'], maxSelectNumber: 1 });
+      if (result.length === 0) return;
+      const uri = result[0];
+      this.aiAttachment = {
+        kind: 'report',
+        name: uri.split('/').pop() || '报告文件',
+        uri,
+        mimeType: this.attachmentMime(uri),
+        purpose: '仅提取报告中可核对字段；原始文件不会进入报告或分享材料。',
+        explicitSendRequired: true,
+        confirmed: false
+      };
+      this.aiError = '报告已选择；请先查看用途说明，再点击“再次发送并识别”。';
+    } catch {
+      this.aiError = '报告选择未完成；原始文件未发送。';
+    }
+  }
+
+  private clearAiAttachment(): void {
+    this.aiAttachment = null;
+    this.aiError = '附件已移除，未发送。';
+  }
+
+  private async readAiFile(uri: string): Promise<ArrayBuffer> {
+    const stat = await fileIo.stat(uri);
+    const size = Number(stat.size || 0);
+    if (!Number.isFinite(size) || size <= 0 || size > 6 * 1024 * 1024) throw new Error('附件需小于约 6 MB。');
+    const opened = await fileIo.open(uri, fileIo.OpenMode.READ_ONLY);
+    const buffer = new ArrayBuffer(size);
+    try {
+      const count = await fileIo.read(opened.fd, buffer);
+      return buffer.slice(0, Number(count));
+    } finally {
+      await fileIo.close(opened);
+    }
+  }
+
+  private aiDataUrl(buffer: ArrayBuffer, mimeType: string): string {
+    const encoded = new util.Base64Helper().encodeToStringSync(new Uint8Array(buffer));
+    return `data:${mimeType};base64,${encoded}`;
+  }
+
+  private reportFactEvent(report: Object, name: string): Object {
+    const reportRecord = report as Record<string, Object>;
+    const payload: NativeAiReportFactPayload = {
+      reportName: String(reportRecord['reportName'] || name),
+      fields: (reportRecord['fields'] || []) as Object,
+      uncertainties: (reportRecord['uncertainties'] || []) as Object,
+      extractedAt: String(reportRecord['extractedAt'] || new Date().toISOString())
+    };
+    const recorder = this.today === null ? null : this.today.recorder;
+    const actor: NativeAiFactActor = {
+      id: recorder === null ? '' : String(recorder['id'] || ''),
+      displayName: recorder === null ? '家庭成员' : String(recorder['displayName'] || '家庭成员')
+    };
+    const event: NativeAiFactEvent = {
+      id: this.nativeId('ai-report'),
+      babyId: String(this.resource?.household?.baby?.id || ''),
+      kind: 'measurement',
+      category: 'medical_report_observation',
+      occurredAt: new Date().toISOString(),
+      recordedAt: new Date().toISOString(),
+      actor,
+      source: 'clinical_record',
+      payload,
+      status: 'active',
+      version: 1
+    };
+    return event as Object;
+  }
+
+  private async prepareAiReportDraft(report: Object, name: string): Promise<void> {
+    const reportRecord = report as Record<string, Object>;
+    const fields = reportRecord['fields'];
+    if (!Array.isArray(fields) || fields.length === 0) {
+      this.aiStatus = 'success';
+      this.aiError = String((reportRecord['uncertainties'] as Object) || '没有识别出可核对的报告字段。');
+      return;
+    }
+    const event = this.reportFactEvent(report, name) as NativeAiFactEvent;
+    const draft: NativeAiReportDraft = {
+      status: 'draft_ready',
+      title: '报告字段事实',
+      summary: `识别 ${fields.length} 个字段，确认后写入`,
+      event,
+      needsConfirmation: true
+    };
+    await this.prepareAiDraft(draft as Object);
+  }
+
+  private async sendAiAttachment(): Promise<void> {
+    const attachment = this.aiAttachment;
+    const adapter = this.adapter;
+    const baby = this.resource?.household?.baby || null;
+    if (adapter === null || baby === null || attachment === null || this.busy) return;
+    this.aiSelectedSkillId = '';
+    this.aiCancelable = false;
+    attachment.confirmed = true;
+    this.aiAttachment = attachment;
+    this.aiError = '';
+    this.busy = true;
+    this.aiStatus = 'sending';
+    this.aiMessages = this.aiMessages.concat([{
+      id: this.nativeId('ai-attachment'),
+      role: 'user',
+      text: `已确认发送${attachment.kind === 'photo' ? '照片' : '报告'}：${attachment.name}`,
+      skillId: 'medical_report_interpreter',
+      createdAt: new Date().toISOString(),
+      artifact: null,
+      sources: []
+    }]);
+    try {
+      const buffer = await this.readAiFile(attachment.uri);
+      let payload: Object;
+      if (attachment.mimeType === 'text/plain') {
+        const text = util.TextDecoder.create('utf-8').decodeToString(new Uint8Array(buffer));
+        const reportInput: Record<string, Object> = {};
+        reportInput['text'] = text;
+        reportInput['name'] = attachment.name;
+        payload = await adapter.aiCapability('medical_report_interpreter', String(baby.id), reportInput as Object);
+      } else {
+        payload = await adapter.aiReport(String(baby.id), attachment.name, attachment.mimeType, '', this.aiDataUrl(buffer, attachment.mimeType));
+      }
+      const response = payload as Record<string, Object>;
+      const report = response['report'] || response['data'];
+      if (report === null || typeof report !== 'object') throw new Error('没有收到可核对的报告字段。');
+      this.aiArtifact = report;
+      this.aiArtifactSkill = 'medical_report_interpreter';
+      await this.prepareAiReportDraft(report as Object, attachment.name);
+      this.aiAttachment = null;
+    } catch (error) {
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'tool_failed';
+      this.aiError = error instanceof Error ? error.message : '报告识别失败；原始文件未保存。';
+    } finally {
+      this.busy = false;
+    }
   }
 
   private async restoreRecordDraft(): Promise<void> {
@@ -764,7 +1386,14 @@ struct Index {
   }
 
   private selectTab(tab: NativeTab): void {
+    const previousTab = this.activeTab;
     if (this.activeTab === tab) this.navigation.repeat(tab);
+    if (tab === 'ai' && previousTab !== 'ai') {
+      this.aiContext = this.aiContextForTab(previousTab);
+      this.aiContextVisible = true;
+      this.aiInput = this.navigation.state('ai').temporaryInput;
+      if (this.aiModel === null) this.loadAi();
+    }
     this.activeTab = tab;
     this.selectedRoute = this.navigation.state(tab).stack[this.navigation.state(tab).stack.length - 1];
     this.syncNavigation();
@@ -791,6 +1420,143 @@ struct Index {
   private surfaceDetail(): string {
     if (this.selectedRoute.endsWith('.root')) return '原生业务表面已注册，页面模型将从共享业务合同加载。';
     return `当前原生导航栈：${this.selectedRoute}。返回键只处理「${this.surfaceTitle()}」标签栈。`;
+  }
+
+  private aiDraftTitle(): string {
+    if (this.aiDraft === null || typeof this.aiDraft !== 'object') return '事实草稿';
+    return String((this.aiDraft as Record<string, Object>)['title'] || '事实草稿');
+  }
+
+  private aiDraftSummary(): string {
+    if (this.aiDraft === null || typeof this.aiDraft !== 'object') return '';
+    return String((this.aiDraft as Record<string, Object>)['summary'] || '请逐项核对后再确认。');
+  }
+
+  private aiDraftCategory(): string {
+    if (this.aiDraft === null || typeof this.aiDraft !== 'object') return '';
+    const event = (this.aiDraft as Record<string, Object>)['event'];
+    return event !== null && typeof event === 'object' ? String((event as Record<string, Object>)['category'] || '') : '';
+  }
+
+  private aiArtifactPreview(): string {
+    if (this.aiArtifact === null) return '';
+    const text = JSON.stringify(this.aiArtifact);
+    return text.length > 900 ? `${text.substring(0, 900)}…` : text;
+  }
+
+  private aiSourcePreview(source: Object): string {
+    if (source === null || typeof source !== 'object') return '';
+    const value = source as Record<string, Object>;
+    return String(value['url'] || value['knowledgePackVersion'] || value['eventIds'] || '共享事实与审核规则');
+  }
+
+  @Builder
+  private aiMessageCard(message: NativeAiMessage): void {
+    Row({ space: 10 }) {
+      if (message.role === 'assistant') Image($r('app.media.ai_baby_anchor')).width(40).height(40).objectFit(ImageFit.Contain).alt('奶爸 AI 小月龄宝宝陪伴形象');
+      Column({ space: 5 }) {
+        Text(message.role === 'assistant' ? '奶爸 AI' : '你').fontSize(this.largeText ? 14 : 11).fontColor('#A65E51');
+        Text(message.text).fontSize(this.largeText ? 17 : 14).fontColor('#4E3B35').maxLines(12).textAlign(TextAlign.Start);
+      }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+    }.width('100%').padding(12).backgroundColor(message.role === 'assistant' ? '#FFFCF8' : '#FFF1EB').borderRadius(16).accessibilityGroup(true);
+  }
+
+  @Builder
+  private aiCapabilityEntry(capability: NativeAiCapability): void {
+    Button() {
+      Column({ space: 4 }) {
+        Text(capability.label).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
+        Text(capability.boundary).fontSize(this.largeText ? 13 : 10).fontColor('#806E68').maxLines(2).textAlign(TextAlign.Start);
+      }.width('100%').alignItems(HorizontalAlign.Start).padding(10);
+    }.width('100%').height(this.largeText ? 78 : 66).backgroundColor('#FFF8F3').borderRadius(14).onClick(() => this.runAiCapability(capability)).accessibilityText(`打开${capability.label}`);
+  }
+
+  @Builder
+  private aiSurface(): void {
+    Column({ space: 14 }) {
+      this.nativeHeader('奶爸 AI', `${String(this.today?.baby['nickname'] || this.resource?.household?.baby?.nickname || '宝宝')} · ${this.aiStatusText()}`);
+      Row({ space: 8 }) {
+        Button('新对话').layoutWeight(1).height(38).backgroundColor('#FFE8DE').onClick(() => this.newAiConversation());
+        Button(this.aiSessionsExpanded ? '收起会话' : '最近会话').layoutWeight(1).height(38).onClick(() => this.aiSessionsExpanded = !this.aiSessionsExpanded);
+      }.width('100%');
+      if (this.aiContextVisible && this.aiContext !== null) {
+        Row({ space: 8 }) {
+          Column({ space: 4 }) { Text(this.aiContext.title).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.aiContext.description).fontSize(this.largeText ? 14 : 11).fontColor('#806E68').maxLines(3).textAlign(TextAlign.Start); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+          Button('移除').height(32).fontSize(11).backgroundColor(Color.Transparent).fontColor('#A65E51').onClick(() => this.aiContextVisible = false);
+        }.width('100%').padding(12).backgroundColor('#F2EEFA').borderRadius(14).accessibilityGroup(true);
+      }
+      if (this.aiModel === null) {
+        Column({ space: 10 }) { LoadingProgress().width(28).height(28); Text(this.aiStatusText()).fontSize(this.largeText ? 16 : 13).fontColor('#806E68'); }.width('100%').padding(28);
+      } else {
+        Column({ space: 8 }) {
+          Row() { Text('能力入口').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text('来自共享注册表').fontSize(11).fontColor('#7A9A80'); }
+          ForEach(this.aiModel.capabilities, (capability: NativeAiCapability) => { this.aiCapabilityEntry(capability); }, (capability: NativeAiCapability) => capability.id);
+        }.width('100%').padding(14).backgroundColor('#FFFCF8').borderRadius(20);
+        if (this.aiSessionsExpanded) {
+          Column({ space: 7 }) {
+            Text('最近会话').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+            if (this.aiModel.sessions.length === 0) Text('还没有可续接的云端会话；新对话会在首次发送后建立。').fontSize(12).fontColor('#806E68').width('100%');
+            ForEach(this.aiModel.sessions.slice(0, 8), (session: NativeAiSession) => {
+              Button() { Column({ space: 3 }) { Text(session.title).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(session.preview || '尚无消息').fontSize(11).fontColor('#806E68').maxLines(2).textAlign(TextAlign.Start); }.width('100%').alignItems(HorizontalAlign.Start).padding(10); }.width('100%').backgroundColor(session.id === this.aiConversationId ? '#FFE8DE' : '#FFF8F3').borderRadius(13).onClick(() => this.selectAiSession(session));
+            }, (session: NativeAiSession) => session.id);
+          }.width('100%').padding(14).backgroundColor('#FFFCF8').borderRadius(20);
+        }
+        Column({ space: 8 }) {
+          Row() { Text('持续会话').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text(this.aiConversationId.length > 0 ? '默认续接最近会话' : '新会话').fontSize(11).fontColor('#806E68'); }
+          Scroll() { Column({ space: 8 }) { ForEach(this.aiMessages, (message: NativeAiMessage) => { this.aiMessageCard(message); }, (message: NativeAiMessage) => message.id); } }.width('100%').height(this.largeText ? 360 : 290).scrollBar(BarState.Auto);
+          if (this.aiArtifact !== null) {
+            Column({ space: 7 }) { Row() { Text(this.aiArtifactSkill === 'medical_report_interpreter' ? '报告字段结果' : '结构化能力产物').fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text('可核对').fontSize(11).fontColor('#7A9A80'); }; Text(this.aiArtifactPreview()).fontSize(this.largeText ? 13 : 11).fontColor('#806E68').maxLines(9).textAlign(TextAlign.Start); Text('结构化结果只用于解释或准备草稿，不会自动写入事实。').fontSize(11).fontColor('#806E68'); }.width('100%').padding(12).backgroundColor('#EEF5EC').borderRadius(14).accessibilityGroup(true);
+          }
+          if (this.aiDraft !== null) {
+            Column({ space: 7 }) {
+              Row() { Text(this.aiDraftTitle()).fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text(this.aiStatus === 'draft_confirmed' ? '已确认' : this.aiStatus === 'read_only' ? '只读' : '待确认').fontSize(11).fontColor('#A65E51'); }
+              Text(this.aiDraftSummary()).fontSize(12).fontColor('#806E68').width('100%');
+              if (this.aiStatus !== 'draft_confirmed' && this.aiDraftCategory() === 'medical_report_observation') {
+                ForEach(this.aiReportFields(), (_field: Object, index: number) => {
+                  Column({ space: 4 }) {
+                    Text(`报告字段 ${index + 1}`).fontSize(11).fontColor('#806E68');
+                    TextInput({ text: this.aiReportFieldValue(index, 'name'), placeholder: '项目' }).width('100%').onChange((value: string) => this.updateAiReportField(index, 'name', value));
+                    Row({ space: 6 }) {
+                      TextInput({ text: this.aiReportFieldValue(index, 'value'), placeholder: '数值' }).layoutWeight(1).onChange((value: string) => this.updateAiReportField(index, 'value', value));
+                      TextInput({ text: this.aiReportFieldValue(index, 'unit'), placeholder: '单位' }).layoutWeight(1).onChange((value: string) => this.updateAiReportField(index, 'unit', value));
+                    }.width('100%');
+                    TextInput({ text: this.aiReportFieldValue(index, 'referenceRange'), placeholder: '参考范围（可选）' }).width('100%').onChange((value: string) => this.updateAiReportField(index, 'referenceRange', value));
+                  }.width('100%').padding(8).backgroundColor('#FFF9F0').borderRadius(10);
+                }, (_field: Object, index: number) => String(index));
+              } else if (this.aiStatus !== 'draft_confirmed') {
+                TextInput({ text: this.aiDraftValue, placeholder: this.aiDraftCategory() === 'bottle_feeding' ? '实际摄入量' : '可编辑事实值或备注' }).width('100%').onChange((value: string) => this.updateAiDraftValue(value));
+              }
+              Text('只会保存已核对的观察事实；推荐量、诊断和紧急程度不会写入事实。').fontSize(11).fontColor('#806E68').width('100%');
+              if (this.aiStatus === 'draft_confirmed') Text('这条记录已进入事实时间线，仍不是诊断。').fontSize(12).fontColor('#7A9A80').width('100%');
+              else Row({ space: 8 }) { Button('先不保存').layoutWeight(1).height(40).onClick(() => this.discardAiDraft()); Button(this.resource?.permissions.readOnly === true ? '当前账号只读' : '确认并保存事实').layoutWeight(1).height(40).enabled(this.resource?.permissions.readOnly !== true && this.aiDraftId.length > 0 && !this.busy).fontColor(Color.White).backgroundColor('#D98372').onClick(() => this.confirmAiDraft()); }.width('100%');
+            }.width('100%').padding(12).backgroundColor('#FFF3D8').borderRadius(14).accessibilityGroup(true);
+          }
+          if (this.aiSources.length > 0) {
+            Column({ space: 5 }) { Text('来源与依据').fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); ForEach(this.aiSources, (source: Object, index: number) => { Text(this.aiSourcePreview(source)).fontSize(11).fontColor('#806E68').maxLines(2); }, (source: Object, index: number) => String(index)); }.width('100%').padding(12).backgroundColor('#F2EEFA').borderRadius(14);
+          }
+          if (this.aiAttachment !== null) {
+            Row({ space: 8 }) {
+              if (this.aiAttachment.kind === 'photo') Image(this.aiAttachment.uri).width(66).height(66).objectFit(ImageFit.Cover).alt('待发送照片缩略图');
+              Column({ space: 4 }) { Text(this.aiAttachment.name).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.aiAttachment.purpose).fontSize(11).fontColor('#806E68').maxLines(3).textAlign(TextAlign.Start); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+              Button('移除').height(32).fontSize(11).onClick(() => this.clearAiAttachment());
+            }.width('100%').padding(10).backgroundColor('#F2EEFA').borderRadius(14).accessibilityGroup(true);
+            Button('再次发送并识别').width('100%').height(42).enabled(!this.busy).fontColor(Color.White).backgroundColor('#7A9A80').borderRadius(21).onClick(() => this.sendAiAttachment());
+          }
+          TextInput({ text: this.aiInput, placeholder: '输入问题、记录事实，或描述当前担心的事…' }).width('100%').height(this.largeText ? 86 : 68).onChange((value: string) => this.setAiInput(value)).onSubmit(() => this.sendAiMessage());
+          Row({ space: 7 }) {
+            Button('系统语音').layoutWeight(1).height(38).onClick(() => this.openSystemVoiceInput());
+            Button('照片').layoutWeight(1).height(38).onClick(() => this.chooseAiPhoto());
+            Button('报告').layoutWeight(1).height(38).onClick(() => this.chooseAiReport());
+            if (this.busy && this.aiCancelable) Button('停止').layoutWeight(1).height(38).backgroundColor('#C36B63').fontColor(Color.White).onClick(() => this.stopAi());
+            else if (this.busy) Button('处理中…').layoutWeight(1).height(38).enabled(false);
+            else Button('发送').layoutWeight(1).height(38).enabled(this.aiInput.trim().length > 0).fontColor(Color.White).backgroundColor('#D98372').onClick(() => this.sendAiMessage());
+          }.width('100%');
+          Text(this.aiStatusText()).fontSize(11).fontColor(this.aiStatus === 'offline' || this.aiStatus === 'tool_failed' ? '#B85F53' : '#806E68').width('100%');
+          if (this.aiError.length > 0) Text(this.aiError).fontSize(12).fontColor(this.aiStatus === 'offline' || this.aiStatus === 'tool_failed' ? '#B85F53' : '#806E68').width('100%').accessibilityLevel('yes');
+          Text('照片不会自动发送；报告和分享默认排除原图。停止或失败不会产生部分正式事实。').fontSize(11).fontColor('#806E68').width('100%');
+        }.width('100%').padding(14).backgroundColor('#FFFCF8').borderRadius(20);
+      }
+    }.width('100%');
   }
 
   @Builder
@@ -1138,6 +1904,7 @@ struct Index {
     if (this.activeTab === 'today') this.todaySurface();
     else if (this.activeTab === 'record' && this.selectedRoute === 'record.root') this.recordSurface();
     else if (this.activeTab === 'record') this.recordDetailSurface();
+    else if (this.activeTab === 'ai') this.aiSurface();
     else this.placeholderSurface();
   }
 
