@@ -12,6 +12,15 @@ export default class EntryAbility extends UIAbility {
     this.updateAvoidArea(options.type, options.area);
   };
 
+  private publishNativeAuthCallback(want: Want): void {
+    const uri = typeof want.uri === 'string' ? want.uri : '';
+    if (!uri.startsWith('babyforge://auth/callback')) return;
+    // Keep the callback in app storage so both cold starts and singleton
+    // relaunches can hand it to the native page without exposing it in logs.
+    AppStorage.setOrCreate('nativeAuthCallback', uri);
+    hilog.info(0x0000, 'BabyForge', 'Native auth callback received');
+  }
+
   private updateAvoidArea(type: window.AvoidAreaType, area: window.AvoidArea): void {
     const top = area.visible ? px2vp(area.topRect.height) : 0;
     const bottom = area.visible ? px2vp(area.bottomRect.height) : 0;
@@ -32,7 +41,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.publishNativeAuthCallback(want);
     hilog.info(0x0000, 'BabyForge', 'Ability created');
+  }
+
+  onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.publishNativeAuthCallback(want);
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

@@ -1,0 +1,16 @@
+{
+  "contract": "babyforge.native.bootstrap",
+  "contractVersion": "1.0.0",
+  "requiredEnvelopeFields": [
+    "contract",
+    "contractVersion",
+    "generatedAt",
+    "dataTimezone",
+    "sourceVersion",
+    "permissions",
+    "user",
+    "household"
+  ],
+  "roles": ["owner", "member", "readOnly"],
+  "errorFields": ["code", "message", "retryable"]
+}

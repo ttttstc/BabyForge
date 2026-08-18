@@ -29,6 +29,21 @@
             "actions": [
               "action.system.home"
             ]
+          },
+          {
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "scheme": "babyforge",
+                "host": "auth",
+                "path": "callback"
+              }
+            ]
           }
         ]
       }

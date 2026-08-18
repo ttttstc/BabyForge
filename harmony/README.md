@@ -1,6 +1,8 @@
-# BabyForge HarmonyOS 壳工程
+# BabyForge HarmonyOS 原生内测工程
 
-这是 BabyForge 的 HarmonyOS NEXT 研究原型：`ArkTS/ArkUI + ArkWeb`。业务页面、账号、家庭、照护记录、照片和 AI 继续由现有生产 Web 应用提供。
+这是 BabyForge 的 HarmonyOS NEXT 原生内测工程：`ArkTS/ArkUI + 共享业务资源适配层`。登录、家庭恢复、原生导航和状态反馈由 ArkUI 承载；账号、家庭和后续业务能力通过版本化服务合同复用 BabyForge 共享业务源。
+
+`pages/LegacyWeb.ets` 保留早期 ArkWeb 研究目标，默认入口 `pages/Index.ets` 不加载 React 页面。
 
 - App name：BabyForge
 - Bundle Name：`com.ni.babyforge`
@@ -59,6 +61,10 @@ $env:HAP_SIGN_TOOL = "E:\soft\DevEco Studio\sdk\default\openharmony\toolchains\l
 
 脚本只接受签名 HAP，会先实际验签，再检查设备、安装并请求启动 `com.ni.babyforge`；如果签名工具路径不同，可传 `-HapSignToolPath`，HDC 路径不同可传 `-HdcPath`，多设备时传 `-ConnectKey`。完整的方案、验收矩阵和明日演示脚本见 [`docs/harmonyos-plan.md`](../docs/harmonyos-plan.md)。
 
-## Shell policy
+## Native policy
 
-壳只允许同源主框架导航；主框架和 `target="_blank"` / `window.open` 新窗口中的同源链接继续复用当前 ArkWeb，外部 HTTPS 交给系统浏览器，并显式释放未创建的新窗口请求；HTTP、未知协议、SSL 错误和 Web 渲染进程退出均失败关闭并提供重试。ArkWeb 显式启用 JavaScript、DOM Storage、Web 数据库和网络图片，关闭本地文件访问；图片上传使用系统 Photo Picker 回传 URI，混合类型文件继续保留 ArkWeb 默认选择器。窗口使用全屏布局并动态避让系统状态栏、导航区和软键盘，避免 Web 内容、输入框和错误层被遮挡。ArkUI 页面 `onBackPress` 先回退 ArkWeb 历史，没有历史时交给系统后台/退出。
+原生入口只访问固定 HTTPS 共享业务服务，不连接 D1/R2，不维护第二套事实或规则。网络错误、合同错误、离线缓存、只读和无权限状态由 ArkUI 显式呈现；离线不排队创建照护事实。五个一级标签维护独立导航栈和临时输入，系统返回只处理当前标签栈。
+
+共享合同定义在 [`contracts/native-resource-contract.v1.json`](../contracts/native-resource-contract.v1.json)，跨端能力入口定义在 [`contracts/native-capability-manifest.v1.json`](../contracts/native-capability-manifest.v1.json)；后续页面实现不得绕过原生资源适配层。
+
+历史 ArkWeb 目标仍保留独立页面，供回溯壳层导航、安全策略和 Web 业务兼容性研究；它不作为原生内测版的业务表面。
