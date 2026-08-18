@@ -51,6 +51,7 @@ export async function onRequestPost({ request, env }) {
     careEvents: context.events,
     concerns: context.concerns,
     carePlanItems: context.carePlanItems,
+    metric: ['weight', 'length', 'headCircumference'].includes(String(input.metric || '')) ? String(input.metric) : null,
     actor: { id: principal.userId || principal.accountId, displayName: principal.displayName || '家庭成员' },
     now,
     locale: context.baby.locale || 'zh-CN',

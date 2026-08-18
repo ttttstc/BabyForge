@@ -7,8 +7,10 @@ function apiFixture({ failLlmConfig = false } = {}) {
   const session = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-admin', username: 'niwa', role: 'admin', display_name: '管理员' }
   const baby = { id: 'baby-1', householdId: 'household-1', nickname: '小舟', birthDate: new Date().toISOString().slice(0, 10), gestationalWeeks: 39, gestationalDays: 0, growthAgeBasis: 'chronological', birthMultiplicity: 'singleton', sex: 'male', feedingMode: 'formula', locale: 'zh-CN', status: 'active' }
   const event = { id: 'event-1', baby_id: 'baby-1', kind: 'caregiver_observation', category: 'bottle_feeding', type: 'bottle_feeding', occurred_at: new Date().toISOString(), recorded_at: new Date().toISOString(), actor_id: 'parent', actor_display_name: '爸爸', event_source: 'caregiver', payload_json: JSON.stringify({ amountMl: 30 }), status: 'active', version: 1 }
+  const queries = []
   const DB = {
     prepare(sql) {
+      queries.push(sql)
       return {
         bind(...args) {
           return {
@@ -32,7 +34,7 @@ function apiFixture({ failLlmConfig = false } = {}) {
       return []
     },
   }
-  return { DB, baby }
+  return { DB, baby, queries }
 }
 
 function request(body) {
@@ -89,6 +91,13 @@ test('AI chat returns the scope boundary without calling a model for unrelated t
   const body = await response.text()
   assert.match(body, /抱歉，我只是个育儿辅助助手，请跟我讨论关于育儿相关的话题/)
   assert.doesNotMatch(body, /model_not_configured/)
+})
+
+test('AI chat keeps transcript request-only and never touches conversation tables', async () => {
+  const fixture = apiFixture()
+  const response = await onRequestPost({ request: request({ message: '今天宝宝怎么吃？', baby: fixture.baby }), env: fixture })
+  assert.equal(response.status, 200)
+  assert.equal(fixture.queries.some((sql) => /ai_(conversations|messages)/i.test(sql)), false)
 })
 
 test('decision fact allowlist stays a superset of every published unit requirement', () => {

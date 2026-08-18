@@ -21,43 +21,6 @@ function newConversationId() {
   return globalThis.crypto?.randomUUID?.() || `conversation-${Date.now()}`
 }
 
-async function openConversation(env, accountId, babyId, requestedId = '') {
-  const id = /^[a-zA-Z0-9_-]{1,120}$/.test(requestedId) ? requestedId : newConversationId()
-  const now = new Date()
-  const expiresAt = new Date(now.getTime() + 30 * 86_400_000).toISOString()
-  try {
-    const existing = await env.DB.prepare('SELECT id, account_id AS accountId, baby_id AS babyId, status, expires_at AS expiresAt FROM ai_conversations WHERE id = ?').bind(id).first()
-    if (existing && (existing.accountId !== accountId || existing.babyId !== babyId || existing.status === 'deleted')) return { denied: true }
-    if (!existing) {
-      await env.DB.prepare(`
-        INSERT INTO ai_conversations (id, baby_id, account_id, title, status, created_at, updated_at, expires_at)
-        VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
-      `).bind(id, babyId, accountId, '奶爸AI对话', now.toISOString(), now.toISOString(), expiresAt).run()
-    } else if (existing.expiresAt <= now.toISOString()) {
-      await env.DB.prepare('UPDATE ai_conversations SET status = \'active\', updated_at = ?, expires_at = ? WHERE id = ?').bind(now.toISOString(), expiresAt, id).run()
-    }
-    return { id }
-  } catch (error) {
-    // A deployment that has not applied 0007 can still use the safe chat path;
-    // persistence becomes available as soon as the migration is applied.
-    console.error('Naiba AI conversation persistence unavailable', error)
-    return { id: null }
-  }
-}
-
-async function appendMessage(env, conversationId, role, content, skillId = null, decisionResultId = null) {
-  if (!conversationId) return
-  const now = new Date().toISOString()
-  try {
-    await env.DB.batch([
-      env.DB.prepare('INSERT INTO ai_messages (id, conversation_id, role, content_json, skill_id, decision_result_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(newConversationId(), conversationId, role, JSON.stringify({ text: content }), skillId, decisionResultId, now),
-      env.DB.prepare('UPDATE ai_conversations SET updated_at = ? WHERE id = ?').bind(now, conversationId),
-    ])
-  } catch (error) {
-    console.error('Naiba AI message persistence unavailable', error)
-  }
-}
-
 function localAnswer(message, recommendation = {}, decision = null) {
   return buildNaibaLocalAnswer(message, { recommendation, decision, locale: 'zh-CN' })
 }
@@ -199,16 +162,16 @@ export async function onRequestPost({ request, env }) {
   const growthMetric = ['weight', 'length', 'headCircumference'].includes(String(body?.growthMetric || '')) ? String(body.growthMetric) : null
   const context = await loadAuthorizedContext(env, session, babyId)
   if (!context) return json({ error: '无权访问该宝宝档案' }, 403)
-  const conversation = await openConversation(env, session.accountId, babyId, String(body?.conversationId || '').trim())
-  if (conversation.denied) return json({ error: '无权访问该 AI 对话' }, 403)
+  // Group only the current in-memory exchange for provider calls. BabyForge
+  // never looks up or persists chat conversations.
+  const requestedConversationId = String(body?.conversationId || '').trim()
+  const conversationId = /^[a-zA-Z0-9_-]{1,120}$/.test(requestedConversationId) ? requestedConversationId : newConversationId()
   const requestedSkillId = String(body?.skillId || '').slice(0, 120)
-  await appendMessage(env, conversation.id, 'user', message, requestedSkillId || null)
   const recommendation = calculateFeedingRecommendation({ baby: context.baby, events: context.careEvents, locale: context.baby.locale || 'zh-CN' })
   const skillId = selectSkillId(message, requestedSkillId)
   const hasDecisionContext = body?.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
   if (!isNaibaTopicInScope(message) && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
-    await appendMessage(env, conversation.id, 'assistant', NAIBA_OUT_OF_SCOPE_MESSAGE, skillId || null, null)
-    return sse([{ type: 'meta', conversationId: conversation.id }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }])
+    return sse([{ type: 'meta', conversationId }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }])
   }
   const healthSensitive = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i.test(message)
   // The server, not the browser, owns the topic-to-unit mapping. This also
@@ -216,7 +179,7 @@ export async function onRequestPost({ request, env }) {
   const decisionUnitId = (skillId === 'triage_and_preassessment' || healthSensitive) ? selectDecisionUnit(message) : ''
   const decisionFacts = { ...safeDecisionFacts(body?.decisionFacts), ...extractDecisionFacts(message), ageDays: getAgeDays(context.baby.birthDate) }
   const decision = decisionUnitId ? runDecisionUnit({ unitId: decisionUnitId, facts: decisionFacts }) : null
-  const decisionResultId = await persistDecision(env, session.accountId, context.baby.id, decision)
+  await persistDecision(env, session.accountId, context.baby.id, decision)
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
   const fallback = localAnswer(message, recommendation, decision)
   let llmConfig
@@ -228,8 +191,8 @@ export async function onRequestPost({ request, env }) {
     console.error('Account LLM configuration failed closed', error)
   }
   async function respond(events, assistantText = '') {
-    if (assistantText) await appendMessage(env, conversation.id, 'assistant', assistantText, skillId, decisionResultId)
-    return sse([{ type: 'meta', conversationId: conversation.id }, ...events])
+    void assistantText
+    return sse([{ type: 'meta', conversationId }, ...events])
   }
 
   if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([{ type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }], fallback)
@@ -251,7 +214,7 @@ export async function onRequestPost({ request, env }) {
       questions: [],
       feedingReference: recommendation,
       decisionResult: decision,
-      conversationId: conversation.id,
+      conversationId,
       locale: context.baby.locale || 'zh-CN',
       model: llmConfig.model,
       apiKey: llmConfig.apiKey,

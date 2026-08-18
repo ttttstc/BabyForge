@@ -18,7 +18,8 @@ test('native AI contract pins the shared registry, status machine, and privacy f
   assert.equal(manifest.attachmentPolicy.photoPreview, 'required-before-send')
   assert.equal(manifest.attachmentPolicy.reportsIncludeOriginals, false)
   assert.equal(manifest.attachmentPolicy.shareIncludesOriginals, false)
-  assert.ok(manifest.invariants.includes('sessions-are-continuity-not-facts'))
+  assert.ok(manifest.invariants.includes('chat-history-is-not-retained'))
+  assert.equal(manifest.conversationPolicy.history, false)
   assert.ok(manifest.invariants.includes('missing-facts-are-not-zero'))
   assert.ok(manifest.invariants.includes('read-only-cannot-confirm-drafts'))
   assert.deepEqual(listSkillContracts().map((skill) => skill.id), [
@@ -46,7 +47,7 @@ test('native AI envelope rejects contract drift before rendering', () => {
   assert.throws(() => validateNativeAiEnvelope(null), /envelope-invalid/)
 })
 
-test('native AI root exposes continuity, explicit context, multimodal confirmation, and recovery states', async () => {
+test('native AI root exposes temporary chat, contextual analysis, multimodal confirmation, and recovery states', async () => {
   const [index, adapter, bootstrap, chat, capability, aiContract, webChat] = await Promise.all([
     read('harmony/entry/src/main/ets/pages/Index.ets'),
     read('harmony/entry/src/main/ets/data/NativeResourceAdapter.ets'),
@@ -56,13 +57,17 @@ test('native AI root exposes continuity, explicit context, multimodal confirmati
     read('harmony/entry/src/main/ets/data/NativeAiContract.ets'),
     read('functions/api/ai/chat.js'),
   ])
-  for (const marker of ['aiSurface()', 'loadAi()', '新对话', '最近会话', 'aiContextVisible', '不会自动发送', '系统语音', '照片', '报告', '再次发送并识别', '停止', 'offline', 'draft_expired', 'ai_baby_anchor']) {
+  for (const marker of ['aiSurface()', 'loadAi()', '清空本次对话', '临时问答', '不保存历史', 'contextualAiPanel', '系统语音', '照片', '报告', '再次发送并识别', '停止', 'offline', 'draft_expired', 'ai_baby_anchor']) {
     assert.ok(index.includes(marker), `missing native AI state: ${marker}`)
   }
+  assert.doesNotMatch(index, /最近会话|aiSessionsExpanded|NativeAiSession/)
   for (const marker of ['/api/native/ai/bootstrap', '/api/native/ai/chat', '/api/native/ai/capability', '/api/ai/report', '/api/ai/drafts', 'cancelAiChat']) {
     assert.ok(adapter.includes(marker), `missing native adapter path: ${marker}`)
   }
   assert.match(bootstrap, /listSkillContracts\(\)/)
+  assert.match(bootstrap, /history: false/)
+  assert.doesNotMatch(bootstrap, /ai_conversations|ai_messages|listSessions|activeSession/)
+  assert.doesNotMatch(webChat, /ai_conversations|ai_messages|openConversation|appendMessage/)
   assert.match(bootstrap, /photosImplicitlySent: false/)
   assert.match(chat, /runWebChat/)
   assert.match(webChat, /NATIVE_AI_CONTRACT_VERSION/)
