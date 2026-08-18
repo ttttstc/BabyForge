@@ -190,7 +190,7 @@ Pop-Location
 - 真机启动：此前已安装到 HUAWEI Mate 70 Pro（PLR-AL00，HarmonyOS 6.1.0.135），修复启动阶段 `setWindowBackgroundColor` 闪退后，强制停止再启动成功；`com.ni.babyforge` 主进程和 ArkWeb 渲染进程存活，Ability 状态为 `FOREGROUND`。本轮按收尾要求不再追加真机操作。
 - Web 单元/协议基线：全量 224/224 通过；新增邮箱登录请求 `rememberMe: true` 的回归测试，目标是支持鸿蒙冷启动恢复会话。
 - ESLint：0 errors，2 个既有 React Hook dependency warnings（`.review/pr47/src_app_App.jsx` 和 `src/app/App.jsx`）。
-- 依赖安全：`npm audit --audit-level=high` 通过；已将 `nanoid`、`undici` 及 Wrangler/Miniflare 链路升级到无 high/critical 漏洞的锁定版本，并把审计、Web 包体和 Harmony 源码验收加入 CI。
+- 依赖安全：`npm audit --audit-level=high` 通过；已将 `nanoid`、`undici` 及 Wrangler/Miniflare 链路升级到无 high/critical 漏洞的锁定版本，并把审计、Web 包体、Harmony 源码和发布后 Web 会话冒烟验收加入 CI/生产工作流。
 - Vite production build：通过；路由懒加载后入口 JS gzip 约 150.13 KB（低于 250 KB 门槛），3D/儿科/AI 等页面保持独立 chunk；本轮未执行 Cloudflare 生产部署，线上资源仍返回旧的 `rememberMe: false` 构建，因此 H-04 会话恢复尚未闭环。
 - Playwright visual：本轮使用仅在 `BABYFORGE_VISUAL_TESTS=1` 下启用的本地确定性夹具，60/60 通过，覆盖登录/家庭入口、记录中心、照片、成长、疫苗、儿科、奶爸 AI、移动布局和 3D 模型回退；该结果验证 Web 业务与壳加载入口，不替代 HarmonyOS 真机手工验收。
 - 本轮收尾边界：按照用户要求不再进行真机验证；本次只完成 Web 本地验收、ArkWeb 壳代码修复、产物检查和 PR 提交。
