@@ -174,7 +174,7 @@ export function createNativeCareCommand(input: NativeRecordInput): NativeCareCom
   const event: NativeCareEvent = {
       id: input.idempotencyId,
       babyId: input.babyId,
-      kind: input.type === 'growth' || input.type === 'temperature' ? 'measurement' : 'caregiver_observation',
+      kind: category === 'growth_measurement' || category === 'temperature' ? 'measurement' : 'caregiver_observation',
       category,
       occurredAt: input.occurredAt,
       recordedAt,

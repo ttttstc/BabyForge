@@ -61,6 +61,10 @@ function localParts(value, timezone) {
   }
 }
 
+export function localDayForTimezone(value = new Date().toISOString(), timezone = 'UTC') {
+  return localParts(value, timezone)?.day || ''
+}
+
 function timezoneOffsetMinutes(value, timezone) {
   const part = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'longOffset' })
     .formatToParts(value)

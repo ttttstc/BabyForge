@@ -33,3 +33,18 @@ test('native album and record paths expose required empty, failure, privacy, and
     assert.ok(source.includes(text), `missing native state: ${text}`)
   }
 })
+
+test('native review regressions use device timezone, captured photo time, and one decoded slide', async () => {
+  const [index, adapter] = await Promise.all([
+    readFile(indexUrl, 'utf8'),
+    readFile(new URL('../harmony/entry/src/main/ets/data/NativeResourceAdapter.ets', import.meta.url), 'utf8'),
+  ])
+  assert.match(adapter, /i18n\.getTimeZone\(\)\.getID\(\)/)
+  assert.doesNotMatch(adapter, /'x-babyforge-timezone': 'Asia\/Shanghai'/)
+  assert.match(index, /image\.PropertyKey\.DATE_TIME_ORIGINAL/)
+  assert.match(index, /timeSource: 'exif'/)
+  assert.match(index, /timeSource: 'file'/)
+  assert.match(index, /timeSource: 'upload'/)
+  assert.match(index, /photoPixel: image\.PixelMap \| null/)
+  assert.doesNotMatch(index, /photoPixels: Array<image\.PixelMap>/)
+})

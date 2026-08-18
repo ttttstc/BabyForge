@@ -19,6 +19,7 @@ import {
 import { NativeNavigationStore, NativeTab, NATIVE_TABS } from '../navigation/NativeNavigation';
 import {
   NativeCareCommand,
+  NativeCareEvent,
   NativeRecordType,
   NativeTodayFact,
   NativeTodayModel,
@@ -37,6 +38,11 @@ interface NativeRecordDraft {
   extra: string;
   option: string;
   commandId: string;
+}
+
+interface NativePhotoTimestamp {
+  takenAt: string;
+  timeSource: string;
 }
 
 function jsonRecord(value: string): Record<string, Object | null> {
@@ -117,12 +123,17 @@ struct Index {
   @State private correctionEventId: string = '';
   @State private correctionEventVersion: number = 1;
   @State private showPhotoViewer: boolean = false;
-  @State private photoPixels: Array<image.PixelMap> = [];
+  @State private photoPixel: image.PixelMap | null = null;
+  @State private photoLoading: boolean = false;
   @State private photoLoadFailed: boolean = false;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
   @StorageProp('bottomAvoidHeight') private bottomAvoidHeight: number = 0;
   @StorageProp('nativeAuthCallback') private nativeAuthCallback: string = '';
   private handledNativeAuthCallback: string = '';
+  private photoLoadToken: number = 0;
+  private correctionOccurredAt: string = '';
+  private correctionOriginalEvent: NativeCareEvent | null = null;
+  private undoCorrectionOriginal: NativeCareEvent | null = null;
 
   aboutToAppear(): void {
     this.adapter = new NativeResourceAdapter(getContext(this) as common.UIAbilityContext);
@@ -133,6 +144,12 @@ struct Index {
 
   onPageShow(): void {
     this.consumeNativeAuthCallback();
+  }
+
+  aboutToDisappear(): void {
+    this.photoLoadToken += 1;
+    if (this.photoPixel !== null) this.photoPixel.release();
+    this.photoPixel = null;
   }
 
   private consumeNativeAuthCallback(): void {
@@ -193,36 +210,50 @@ struct Index {
       const model = await this.adapter.today(day);
       this.today = model;
       this.selectedDay = model.selectedDay;
+      this.selectedPhotoIndex = Math.min(this.selectedPhotoIndex, Math.max(0, model.photos.length - 1));
       this.todayPhase = 'ready';
-      await this.loadPhotoPixels(model.photos);
+      await this.loadPhotoPixel(this.selectedPhotoIndex);
     } catch (error) {
       this.todayPhase = 'error';
       this.statusMessage = error instanceof Error ? error.message : '今日页面模型读取失败，请重试。';
     }
   }
 
-  private async loadPhotoPixels(photos: Array<NativeTodayPhoto>): Promise<void> {
-    for (const pixel of this.photoPixels) pixel.release();
-    this.photoPixels = [];
+  private async loadPhotoPixel(index: number): Promise<void> {
+    const token = ++this.photoLoadToken;
+    if (this.photoPixel !== null) this.photoPixel.release();
+    this.photoPixel = null;
     this.photoLoadFailed = false;
-    if (this.adapter === null || photos.length === 0) return;
-    const loaded: Array<image.PixelMap> = [];
+    this.photoLoading = false;
+    if (this.adapter === null || this.today === null || this.today.photos.length === 0) return;
+    const photo = this.today.photos[index];
+    this.photoLoading = true;
     try {
-      for (const photo of photos) {
-        const response = await this.adapter.viewPhoto(photo.id);
-        const source = image.createImageSource(response.data);
-        loaded.push(await source.createPixelMap());
+      const response = await this.adapter.viewPhoto(photo.id);
+      const source = image.createImageSource(response.data);
+      const pixel = await source.createPixelMap();
+      await source.release();
+      if (token !== this.photoLoadToken) {
+        pixel.release();
+        return;
       }
-      this.photoPixels = loaded;
+      this.photoPixel = pixel;
     } catch {
-      for (const pixel of loaded) pixel.release();
-      this.photoPixels = [];
-      this.photoLoadFailed = true;
+      if (token === this.photoLoadToken) this.photoLoadFailed = true;
+    } finally {
+      if (token === this.photoLoadToken) this.photoLoading = false;
     }
   }
 
   private retryPhotos(): void {
-    if (this.today !== null) this.loadPhotoPixels(this.today.photos);
+    this.loadPhotoPixel(this.selectedPhotoIndex);
+  }
+
+  private selectPhoto(index: number, showViewer: boolean = false): void {
+    if (this.today === null || index < 0 || index >= this.today.photos.length) return;
+    this.selectedPhotoIndex = index;
+    this.showPhotoViewer = showViewer || this.showPhotoViewer;
+    this.loadPhotoPixel(index);
   }
 
   private async restoreRecordDraft(): Promise<void> {
@@ -249,17 +280,52 @@ struct Index {
     this.recordError = '';
     this.correctionEventId = '';
     this.correctionEventVersion = 1;
+    this.correctionOccurredAt = '';
+    this.correctionOriginalEvent = null;
     this.saveDraft();
   }
 
-  private openCorrection(fact: NativeTodayFact): void {
+  private async openCorrection(fact: NativeTodayFact): Promise<void> {
+    if (this.adapter === null || this.today === null || this.busy) return;
     const type: NativeRecordType = fact.category === 'breastfeeding' || fact.category === 'bottle_feeding' ? 'feeding'
       : fact.category === 'temperature_observation' || fact.category === 'temperature' ? 'temperature'
         : fact.category === 'growth_measurement' ? 'growth' : fact.category as NativeRecordType;
-    this.openRecord(type);
-    this.correctionEventId = fact.id;
-    this.correctionEventVersion = fact.version;
-    this.feedbackMessage = '正在纠正既有事实；原版本和纠正关系会保留。';
+    this.busy = true;
+    try {
+      const found = await this.adapter.findCareEvent(String(this.today.baby['id']), fact.id);
+      if (found === null) throw new Error('原事实已变化或不可读取，请刷新时间线后重试。');
+      const event = found as NativeCareEvent;
+      const payload = event.payload;
+      this.openRecord(type);
+      this.correctionEventId = event.id;
+      this.correctionEventVersion = event.version;
+      this.correctionOccurredAt = event.occurredAt;
+      this.correctionOriginalEvent = event;
+      if (type === 'feeding') {
+        this.recordOption = event.category === 'breastfeeding' ? 'breastfeeding' : String(payload['milkType'] || 'formula');
+        this.recordValue = payload['amountMl'] === null || payload['amountMl'] === undefined ? '' : String(payload['amountMl']);
+      } else if (type === 'sleep') {
+        this.recordValue = event.occurredAt;
+        this.recordExtra = String(payload['endedAt'] || '');
+      } else if (type === 'diaper') {
+        this.recordOption = String(payload['kind'] || 'urine');
+      } else if (type === 'medication') {
+        this.recordValue = String(payload['medicationName'] || payload['name'] || '');
+        this.recordExtra = String(payload['amount'] || '');
+      } else if (type === 'temperature') {
+        this.recordValue = payload['value'] === null || payload['value'] === undefined ? '' : String(payload['value']);
+        this.recordOption = String(payload['method'] || 'axillary');
+      } else {
+        this.recordValue = payload['value'] === null || payload['value'] === undefined ? '' : String(payload['value']);
+        this.recordOption = String(payload['type'] || 'weight');
+      }
+      await this.saveDraft();
+      this.feedbackMessage = '正在纠正既有事实；已载入原字段、发生时间和版本。';
+    } catch (error) {
+      this.feedbackMessage = error instanceof Error ? error.message : '原事实读取失败，请刷新后重试。';
+    } finally {
+      this.busy = false;
+    }
   }
 
   private closeRecord(): void {
@@ -273,25 +339,69 @@ struct Index {
     await this.adapter.saveRecordDraft(draft);
   }
 
+  private correctionPayload(edited: Record<string, Object | null>, replacedFields: Array<string>): Record<string, Object | null> {
+    if (this.correctionOriginalEvent === null) return edited;
+    const original = this.correctionOriginalEvent.payload;
+    const merged = jsonRecord('{}');
+    for (const field of Object.keys(original)) if (!replacedFields.includes(field)) merged[field] = original[field];
+    for (const field of Object.keys(edited)) merged[field] = edited[field];
+    return merged;
+  }
+
   private recordPayload(): Record<string, Object | null> {
-    if (this.selectedRecordType === 'feeding') return this.recordOption === 'breastfeeding' ? jsonRecord('{"mode":"breastfeeding"}') : jsonRecord(`{"milkType":${JSON.stringify(this.recordOption === 'breast_milk' ? 'breast_milk' : 'formula')},"amountMl":${this.recordValue.trim().length === 0 ? 'null' : Number(this.recordValue)},"unit":"mL"}`);
-    if (this.selectedRecordType === 'sleep') return jsonRecord(`{"endedAt":${JSON.stringify(this.recordExtra)}}`);
-    if (this.selectedRecordType === 'diaper') return jsonRecord(`{"kind":${JSON.stringify(this.recordOption || 'urine')}}`);
-    if (this.selectedRecordType === 'medication') return jsonRecord(`{"medicationName":${JSON.stringify(this.recordValue.trim())},"amount":${JSON.stringify(this.recordExtra.trim())}}`);
-    if (this.selectedRecordType === 'temperature') return this.recordValue.trim().length === 0 ? jsonRecord('{"value":null}') : jsonRecord(`{"value":${Number(this.recordValue)},"unit":"°C","method":${JSON.stringify(this.recordOption || 'axillary')}}`);
+    if (this.selectedRecordType === 'feeding') return this.correctionPayload(this.recordOption === 'breastfeeding' ? jsonRecord('{"mode":"breastfeeding"}') : jsonRecord(`{"milkType":${JSON.stringify(this.recordOption === 'breast_milk' ? 'breast_milk' : 'formula')},"amountMl":${this.recordValue.trim().length === 0 ? 'null' : Number(this.recordValue)},"unit":"mL"}`), ['mode', 'milkType', 'amountMl', 'unit']);
+    if (this.selectedRecordType === 'sleep') return this.correctionPayload(jsonRecord(`{"endedAt":${JSON.stringify(this.recordExtra)}}`), ['endedAt']);
+    if (this.selectedRecordType === 'diaper') return this.correctionPayload(jsonRecord(`{"kind":${JSON.stringify(this.recordOption || 'urine')}}`), ['kind']);
+    if (this.selectedRecordType === 'medication') return this.correctionPayload(jsonRecord(`{"medicationName":${JSON.stringify(this.recordValue.trim())},"amount":${JSON.stringify(this.recordExtra.trim())}}`), ['medicationName', 'name', 'amount']);
+    if (this.selectedRecordType === 'temperature') return this.correctionPayload(this.recordValue.trim().length === 0 ? jsonRecord('{"value":null}') : jsonRecord(`{"value":${Number(this.recordValue)},"unit":"°C","method":${JSON.stringify(this.recordOption || 'axillary')}}`), ['value', 'unit', 'method']);
     const unit = this.recordOption === 'weight' ? 'kg' : 'cm';
-    return jsonRecord(`{"type":${JSON.stringify(this.recordOption || 'weight')},"value":${Number(this.recordValue)},"unit":${JSON.stringify(unit)},"measuredAt":${JSON.stringify(this.selectedDay)}}`);
+    return this.correctionPayload(jsonRecord(`{"type":${JSON.stringify(this.recordOption || 'weight')},"value":${Number(this.recordValue)},"unit":${JSON.stringify(unit)},"measuredAt":${JSON.stringify(this.selectedDay)}}`), ['type', 'value', 'unit', 'measuredAt']);
   }
 
   private recordOccurredAt(): string {
+    if (this.correctionOccurredAt.length > 0) return this.correctionOccurredAt;
     if (this.selectedRecordType === 'sleep' && this.recordValue.length > 0) return this.recordValue;
-    return new Date().toISOString();
+    const parts = this.selectedDay.split('-').map((value: string) => Number(value));
+    if (parts.length !== 3 || parts.some((value: number) => !Number.isInteger(value))) return new Date().toISOString();
+    const now = new Date();
+    return new Date(parts[0], parts[1] - 1, parts[2], now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()).toISOString();
+  }
+
+  private restoreEvent(original: NativeCareEvent): NativeCareEvent {
+    return {
+      id: `native-undo-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
+      babyId: original.babyId,
+      kind: original.kind,
+      category: original.category,
+      occurredAt: original.occurredAt,
+      recordedAt: new Date().toISOString(),
+      actor: original.actor,
+      source: original.source,
+      payload: original.payload,
+      status: 'active',
+      version: 1
+    };
+  }
+
+  private armUndo(saved: Record<string, Object>, original: NativeCareEvent | null): void {
+    this.undoEventId = String(saved['id']);
+    this.undoEventVersion = Number(saved['version'] || 1);
+    this.undoCorrectionOriginal = original;
+    this.feedbackMessage = original === null ? '保存成功 · 已同步。约五秒内可撤销。' : '纠正成功 · 已同步。约五秒内可恢复原事实。';
+    this.lightHaptic();
+    setTimeout(() => {
+      if (this.undoEventId === String(saved['id'])) {
+        this.undoEventId = '';
+        this.undoCorrectionOriginal = null;
+      }
+    }, 5000);
   }
 
   private async saveRecord(): Promise<void> {
     if (this.adapter === null || this.today === null || this.selectedRecordType === null || this.busy) return;
     this.busy = true;
     this.recordError = '';
+    const original = this.correctionOriginalEvent;
     try {
       const command: NativeCareCommand = createNativeCareCommand({
         type: this.selectedRecordType,
@@ -308,30 +418,22 @@ struct Index {
       let saved = response['event'] as Record<string, Object> | null;
       if (!saved) saved = await this.adapter.findCareEvent(String(this.today.baby['id']), this.recordCommandId) as Record<string, Object> | null;
       if (!saved) throw new Error('响应状态不明，服务端尚未确认记录；请重试查询，不会重复创建。');
-      this.undoEventId = String(saved['id']);
-      this.undoEventVersion = Number(saved['version'] || 1);
-      this.feedbackMessage = '保存成功 · 已同步。约五秒内可撤销。';
-      this.lightHaptic();
+      this.armUndo(saved, original);
       this.selectedRecordType = null;
+      this.correctionOriginalEvent = null;
+      this.correctionOccurredAt = '';
       await this.adapter.saveRecordDraft(null);
       await this.loadToday();
-      setTimeout(() => {
-        if (this.undoEventId === String(saved?.['id'])) this.undoEventId = '';
-      }, 5000);
     } catch (error) {
       const found = await this.adapter.findCareEvent(String(this.today.baby['id']), this.recordCommandId).catch(() => null);
       if (found !== null) {
         const event = found as Record<string, Object>;
-        this.undoEventId = String(event['id']);
-        this.undoEventVersion = Number(event['version'] || 1);
-        this.feedbackMessage = '服务端已确认保存。约五秒内可撤销。';
-        this.lightHaptic();
+        this.armUndo(event, original);
         this.selectedRecordType = null;
+        this.correctionOriginalEvent = null;
+        this.correctionOccurredAt = '';
         await this.adapter.saveRecordDraft(null);
         await this.loadToday();
-        setTimeout(() => {
-          if (this.undoEventId === String(event['id'])) this.undoEventId = '';
-        }, 5000);
         return;
       }
       this.recordError = error instanceof Error ? error.message : '保存未完成，请核对后重试。';
@@ -365,9 +467,15 @@ struct Index {
     if (this.adapter === null || this.undoEventId.length === 0) return;
     this.busy = true;
     try {
-      await this.adapter.voidCareEvent(this.undoEventId, this.undoEventVersion);
-      this.feedbackMessage = '已撤销，事实永久作废；历史记录人和版本仍保留。';
+      if (this.undoCorrectionOriginal !== null) {
+        await this.adapter.correctCareEvent(this.undoEventId, this.undoEventVersion, this.restoreEvent(this.undoCorrectionOriginal));
+        this.feedbackMessage = '已撤销纠正并恢复原事实；完整纠正链仍保留。';
+      } else {
+        await this.adapter.voidCareEvent(this.undoEventId, this.undoEventVersion);
+        this.feedbackMessage = '已撤销，事实永久作废；历史记录人和版本仍保留。';
+      }
       this.undoEventId = '';
+      this.undoCorrectionOriginal = null;
       await this.loadToday();
     } catch (error) {
       this.feedbackMessage = error instanceof Error ? error.message : '撤销未完成，请刷新时间线核对。';
@@ -391,7 +499,8 @@ struct Index {
     try {
       const result = await picker.select({ MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE, maxSelectNumber: 1 });
       if (result.photoUris.length === 0) return;
-      await this.uploadChosenPhoto(result.photoUris[0]);
+      const timestamp = await this.photoTimestamp(result.photoUris[0]);
+      await this.uploadChosenPhoto(result.photoUris[0], timestamp);
     } catch (error) {
       this.photoMessage = error instanceof NativeTransportError ? error.message : '照片访问未获允许；可在系统设置授权后重试。';
     } finally {
@@ -408,18 +517,36 @@ struct Index {
       const profile = new cameraPicker.PickerProfile();
       profile.cameraPosition = camera.CameraPosition.CAMERA_POSITION_BACK;
       const result = await cameraPicker.pick(getContext(this), [cameraPicker.PickerMediaType.PHOTO], profile);
-      if (result.resultUri.length > 0) await this.uploadChosenPhoto(result.resultUri);
+      if (result.resultUri.length > 0) await this.uploadChosenPhoto(result.resultUri, { takenAt: new Date().toISOString(), timeSource: 'upload' });
     } catch {
       this.photoMessage = '相机未获允许或拍摄已取消；可在系统设置授权后重试。';
     }
   }
 
-  private async uploadChosenPhoto(uri: string): Promise<void> {
+  private async photoTimestamp(uri: string): Promise<NativePhotoTimestamp> {
+    try {
+      const source = image.createImageSource(uri);
+      const original = await source.getImageProperty(image.PropertyKey.DATE_TIME_ORIGINAL);
+      await source.release();
+      const match = /^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/.exec(original);
+      if (match !== null) {
+        const taken = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6]));
+        if (!Number.isNaN(taken.getTime())) return { takenAt: taken.toISOString(), timeSource: 'exif' };
+      }
+    } catch { /* 继续使用可访问文件的修改时间。 */ }
+    try {
+      const stat = await fileIo.stat(uri);
+      if (Number.isFinite(stat.mtime) && stat.mtime > 0) return { takenAt: new Date(stat.mtime).toISOString(), timeSource: 'file' };
+    } catch { /* 最终退回上传时间，并标记真实来源。 */ }
+    return { takenAt: new Date().toISOString(), timeSource: 'upload' };
+  }
+
+  private async uploadChosenPhoto(uri: string, timestamp: NativePhotoTimestamp): Promise<void> {
     if (this.adapter === null || this.today === null) return;
     this.photoMessage = '正在上传所选照片…';
     this.busy = true;
     try {
-      await this.adapter.uploadPhoto(uri, String(this.today.baby['id']), new Date().toISOString());
+      await this.adapter.uploadPhoto(uri, String(this.today.baby['id']), timestamp.takenAt, timestamp.timeSource);
       this.photoMessage = '照片已保存到共享相册；原图不会自动发送给 AI。';
       await this.loadToday();
     } finally {
@@ -897,18 +1024,22 @@ struct Index {
             Column({ space: 8 }) { Text('今天还没有照片').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold); Text('可从系统照片选择器或拍摄入口导入。').fontSize(12).fontColor('#806E68'); Row({ space: 8 }) { Button('选择照片').onClick(() => this.choosePhoto()); Button('拍摄导入').onClick(() => this.capturePhoto()); } }.width('100%').height(180).justifyContent(FlexAlign.Center).backgroundColor('#F8EEE6').borderRadius(18);
           } else if (this.photoLoadFailed) {
             Column({ space: 8 }) { Text('相册暂时无法加载').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold); Button('重试').onClick(() => this.retryPhotos()); }.width('100%').height(180).justifyContent(FlexAlign.Center).backgroundColor('#F8EEE6').borderRadius(18);
-          } else if (this.photoPixels.length !== this.today.photos.length) {
+          } else if (this.photoLoading || this.photoPixel === null) {
             Column({ space: 8 }) { LoadingProgress().width(28).height(28); Text('正在加载相册…').fontSize(12).fontColor('#806E68'); }.width('100%').height(180).justifyContent(FlexAlign.Center).backgroundColor('#F8EEE6').borderRadius(18);
           } else {
             Swiper() {
               ForEach(this.today.photos, (photo: NativeTodayPhoto, index: number) => {
                 Stack({ alignContent: Alignment.BottomStart }) {
-                  Image(this.photoPixels[index]).width('100%').height(230).objectFit(ImageFit.Cover).alt(photo.caption || '宝宝照片');
+                  if (index === this.selectedPhotoIndex && this.photoPixel !== null) {
+                    Image(this.photoPixel).width('100%').height(230).objectFit(ImageFit.Cover).alt(photo.caption || '宝宝照片');
+                  } else {
+                    Column() { Text('滑动后按需加载').fontSize(12).fontColor('#806E68'); }.width('100%').height(230).justifyContent(FlexAlign.Center).backgroundColor('#F8EEE6');
+                  }
                   Column() { Text(photo.caption || '宝宝照片').fontSize(15).fontWeight(FontWeight.Bold).fontColor(Color.White); Text(photo.takenAt).fontSize(11).fontColor(Color.White); }.width('100%').padding(12).backgroundColor('#33251F80').alignItems(HorizontalAlign.Start);
-                }.width('100%').borderRadius(18).clip(true).onClick(() => { this.selectedPhotoIndex = index; this.showPhotoViewer = true; });
+                }.width('100%').borderRadius(18).clip(true).onClick(() => this.selectPhoto(index, true));
               }, (photo: NativeTodayPhoto) => photo.id);
-            }.width('100%').height(230).loop(false).indicator(true).onChange((index: number) => this.selectedPhotoIndex = index);
-            Row() { Text(`${this.selectedPhotoIndex + 1} / ${this.today.photos.length}`).fontSize(12).fontColor('#806E68').layoutWeight(1); Button('查看更多').fontSize(12).onClick(() => this.showPhotoViewer = true); Button('选择').fontSize(12).onClick(() => this.choosePhoto()); Button('拍摄').fontSize(12).onClick(() => this.capturePhoto()); }.width('100%');
+            }.width('100%').height(230).loop(false).indicator(true).index(this.selectedPhotoIndex).onChange((index: number) => this.selectPhoto(index));
+            Row() { Text(`${this.selectedPhotoIndex + 1} / ${this.today.photos.length}`).fontSize(12).fontColor('#806E68').layoutWeight(1); Button('查看更多').fontSize(12).onClick(() => this.selectPhoto(this.selectedPhotoIndex, true)); Button('选择').fontSize(12).onClick(() => this.choosePhoto()); Button('拍摄').fontSize(12).onClick(() => this.capturePhoto()); }.width('100%');
           }
           Text('照片不会自动发送给 AI；报告和分享默认不包含原图。').fontSize(this.largeText ? 14 : 11).fontColor('#7A706B');
           if (this.photoMessage.length > 0) Text(this.photoMessage).fontSize(12).fontColor('#A65E51').accessibilityLevel('yes');
@@ -930,7 +1061,7 @@ struct Index {
           }, (fact: NativeTodayFact) => fact.id);
         }.width('100%').padding(16).backgroundColor('#FFFCF8').borderRadius(20);
 
-        Row({ space: 8 }) { Button('饮食建议').layoutWeight(1); Button('今日分析').layoutWeight(1); Button('成长计划').layoutWeight(1); Button('就医摘要').layoutWeight(1).onClick(() => this.openSurfaceDetail('record.doctor-summary')); }.width('100%');
+        Row({ space: 8 }) { Button('饮食建议').layoutWeight(1); Button('今日分析').layoutWeight(1); Button('成长计划').layoutWeight(1); Button('就医摘要').layoutWeight(1).onClick(() => { this.selectTab('record'); this.openSurfaceDetail('record.doctor-summary'); }); }.width('100%');
         Text(String(this.today.guidance['source'])).fontSize(11).fontColor('#806E68').textAlign(TextAlign.Center).width('100%');
       }
     }.width('100%');
@@ -1052,10 +1183,11 @@ struct Index {
     if (this.today && this.today.photos.length > 0) {
       Column({ space: 12 }) {
         Row() { Text(`${this.selectedPhotoIndex + 1} / ${this.today.photos.length}`).fontSize(15).fontColor(Color.White).layoutWeight(1); Button('关闭').onClick(() => this.showPhotoViewer = false); }
-        if (this.photoPixels.length === this.today.photos.length) Image(this.photoPixels[this.selectedPhotoIndex]).width('100%').layoutWeight(1).objectFit(ImageFit.Contain).alt(this.today.photos[this.selectedPhotoIndex].caption || '宝宝照片大图');
+        if (this.photoLoading) LoadingProgress().width(32).height(32).layoutWeight(1);
+        else if (this.photoPixel !== null) Image(this.photoPixel).width('100%').layoutWeight(1).objectFit(ImageFit.Contain).alt(this.today.photos[this.selectedPhotoIndex].caption || '宝宝照片大图');
         Text(this.today.photos[this.selectedPhotoIndex].caption || '宝宝照片').fontSize(17).fontWeight(FontWeight.Bold).fontColor(Color.White);
         Text(this.today.photos[this.selectedPhotoIndex].takenAt).fontSize(12).fontColor('#F2E8E3');
-        Row({ space: 8 }) { Button('上一张').layoutWeight(1).enabled(this.selectedPhotoIndex > 0).onClick(() => this.selectedPhotoIndex -= 1); Button('下一张').layoutWeight(1).enabled(this.selectedPhotoIndex < this.today.photos.length - 1).onClick(() => this.selectedPhotoIndex += 1); }.width('100%');
+        Row({ space: 8 }) { Button('上一张').layoutWeight(1).enabled(this.selectedPhotoIndex > 0).onClick(() => this.selectPhoto(this.selectedPhotoIndex - 1)); Button('下一张').layoutWeight(1).enabled(this.selectedPhotoIndex < this.today.photos.length - 1).onClick(() => this.selectPhoto(this.selectedPhotoIndex + 1)); }.width('100%');
         Row({ space: 8 }) { Button('下载').layoutWeight(1).onClick(() => this.downloadSelectedPhoto()); Button('删除').layoutWeight(1).enabled(Boolean(this.today.permissions['canDeletePhotos'])).backgroundColor('#A9554D').onClick(() => this.deleteSelectedPhoto()); }.width('100%');
       }.width('100%').height('100%').padding({ left: 18, right: 18, top: 20, bottom: 20 }).backgroundColor('#2B211ECC').accessibilityGroup(true);
     }

@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { i18n } from '@kit.LocalizationKit';
 import { http } from '@kit.NetworkKit';
 import {
   NativeContractError,
@@ -96,8 +97,18 @@ function requestBody(value: NativeRequestBody): Object {
   return value as Object;
 }
 
+function deviceTimezone(): string {
+  try {
+    const timezone = i18n.getTimeZone().getID();
+    return timezone.trim().length > 0 ? timezone : 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 export class NativeResourceAdapter {
   private readonly session: NativeSessionStore;
+  private readonly timezone: string = deviceTimezone();
   private opened: boolean = false;
 
   constructor(context: common.UIAbilityContext) {
@@ -116,12 +127,12 @@ export class NativeResourceAdapter {
     const headers: NativeHeaders = body !== null
       ? {
         accept: 'application/json',
-        'x-babyforge-timezone': 'Asia/Shanghai',
+        'x-babyforge-timezone': this.timezone,
         'content-type': 'application/json'
       }
       : {
         accept: 'application/json',
-        'x-babyforge-timezone': 'Asia/Shanghai'
+        'x-babyforge-timezone': this.timezone
       };
     const cookie: string = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
@@ -222,7 +233,7 @@ export class NativeResourceAdapter {
     return this.request(`/api/photos/${encodeURIComponent(photoId)}`, http.RequestMethod.DELETE);
   }
 
-  async uploadPhoto(uri: string, babyId: string, takenAt: string): Promise<Object> {
+  async uploadPhoto(uri: string, babyId: string, takenAt: string, timeSource: string): Promise<Object> {
     await this.ensureOpened();
     const request = http.createHttp();
     const contentType = photoContentType(uri);
@@ -230,10 +241,10 @@ export class NativeResourceAdapter {
     const parts: Array<http.MultiFormData> = [
       { name: 'babyId', contentType: 'text/plain', data: babyId },
       { name: 'takenAt', contentType: 'text/plain', data: takenAt },
-      { name: 'timeSource', contentType: 'text/plain', data: 'file' },
+      { name: 'timeSource', contentType: 'text/plain', data: timeSource },
       { name: 'photo', contentType, remoteFileName: `native-${Date.now()}.${extension}`, filePath: uri }
     ];
-    const headers: NativeHeaders = { accept: 'application/json', 'x-babyforge-timezone': 'Asia/Shanghai' };
+    const headers: NativeHeaders = { accept: 'application/json', 'x-babyforge-timezone': this.timezone };
     const cookie = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
     try {
@@ -265,7 +276,7 @@ export class NativeResourceAdapter {
   private async fetchPhoto(photoId: string, download: boolean): Promise<NativePhotoDownload> {
     await this.ensureOpened();
     const request = http.createHttp();
-    const headers: NativeHeaders = { accept: 'image/*', 'x-babyforge-timezone': 'Asia/Shanghai' };
+    const headers: NativeHeaders = { accept: 'image/*', 'x-babyforge-timezone': this.timezone };
     const cookie = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
     try {

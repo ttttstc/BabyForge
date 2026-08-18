@@ -1,7 +1,7 @@
 import { json } from '../../_shared/auth.js'
 import { eventFromRow, planFromRow } from '../../_shared/care.js'
 import { findHouseholdForPrincipal, getPrincipal } from '../../_shared/principal.js'
-import { buildNativeTodayModel, NATIVE_TODAY_CONTRACT, NATIVE_TODAY_CONTRACT_VERSION } from '../../../src/domain/nativeToday.js'
+import { buildNativeTodayModel, localDayForTimezone, NATIVE_TODAY_CONTRACT, NATIVE_TODAY_CONTRACT_VERSION } from '../../../src/domain/nativeToday.js'
 import { getAgeDays, getStage } from '../../../src/domain/baby.js'
 import { getAdminTasks, getDailyHealthReminders, getDailyTasks } from '../../../src/domain/carePlan.js'
 
@@ -68,7 +68,11 @@ export async function onRequestGet({ request, env }) {
   const baby = household.baby
   const url = new URL(request.url)
   const selectedDay = url.searchParams.get('day') || ''
-  const window = queryWindow(selectedDay)
+  const timezone = timezoneFromRequest(request)
+  const modelDay = /^\d{4}-\d{2}-\d{2}$/.test(selectedDay)
+    ? selectedDay
+    : localDayForTimezone(new Date().toISOString(), timezone)
+  const window = queryWindow(modelDay)
   let eventRows
   let photoRows
   let planRows
@@ -86,7 +90,6 @@ export async function onRequestGet({ request, env }) {
   const workspace = (workspaceRows.results || []).map(workspaceRecord).filter(Boolean)
   const taskLogs = workspace.filter((item) => item.collection === 'taskLogs').map((item) => item.value)
   const adminTaskRecords = workspace.filter((item) => item.collection === 'adminTaskRecords').map((item) => item.value)
-  const modelDay = /^\d{4}-\d{2}-\d{2}$/.test(selectedDay) ? selectedDay : new Date().toISOString().slice(0, 10)
   const modelDate = new Date(`${modelDay}T12:00:00.000Z`)
   let ageDays
   try { ageDays = getAgeDays(baby.birthDate, modelDate) } catch { ageDays = 0 }
@@ -107,8 +110,8 @@ export async function onRequestGet({ request, env }) {
     carePlanItems: (planRows.results || []).map(planFromRow).filter((item) => item.status !== 'done' && (!item.dueAt || String(item.dueAt).slice(0, 10) <= modelDay)).slice(0, 3),
     permissions: { readOnly, canEdit: !readOnly, canDeletePhotos: !readOnly },
     recorder: { id: principal.userId || principal.accountId, displayName: principal.displayName || '家庭成员' },
-    timezone: timezoneFromRequest(request),
-    selectedDay,
+    timezone,
+    selectedDay: modelDay,
   })
   return json(model)
 }
