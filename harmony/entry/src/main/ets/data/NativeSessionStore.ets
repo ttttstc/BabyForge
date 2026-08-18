@@ -6,6 +6,9 @@ import { NativeResourceEnvelope, parseNativeResource } from './NativeResourceCon
 const SESSION_COOKIE_KEY: string = 'sessionCookie';
 const RESOURCE_CACHE_KEY: string = 'resourceCache';
 const RECORD_DRAFT_KEY: string = 'recordDraft';
+const GROWTH_CACHE_KEY: string = 'growthCache';
+const EXPLORE_CACHE_KEY: string = 'exploreCache';
+const SETTINGS_CACHE_KEY: string = 'settingsCache';
 
 interface ParsedCookie {
   name: string;
@@ -159,12 +162,38 @@ export class NativeSessionStore {
     try { return JSON.parse(saved) as Object; } catch { return null; }
   }
 
+  async saveSurfaceCache(key: string, value: Object): Promise<void> {
+    if (this.store === null) return;
+    await this.store.put(key, JSON.stringify(value));
+    await this.store.flush();
+  }
+
+  async readSurfaceCache(key: string): Promise<Object | null> {
+    if (this.store === null) return null;
+    const saved = await this.store.get(key, '');
+    if (typeof saved !== 'string' || saved.length === 0) return null;
+    try { return JSON.parse(saved) as Object; } catch { return null; }
+  }
+
+  async clearLocalCache(): Promise<void> {
+    if (this.store === null) return;
+    await this.store.delete(RESOURCE_CACHE_KEY);
+    await this.store.delete(RECORD_DRAFT_KEY);
+    await this.store.delete(GROWTH_CACHE_KEY);
+    await this.store.delete(EXPLORE_CACHE_KEY);
+    await this.store.delete(SETTINGS_CACHE_KEY);
+    await this.store.flush();
+  }
+
   async clear(): Promise<void> {
     this.cookieHeader = '';
     if (this.store === null) return;
     await this.store.delete(SESSION_COOKIE_KEY);
     await this.store.delete(RESOURCE_CACHE_KEY);
     await this.store.delete(RECORD_DRAFT_KEY);
+    await this.store.delete(GROWTH_CACHE_KEY);
+    await this.store.delete(EXPLORE_CACHE_KEY);
+    await this.store.delete(SETTINGS_CACHE_KEY);
     await this.store.flush();
   }
 }

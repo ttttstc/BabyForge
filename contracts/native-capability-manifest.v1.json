@@ -38,19 +38,19 @@
       "id": "growth",
       "delivery": "issue-72",
       "entry": "growth.root",
-      "desktopCapabilities": ["measurements", "curves", "stage-details", "history", "milestones", "care-plan", "ai-insight"]
+      "desktopCapabilities": ["measurements", "curves", "national-reference-lines", "age-basis", "conflicts", "stage-details", "history", "milestones", "care-plan", "admin-tasks", "ai-insight"]
     },
     {
       "id": "explore",
       "delivery": "issue-72",
       "entry": "explore.root",
-      "desktopCapabilities": ["vaccines", "disease-topics", "organ-learning", "reviewed-knowledge", "third-party-sources"]
+      "desktopCapabilities": ["watercolor-theme", "vaccines", "vaccine-source", "disease-topics", "disease-full-text", "governed-preassessment", "organ-learning", "controlled-3d-fallback", "reviewed-knowledge", "third-party-filters", "third-party-sources"]
     },
     {
       "id": "settings",
       "delivery": "issue-72",
       "entry": "settings.secondary",
-      "desktopCapabilities": ["account", "baby-profile", "notification-contacts", "visitor-links", "model-settings", "sync", "local-cache"]
+      "desktopCapabilities": ["account", "language", "baby-profile", "age-recompute", "notification-contacts", "visitor-links", "deidentified-share", "model-settings", "masked-api-key", "sync", "retry", "local-cache", "secure-logout"]
     },
     {
       "id": "legacy-web",

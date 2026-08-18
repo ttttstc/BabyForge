@@ -5,11 +5,13 @@ import { image } from '@kit.ImageKit';
 import { camera, cameraPicker } from '@kit.CameraKit';
 import { util } from '@kit.ArkTS';
 import { inputMethod } from '@kit.IMEKit';
+import { i18n } from '@kit.LocalizationKit';
 import vibrator from '@ohos.vibrator';
 import {
   NativeBootstrapResult,
   NativeBabyInput,
   NativeResourceAdapter,
+  NativeSurfaceResult,
   NativeTransportError
 } from '../data/NativeResourceAdapter';
 import {
@@ -35,10 +37,14 @@ import {
   NativeAgentHistoryMessage,
   NativeAgentMessage
 } from '../data/NativeAgentContract';
+import { NativeGrowthItem, NativeGrowthMetric, NativeGrowthModel } from '../data/NativeGrowthContract';
+import { NativeExploreItem, NativeExploreModel } from '../data/NativeExploreContract';
+import { NativeSettingsItem, NativeSettingsModel, NativeSettingsPatch } from '../data/NativeSettingsContract';
 
 type NativePhase = 'loading' | 'login' | 'household' | 'ready' | 'error';
 type LoginMode = 'login' | 'register' | 'reset';
 type TodayPhase = 'loading' | 'ready' | 'error';
+type SurfacePhase = 'idle' | 'loading' | 'ready' | 'error';
 
 interface NativeRecordDraft {
   type: NativeRecordType;
@@ -96,6 +102,60 @@ function recordArt(type: NativeRecordType): Resource {
   return $r('app.media.record_growth_feet');
 }
 
+function itemRecord(value: Object | null | undefined): Record<string, Object> {
+  if (value === null || value === undefined || typeof value !== 'object' || Array.isArray(value)) return JSON.parse('{}') as Record<string, Object>;
+  return value as Record<string, Object>;
+}
+
+function readableValue(value: Object | null, fallback: string = ''): string {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return (value as Array<Object>).map((entry: Object) => readableValue(entry, '')).filter((entry: string) => entry.length > 0).join('；') || fallback;
+  const record = itemRecord(value);
+  if (record['zh'] !== undefined || record['en'] !== undefined) return String(record['zh'] || record['en'] || fallback);
+  return Object.keys(record).map((key: string) => readableValue(record[key], '')).filter((entry: string) => entry.length > 0).join('；') || fallback;
+}
+
+function itemText(value: Object | null | undefined, field: string, fallback: string = ''): string {
+  const item = itemRecord(value);
+  const candidate = item[field];
+  return candidate === undefined || candidate === null ? fallback : readableValue(candidate, fallback);
+}
+
+function localizedText(value: Object | null, fallback: string = ''): string {
+  if (value === null) return fallback;
+  if (typeof value === 'string') return value;
+  const item = itemRecord(value);
+  return String(item['zh'] || item['en'] || fallback);
+}
+
+function itemList(value: Object | null | undefined): Array<Object> {
+  return Array.isArray(value) ? value as Array<Object> : [];
+}
+
+function nestedText(item: Object | null | undefined, field: string, fallback: string = ''): string {
+  const record = itemRecord(item);
+  return localizedText(record[field], fallback);
+}
+
+function deviceDateKey(value: Date = new Date()): string {
+  let timezone = 'UTC';
+  try {
+    const candidate = i18n.getTimeZone().getID();
+    if (candidate.trim().length > 0) timezone = candidate;
+  } catch {
+    timezone = 'UTC';
+  }
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(value);
+  const get = (type: string): string => parts.find((part) => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 @Entry
 @Component
 struct Index {
@@ -122,7 +182,33 @@ struct Index {
   @State private busy: boolean = false;
   @State private todayPhase: TodayPhase = 'loading';
   @State private today: NativeTodayModel | null = null;
+  @State private growthPhase: SurfacePhase = 'idle';
+  @State private growth: NativeGrowthModel | null = null;
+  @State private growthStale: boolean = false;
+  @State private explorePhase: SurfacePhase = 'idle';
+  @State private explore: NativeExploreModel | null = null;
+  @State private exploreStale: boolean = false;
+  @State private exploreCategory: string = 'recommended';
+  @State private diseaseQuery: string = '';
+  @State private selectedDiseaseId: string = '';
+  @State private selectedOrganId: string = '';
+  @State private settingsPhase: SurfacePhase = 'idle';
+  @State private settings: NativeSettingsModel | null = null;
+  @State private settingsStale: boolean = false;
+  @State private settingsMessage: string = '';
+  @State private settingsNickname: string = '';
+  @State private settingsBabyNickname: string = '';
+  @State private settingsBabyBirthDate: string = '';
+  @State private settingsLocale: string = 'zh-CN';
+  @State private settingsContactEmail: string = '';
+  @State private settingsLlmBaseUrl: string = '';
+  @State private settingsLlmModel: string = '';
+  @State private settingsLlmProtocol: string = 'openai-compatible';
+  @State private settingsLlmApiKey: string = '';
+  @State private visitorShareUrl: string = '';
+  @State private visitorShareLinkId: string = '';
   @State private selectedDay: string = '';
+  @State private recordDay: string = '';
   @State private selectedPhotoIndex: number = 0;
   @State private selectedRecordType: NativeRecordType | null = null;
   @State private recordValue: string = '';
@@ -133,6 +219,7 @@ struct Index {
   @State private feedbackMessage: string = '';
   @State private undoEventId: string = '';
   @State private undoEventVersion: number = 1;
+  @State private undoEventCategory: string = '';
   @State private photoMessage: string = '';
   @State private factFilter: string = 'all';
   @State private correctionEventId: string = '';
@@ -158,6 +245,8 @@ struct Index {
   private correctionOccurredAt: string = '';
   private correctionOriginalEvent: NativeCareEvent | null = null;
   private undoCorrectionOriginal: NativeCareEvent | null = null;
+  private readonly chartSettings: RenderingContextSettings = new RenderingContextSettings(true);
+  private readonly chartContexts: Map<string, CanvasRenderingContext2D> = new Map<string, CanvasRenderingContext2D>();
 
   aboutToAppear(): void {
     this.adapter = new NativeResourceAdapter(getContext(this) as common.UIAbilityContext);
@@ -205,7 +294,7 @@ struct Index {
     this.statusMessage = '';
     try {
       const result: NativeBootstrapResult = await this.adapter.bootstrap();
-      this.applyResource(result);
+      await this.applyResource(result);
     } catch (error) {
       const transport = error instanceof NativeTransportError ? error : null;
       if (transport !== null && (transport.status === 401 || transport.status === 403)) {
@@ -218,13 +307,27 @@ struct Index {
     }
   }
 
-  private applyResource(result: NativeBootstrapResult): void {
+  private resetSurfaceModels(): void {
+    this.growth = null;
+    this.growthPhase = 'idle';
+    this.growthStale = false;
+    this.explore = null;
+    this.explorePhase = 'idle';
+    this.exploreStale = false;
+    this.settings = null;
+    this.settingsPhase = 'idle';
+    this.settingsStale = false;
+    this.chartContexts.clear();
+  }
+
+  private async applyResource(result: NativeBootstrapResult): Promise<void> {
+    this.resetSurfaceModels();
     this.resource = result.resource;
     this.staleCache = result.stale;
     this.phase = result.resource.household === null ? 'household' : 'ready';
     this.showFamilyPanel = false;
     this.statusMessage = result.stale ? '当前显示最近一次成功同步的内容；恢复网络后可重新读取。' : '';
-    if (this.phase === 'ready') this.loadToday();
+    if (this.phase === 'ready') await this.loadToday();
   }
 
   private async loadToday(day: string = this.selectedDay): Promise<void> {
@@ -240,6 +343,81 @@ struct Index {
     } catch (error) {
       this.todayPhase = 'error';
       this.statusMessage = error instanceof Error ? error.message : '今日页面模型读取失败，请重试。';
+    }
+  }
+
+  private async loadGrowth(): Promise<void> {
+    if (this.adapter === null || this.resource?.household?.baby === null) return;
+    this.growthPhase = 'loading';
+    try {
+      const result: NativeSurfaceResult<NativeGrowthModel> = await this.adapter.growth();
+      this.growth = result.model;
+      this.growthStale = result.stale;
+      this.growthPhase = 'ready';
+      if (result.stale) this.statusMessage = '成长页面显示最近一次成功同步的缓存；恢复网络后可重试。';
+    } catch (error) {
+      const transport = error instanceof NativeTransportError ? error : null;
+      if (transport !== null && (transport.status === 401 || transport.status === 403)) {
+        this.phase = 'login';
+        this.statusMessage = transport.message;
+      }
+      this.growthPhase = 'error';
+      this.statusMessage = error instanceof Error ? error.message : '成长页面模型读取失败，请重试。';
+    }
+  }
+
+  private async loadExplore(category: string = this.exploreCategory, query: string = this.diseaseQuery, organId: string = this.selectedOrganId): Promise<void> {
+    if (this.adapter === null || this.resource?.household?.baby === null) return;
+    this.explorePhase = 'loading';
+    this.exploreCategory = category;
+    try {
+      const result: NativeSurfaceResult<NativeExploreModel> = await this.adapter.explore(category, query, organId);
+      this.explore = result.model;
+      this.exploreStale = result.stale;
+      this.explorePhase = 'ready';
+      if (this.selectedDiseaseId.length === 0 && result.model.diseases.length > 0) this.selectedDiseaseId = itemText(result.model.diseases[0], 'id');
+      if (result.stale) this.statusMessage = '探索页面显示最近一次成功同步的缓存；第三方经验源恢复后可重试。';
+    } catch (error) {
+      const transport = error instanceof NativeTransportError ? error : null;
+      if (transport !== null && (transport.status === 401 || transport.status === 403)) {
+        this.phase = 'login';
+        this.statusMessage = transport.message;
+      }
+      this.explorePhase = 'error';
+      this.statusMessage = error instanceof Error ? error.message : '探索页面模型读取失败，请重试。';
+    }
+  }
+
+  private applySettingsForm(model: NativeSettingsModel): void {
+    this.settingsNickname = itemText(model.user, 'nickname', '家长');
+    this.settingsBabyNickname = itemText(model.baby, 'nickname');
+    this.settingsBabyBirthDate = itemText(model.baby, 'birthDate');
+    this.settingsLocale = itemText(model.baby, 'locale', 'zh-CN');
+    const llm = model.llmConfig;
+    this.settingsLlmBaseUrl = itemText(llm, 'baseUrl');
+    this.settingsLlmModel = itemText(llm, 'model');
+    this.settingsLlmProtocol = itemText(llm, 'protocol', 'openai-compatible');
+    this.settingsLlmApiKey = '';
+  }
+
+  private async loadSettings(): Promise<void> {
+    if (this.adapter === null || this.resource?.household?.baby === null) return;
+    this.settingsPhase = 'loading';
+    try {
+      const result: NativeSurfaceResult<NativeSettingsModel> = await this.adapter.settings();
+      this.settings = result.model;
+      this.settingsStale = result.stale;
+      this.applySettingsForm(result.model);
+      this.settingsPhase = 'ready';
+      if (result.stale) this.settingsMessage = '当前显示最近一次成功同步的设置缓存；保存前请先恢复网络。';
+    } catch (error) {
+      const transport = error instanceof NativeTransportError ? error : null;
+      if (transport !== null && (transport.status === 401 || transport.status === 403)) {
+        this.phase = 'login';
+        this.statusMessage = transport.message;
+      }
+      this.settingsPhase = 'error';
+      this.settingsMessage = error instanceof Error ? error.message : '设置页面模型读取失败，请重试。';
     }
   }
 
@@ -292,6 +470,7 @@ struct Index {
     this.recordExtra = String(draft['extra'] || '');
     this.recordOption = String(draft['option'] || '');
     this.recordCommandId = String(draft['commandId'] || '');
+    this.recordDay = type === 'growth' ? deviceDateKey() : this.selectedDay;
     this.feedbackMessage = '已恢复未提交的本机草稿；不会离线排队创建事实。';
   }
 
@@ -300,6 +479,7 @@ struct Index {
     this.recordValue = '';
     this.recordExtra = '';
     this.recordOption = type === 'feeding' ? 'formula' : type === 'diaper' ? 'urine' : type === 'growth' ? 'weight' : '';
+    this.recordDay = type === 'growth' ? deviceDateKey() : this.selectedDay;
     this.recordCommandId = `native-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     this.recordError = '';
     this.correctionEventId = '';
@@ -325,6 +505,7 @@ struct Index {
       this.correctionEventVersion = event.version;
       this.correctionOccurredAt = event.occurredAt;
       this.correctionOriginalEvent = event;
+      if (type === 'growth') this.recordDay = String(payload['measuredAt'] || event.occurredAt).slice(0, 10);
       if (type === 'feeding') {
         this.recordOption = event.category === 'breastfeeding' ? 'breastfeeding' : String(payload['milkType'] || 'formula');
         this.recordValue = payload['amountMl'] === null || payload['amountMl'] === undefined ? '' : String(payload['amountMl']);
@@ -379,16 +560,28 @@ struct Index {
     if (this.selectedRecordType === 'medication') return this.correctionPayload(jsonRecord(`{"medicationName":${JSON.stringify(this.recordValue.trim())},"amount":${JSON.stringify(this.recordExtra.trim())}}`), ['medicationName', 'name', 'amount']);
     if (this.selectedRecordType === 'temperature') return this.correctionPayload(this.recordValue.trim().length === 0 ? jsonRecord('{"value":null}') : jsonRecord(`{"value":${Number(this.recordValue)},"unit":"°C","method":${JSON.stringify(this.recordOption || 'axillary')}}`), ['value', 'unit', 'method']);
     const unit = this.recordOption === 'weight' ? 'kg' : 'cm';
-    return this.correctionPayload(jsonRecord(`{"type":${JSON.stringify(this.recordOption || 'weight')},"value":${Number(this.recordValue)},"unit":${JSON.stringify(unit)},"measuredAt":${JSON.stringify(this.selectedDay)}}`), ['type', 'value', 'unit', 'measuredAt']);
+    return this.correctionPayload(jsonRecord(`{"type":${JSON.stringify(this.recordOption || 'weight')},"value":${Number(this.recordValue)},"unit":${JSON.stringify(unit)},"measuredAt":${JSON.stringify(this.recordDay || this.selectedDay)}}`), ['type', 'value', 'unit', 'measuredAt']);
   }
 
   private recordOccurredAt(): string {
     if (this.correctionOccurredAt.length > 0) return this.correctionOccurredAt;
     if (this.selectedRecordType === 'sleep' && this.recordValue.length > 0) return this.recordValue;
-    const parts = this.selectedDay.split('-').map((value: string) => Number(value));
+    const occurredDay = this.selectedRecordType === 'growth' ? this.recordDay || deviceDateKey() : this.selectedDay;
+    const parts = occurredDay.split('-').map((value: string) => Number(value));
     if (parts.length !== 3 || parts.some((value: number) => !Number.isInteger(value))) return new Date().toISOString();
     const now = new Date();
     return new Date(parts[0], parts[1] - 1, parts[2], now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()).toISOString();
+  }
+
+  private async refreshAfterMutation(refreshGrowth: boolean, refreshExplore: boolean): Promise<void> {
+    await this.loadToday();
+    if (refreshGrowth && (this.growth !== null || this.activeTab === 'growth')) {
+      this.chartContexts.clear();
+      await this.loadGrowth();
+    }
+    if (refreshExplore && (this.explore !== null || this.activeTab === 'explore')) {
+      await this.loadExplore();
+    }
   }
 
   private restoreEvent(original: NativeCareEvent): NativeCareEvent {
@@ -410,12 +603,14 @@ struct Index {
   private armUndo(saved: Record<string, Object>, original: NativeCareEvent | null): void {
     this.undoEventId = String(saved['id']);
     this.undoEventVersion = Number(saved['version'] || 1);
+    this.undoEventCategory = String(saved['category'] || original?.category || '');
     this.undoCorrectionOriginal = original;
     this.feedbackMessage = original === null ? '保存成功 · 已同步。约五秒内可撤销。' : '纠正成功 · 已同步。约五秒内可恢复原事实。';
     this.lightHaptic();
     setTimeout(() => {
       if (this.undoEventId === String(saved['id'])) {
         this.undoEventId = '';
+        this.undoEventCategory = '';
         this.undoCorrectionOriginal = null;
       }
     }, 5000);
@@ -426,6 +621,7 @@ struct Index {
     this.busy = true;
     this.recordError = '';
     const original = this.correctionOriginalEvent;
+    const refreshGrowth = this.selectedRecordType === 'growth';
     try {
       const command: NativeCareCommand = createNativeCareCommand({
         type: this.selectedRecordType,
@@ -447,7 +643,7 @@ struct Index {
       this.correctionOriginalEvent = null;
       this.correctionOccurredAt = '';
       await this.adapter.saveRecordDraft(null);
-      await this.loadToday();
+      await this.refreshAfterMutation(refreshGrowth, false);
     } catch (error) {
       const found = await this.adapter.findCareEvent(String(this.today.baby['id']), this.recordCommandId).catch(() => null);
       if (found !== null) {
@@ -457,7 +653,7 @@ struct Index {
         this.correctionOriginalEvent = null;
         this.correctionOccurredAt = '';
         await this.adapter.saveRecordDraft(null);
-        await this.loadToday();
+        await this.refreshAfterMutation(refreshGrowth, false);
         return;
       }
       this.recordError = error instanceof Error ? error.message : '保存未完成，请核对后重试。';
@@ -473,7 +669,7 @@ struct Index {
     try {
       await this.adapter.voidCareEvent(fact.id, fact.version);
       this.feedbackMessage = '事实已永久作废；原记录人、版本与审计关系保留。';
-      await this.loadToday();
+      await this.refreshAfterMutation(fact.category === 'growth_measurement', fact.category === 'vaccine');
     } catch (error) {
       this.feedbackMessage = error instanceof Error ? error.message : '作废未完成，请刷新后核对。';
     } finally {
@@ -490,6 +686,7 @@ struct Index {
   private async undoRecord(): Promise<void> {
     if (this.adapter === null || this.undoEventId.length === 0) return;
     this.busy = true;
+    const undoCategory = this.undoEventCategory;
     try {
       if (this.undoCorrectionOriginal !== null) {
         await this.adapter.correctCareEvent(this.undoEventId, this.undoEventVersion, this.restoreEvent(this.undoCorrectionOriginal));
@@ -499,8 +696,9 @@ struct Index {
         this.feedbackMessage = '已撤销，事实永久作废；历史记录人和版本仍保留。';
       }
       this.undoEventId = '';
+      this.undoEventCategory = '';
       this.undoCorrectionOriginal = null;
-      await this.loadToday();
+      await this.refreshAfterMutation(undoCategory === 'growth_measurement', undoCategory === 'vaccine');
     } catch (error) {
       this.feedbackMessage = error instanceof Error ? error.message : '撤销未完成，请刷新时间线核对。';
     } finally {
@@ -787,10 +985,231 @@ struct Index {
     }
   }
 
+  private openSettings(): void {
+    this.navigation.push(this.activeTab, 'settings.secondary');
+    this.selectedRoute = 'settings.secondary';
+    this.loadSettings();
+  }
+
+  private async saveSharedAction(category: string, payload: Record<string, Object | null>): Promise<void> {
+    const adapter = this.adapter;
+    const resource = this.resource;
+    const baby = resource?.household?.baby || null;
+    if (adapter === null || resource === null || baby === null || !resource.permissions.canEdit || this.busy) return;
+    this.busy = true;
+    try {
+      const recorderId = String(this.today?.recorder['id'] || resource.user.id);
+      const recorderName = String(this.today?.recorder['displayName'] || resource.user.displayName || '家庭成员');
+      const event: NativeCareEvent = {
+        id: `native-action-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
+        babyId: baby.id,
+        kind: 'caregiver_observation',
+        category,
+        occurredAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+        actor: { id: recorderId, displayName: recorderName },
+        source: 'caregiver',
+        payload,
+        status: 'active',
+        version: 1
+      };
+      await adapter.createNativeEvent(event);
+      this.feedbackMessage = '已提交共享记录，正在读取最新页面模型…';
+      await this.refreshAfterMutation(category === 'milestone' || category === 'admin_task', category === 'vaccine');
+    } catch (error) {
+      this.feedbackMessage = error instanceof Error ? error.message : '共享记录未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async markVaccine(vaccineId: string): Promise<void> {
+    const payload = jsonRecord('{}');
+    payload['vaccineId'] = vaccineId;
+    payload['status'] = 'completed';
+    await this.saveSharedAction('vaccine', payload);
+  }
+
+  private async markGrowthMilestone(milestoneId: string, status: string): Promise<void> {
+    const payload = jsonRecord('{}');
+    payload['milestoneId'] = milestoneId;
+    payload['status'] = status;
+    await this.saveSharedAction('milestone', payload);
+  }
+
+  private async markAdminTask(taskId: string, status: string): Promise<void> {
+    const payload = jsonRecord('{}');
+    payload['taskId'] = taskId;
+    payload['status'] = status;
+    await this.saveSharedAction('admin_task', payload);
+  }
+
+  private async saveSettings(): Promise<void> {
+    if (this.adapter === null || this.settings === null || this.settings.permissions.readOnly || this.busy) return;
+    const baby = JSON.parse('{}') as NativeSettingsItem;
+    baby['nickname'] = this.settingsBabyNickname.trim();
+    baby['birthDate'] = this.settingsBabyBirthDate.trim();
+    baby['locale'] = this.settingsLocale;
+    this.busy = true;
+    this.settingsMessage = '';
+    const refreshGrowth = this.growth !== null || this.activeTab === 'growth';
+    const refreshExplore = this.explore !== null || this.activeTab === 'explore';
+    try {
+      const patch: NativeSettingsPatch = { nickname: this.settingsNickname.trim(), baby };
+      const model = await this.adapter.updateSettings(patch);
+      this.settings = model;
+      this.applySettingsForm(model);
+      await this.loadResource();
+      await this.loadSettings();
+      if (refreshGrowth) {
+        this.chartContexts.clear();
+        await this.loadGrowth();
+      }
+      if (refreshExplore) await this.loadExplore();
+      this.settingsMessage = '账号与宝宝资料已保存，并已重新计算年龄、阶段和时间计划。';
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '设置保存未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async toggleEmailSubscription(enabled: boolean): Promise<void> {
+    if (this.adapter === null || this.settings?.permissions.readOnly || this.busy) return;
+    this.busy = true;
+    try {
+      await this.adapter.updateEmailSubscription(enabled);
+      this.settingsMessage = enabled ? '关键更新邮件已开启。' : '关键更新邮件已关闭。';
+      await this.loadSettings();
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '邮件设置未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async addContact(): Promise<void> {
+    if (this.adapter === null || this.settings?.permissions.canManageHousehold !== true || this.settingsContactEmail.trim().length === 0 || this.busy) return;
+    this.busy = true;
+    try {
+      await this.adapter.addEmailContact(this.settingsContactEmail.trim());
+      this.settingsContactEmail = '';
+      this.settingsMessage = '家庭通知联系人已更新。';
+      await this.loadSettings();
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '联系人添加未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async removeContact(id: string): Promise<void> {
+    if (this.adapter === null || this.settings?.permissions.canManageHousehold !== true || this.busy) return;
+    this.busy = true;
+    try {
+      await this.adapter.removeEmailContact(id);
+      this.settingsMessage = '家庭通知联系人已移除。';
+      await this.loadSettings();
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '联系人移除未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async createVisitorLink(): Promise<void> {
+    if (this.adapter === null || this.settings?.permissions.canManageHousehold !== true || this.busy) return;
+    this.busy = true;
+    try {
+      const response = await this.adapter.createVisitorLink();
+      const link = itemRecord(response)['link'];
+      this.visitorShareUrl = itemText(link, 'url');
+      this.visitorShareLinkId = itemText(link, 'id');
+      this.settingsMessage = this.visitorShareUrl.length > 0
+        ? '临时只读访客链接已生成；请复制下方链接分享。'
+        : '临时只读访客链接已生成，但服务端未返回可复制链接，请重试。';
+      await this.loadSettings();
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '访客链接生成未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async revokeVisitorLink(id: string): Promise<void> {
+    if (this.adapter === null || this.settings?.permissions.canManageHousehold !== true || this.busy) return;
+    this.busy = true;
+    try {
+      await this.adapter.revokeVisitorLink(id);
+      if (this.visitorShareLinkId === id) {
+        this.visitorShareLinkId = '';
+        this.visitorShareUrl = '';
+      }
+      this.settingsMessage = '访客链接已撤销。';
+      await this.loadSettings();
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '访客链接撤销未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async saveLlmConfig(): Promise<void> {
+    if (this.adapter === null || this.settings?.permissions.readOnly || this.busy) return;
+    this.busy = true;
+    try {
+      const input = JSON.parse('{}') as Record<string, Object>;
+      input['baseUrl'] = this.settingsLlmBaseUrl.trim();
+      input['model'] = this.settingsLlmModel.trim();
+      input['protocol'] = this.settingsLlmProtocol;
+      if (this.settingsLlmApiKey.trim().length > 0) input['apiKey'] = this.settingsLlmApiKey.trim();
+      await this.adapter.updateLlmConfig(input);
+      this.settingsLlmApiKey = '';
+      this.settingsMessage = '自定义模型配置已保存；API Key 只显示脱敏结果。';
+      await this.loadSettings();
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '模型配置保存未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async clearLlmConfig(): Promise<void> {
+    if (this.adapter === null || this.settings?.permissions.readOnly || this.busy) return;
+    this.busy = true;
+    try {
+      await this.adapter.clearLlmConfig();
+      this.settingsMessage = '自定义模型配置已清除。';
+      await this.loadSettings();
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '模型配置清除未完成，请重试。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async clearNativeCache(): Promise<void> {
+    if (this.adapter === null) return;
+    try {
+      await this.adapter.clearLocalCache();
+      this.settingsMessage = '本机缓存已清除；云端记录不会删除。';
+    } catch (error) {
+      this.settingsMessage = error instanceof Error ? error.message : '本机缓存清除未完成。';
+    }
+  }
+
+  private openExternal(url: string): void {
+    if (url.trim().length === 0) return;
+    const context = getContext(this) as common.UIAbilityContext;
+    context.openLink(url).catch(() => { this.feedbackMessage = '系统浏览器暂时无法打开该来源。'; });
+  }
+
   private selectTab(tab: NativeTab): void {
     if (this.activeTab === tab) this.navigation.repeat(tab);
     this.activeTab = tab;
     this.selectedRoute = this.navigation.state(tab).stack[this.navigation.state(tab).stack.length - 1];
+    if (tab === 'growth') this.loadGrowth();
+    if (tab === 'explore') this.loadExplore();
     this.syncNavigation();
   }
 
@@ -1080,6 +1499,7 @@ struct Index {
   }
 
   private surfaceTitle(): string {
+    if (this.selectedRoute === 'settings.secondary') return '设置';
     if (this.activeTab === 'today') return '今天';
     if (this.activeTab === 'record') return '记录';
     if (this.activeTab === 'ai') return '奶爸 AI';
@@ -1088,6 +1508,7 @@ struct Index {
   }
 
   private surfaceDetail(): string {
+    if (this.selectedRoute === 'settings.secondary') return '账号、家庭、同步和本机缓存均沿用共享设置合同。';
     if (this.selectedRoute.endsWith('.root')) return '原生业务表面已注册，页面模型将从共享业务合同加载。';
     return `当前原生导航栈：${this.selectedRoute}。返回键只处理「${this.surfaceTitle()}」标签栈。`;
   }
@@ -1274,7 +1695,10 @@ struct Index {
         Text(title).fontSize(this.largeText ? 29 : 24).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
         Text(subtitle).fontSize(this.largeText ? 16 : 13).fontColor('#806E68').margin({ top: 4 });
       }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-      Button('家庭').height(38).backgroundColor('#FFF1EB').fontColor('#9A665C').borderRadius(19).onClick(() => this.showFamilyPanel = true);
+      Row({ space: 6 }) {
+        Button('设置').height(38).fontSize(12).backgroundColor('#F5EFEA').fontColor('#806E68').borderRadius(19).onClick(() => this.openSettings());
+        Button('家庭').height(38).fontSize(12).backgroundColor('#FFF1EB').fontColor('#9A665C').borderRadius(19).onClick(() => this.showFamilyPanel = true);
+      }
     }.width('100%');
   }
 
@@ -1427,6 +1851,444 @@ struct Index {
   }
 
   @Builder
+  private growthMetricCard(metric: NativeGrowthMetric): void {
+    Column({ space: 6 }) {
+      Text(localizedText(metric.label, metric.id)).fontSize(this.largeText ? 15 : 12).fontColor('#806E68');
+      if (metric.latest === null) {
+        Text('未记录').fontSize(this.largeText ? 21 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
+        Text('暂无有效事实').fontSize(11).fontColor('#A28B81');
+      } else {
+        Text(`${itemText(metric.latest, 'value', '未记录')} ${metric.unit}`).fontSize(this.largeText ? 21 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
+        Text(itemText(metric.latest, 'measuredAt', '日期未知')).fontSize(11).fontColor('#806E68');
+        if (Boolean(itemRecord(metric.latest)['conflict'])) Text('同日冲突，需核对').fontSize(11).fontColor('#B85F53');
+      }
+      Button('快速记录').height(32).fontSize(11).enabled(Boolean(this.resource?.permissions.canEdit)).backgroundColor(Color.Transparent).fontColor('#A65E51').onClick(() => this.openRecord('growth'));
+    }.layoutWeight(1).padding({ top: 13, bottom: 10, left: 6, right: 6 }).backgroundColor('#FFF5EE').borderRadius(16).accessibilityText(`${localizedText(metric.label, metric.id)}成长事实`);
+  }
+
+  private chartContext(id: string): CanvasRenderingContext2D {
+    const existing = this.chartContexts.get(id);
+    if (existing !== undefined) return existing;
+    const context = new CanvasRenderingContext2D(this.chartSettings);
+    this.chartContexts.set(id, context);
+    return context;
+  }
+
+  private chartNumber(value: Object | null): number | null {
+    if (value === null || value === undefined || String(value).trim().length === 0) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private growthChartReference(chart: NativeGrowthItem): Array<Object> {
+    return itemList(itemRecord(chart)['reference']);
+  }
+
+  private growthChartPoints(chart: NativeGrowthItem): Array<Object> {
+    return itemList(itemRecord(chart)['points']);
+  }
+
+  private growthLinePoints(line: Object): Array<Object> {
+    return itemList(itemRecord(line)['points']);
+  }
+
+  private growthChartSourceUrl(chart: NativeGrowthItem): string {
+    return itemText(itemRecord(chart)['standard'], 'sourceUrl');
+  }
+
+  private drawGrowthChart(chart: NativeGrowthItem, context: CanvasRenderingContext2D): void {
+    const reference = itemList(itemRecord(chart)['reference']);
+    const points = itemList(itemRecord(chart)['points']);
+    const range = itemRecord(chart)['range'];
+    const endMonthValue = this.chartNumber(itemRecord(range)['endMonth']);
+    const endMonth = Math.max(1, endMonthValue === null ? 83 : endMonthValue);
+    const width = 320;
+    const height = this.largeText ? 230 : 210;
+    const padLeft = 32;
+    const padRight = 12;
+    const padTop = 16;
+    const padBottom = 28;
+    const plotWidth = width - padLeft - padRight;
+    const plotHeight = height - padTop - padBottom;
+    const values: Array<number> = [];
+    for (const line of reference) {
+      for (const point of itemList(itemRecord(line)['points'])) {
+        const value = this.chartNumber(itemRecord(point)['value']);
+        if (value !== null) values.push(value);
+      }
+    }
+    for (const point of points) {
+      const value = this.chartNumber(itemRecord(point)['value']);
+      if (value !== null) values.push(value);
+    }
+
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = '#806E68';
+    context.font = '10px sans-serif';
+    if (values.length === 0) {
+      context.fillText('录入有效测量后绘制宝宝轨迹', 16, 32);
+      return;
+    }
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const margin = Math.max((maxValue - minValue) * 0.12, 0.2);
+    const yMin = Math.max(0, minValue - margin);
+    const yMax = maxValue + margin;
+    const x = (month: number): number => padLeft + (month / endMonth) * plotWidth;
+    const y = (value: number): number => height - padBottom - ((value - yMin) / Math.max(0.01, yMax - yMin)) * plotHeight;
+    const ticks: Array<number> = [];
+    if (endMonth <= 12) {
+      for (let tick = 0; tick <= Math.floor(endMonth); tick += 1) ticks.push(tick);
+    } else {
+      ticks.push(...[0, 3, 6, 9, 12, 18, 24, 36, 48, 60, 72, 83].filter((tick: number) => tick <= endMonth));
+    }
+
+    context.strokeStyle = '#E7DCD3';
+    context.lineWidth = 1;
+    context.strokeRect(padLeft, padTop, plotWidth, plotHeight);
+    for (const tick of ticks) {
+      context.beginPath();
+      context.moveTo(x(tick), padTop);
+      context.lineTo(x(tick), height - padBottom);
+      context.stroke();
+      context.fillStyle = '#806E68';
+      context.fillText(String(tick), x(tick) - 5, height - 9);
+    }
+
+    const lineColor = (percentile: number): string => percentile === 50 ? '#52746B' : percentile === 3 || percentile === 97 ? '#D67E67' : '#B9A680';
+    const drawPath = (linePoints: Array<Object>, color: string, lineWidth: number): void => {
+      let started = false;
+      context.beginPath();
+      for (const point of linePoints) {
+        const month = this.chartNumber(itemRecord(point)['month']);
+        const value = this.chartNumber(itemRecord(point)['value']);
+        if (month === null || value === null) continue;
+        if (!started) {
+          context.moveTo(x(month), y(value));
+          started = true;
+        } else {
+          context.lineTo(x(month), y(value));
+        }
+      }
+      if (!started) return;
+      context.strokeStyle = color;
+      context.lineWidth = lineWidth;
+      context.stroke();
+    };
+
+    for (const line of reference) {
+      const percentile = this.chartNumber(itemRecord(line)['percentile']) || 50;
+      drawPath(itemList(itemRecord(line)['points']), lineColor(percentile), percentile === 50 ? 2.5 : 1.2);
+    }
+    let segment: Array<Object> = [];
+    for (const point of points) {
+      if (Boolean(itemRecord(point)['conflicted'])) {
+        drawPath(segment, '#273F3A', 3.5);
+        segment = [];
+      } else {
+        segment.push(point);
+      }
+    }
+    drawPath(segment, '#273F3A', 3.5);
+    for (const point of points) {
+      const month = this.chartNumber(itemRecord(point)['month']);
+      const value = this.chartNumber(itemRecord(point)['value']);
+      if (month === null || value === null) continue;
+      context.beginPath();
+      context.arc(x(month), y(value), Boolean(itemRecord(point)['conflicted']) ? 5 : 3.5, 0, Math.PI * 2);
+      context.fillStyle = Boolean(itemRecord(point)['conflicted']) ? '#B85F53' : '#273F3A';
+      context.fill();
+    }
+    context.fillStyle = '#806E68';
+    context.fillText(itemText(chart, 'unit'), 5, padTop + 3);
+    context.fillText('月龄', width - 28, height - 9);
+  }
+
+  @Builder
+  private growthChart(chart: NativeGrowthItem): void {
+    Column({ space: 8 }) {
+      Text(`${itemText(chart, 'metric', '指标')} · 国家标准参考曲线`).fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+      if (this.growthChartReference(chart).length === 0) {
+        Text('当前没有可用的国家标准参考线；不会用 0 或猜测值替代。').fontSize(12).fontColor('#806E68').width('100%');
+      } else {
+        Canvas(this.chartContext(itemText(chart, 'metric')))
+          .width('100%')
+          .height(this.largeText ? 230 : 210)
+          .onReady(() => this.drawGrowthChart(chart, this.chartContext(itemText(chart, 'metric'))))
+          .accessibilityText(`${itemText(chart, 'metric', '成长')}国家标准参考曲线与宝宝测量轨迹`);
+        ForEach(this.growthChartReference(chart), (line: Object) => {
+          Row({ space: 8 }) {
+            Text(`P${itemText(line, 'percentile')}`).width(42).fontSize(12).fontColor('#806E68');
+            Text(`参考点 ${this.growthLinePoints(line).length} 个`).fontSize(12).fontColor('#4E3B35').layoutWeight(1);
+            Text(this.growthLinePoints(line).length > 0 ? `${itemText(this.growthLinePoints(line)[0], 'value')} → ${itemText(this.growthLinePoints(line)[this.growthLinePoints(line).length - 1], 'value')}` : '暂无数据').fontSize(11).fontColor('#A28B81');
+          }.width('100%').padding(7).backgroundColor('#FFF8F3').borderRadius(10);
+        }, (line: Object) => itemText(line, 'id'));
+      }
+      if (this.growthChartPoints(chart).length === 0) Text('暂无可与曲线比较的有效测量点；历史事实仍会保留。').fontSize(12).fontColor('#806E68').width('100%');
+      else {
+        Text(`实际测量点 ${this.growthChartPoints(chart).length} 个`).fontSize(12).fontColor('#7A9A80').width('100%');
+        ForEach(this.growthChartPoints(chart).slice(0, 8), (point: Object) => {
+          Text(`${itemText(point, 'measuredAt')} · ${itemText(point, 'value')} ${itemText(chart, 'unit')} · ${itemText(point, 'quality', '事实')}`).fontSize(11).fontColor('#806E68').width('100%');
+        }, (point: Object) => itemText(point, 'id'));
+      }
+      if (this.growthChartSourceUrl(chart).length > 0) Button('打开标准来源').height(34).fontSize(11).onClick(() => this.openExternal(this.growthChartSourceUrl(chart)));
+    }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+  }
+
+  @Builder
+  private growthSurface(): void {
+    Column({ space: 14 }) {
+      this.nativeHeader(`成长 · ${String(this.growth?.baby.nickname || this.resource?.household?.baby?.nickname || '宝宝')}`, '共享成长事实、国家标准和阶段照护');
+      if (this.growthStale) Text('当前为离线缓存：可以查看，不会在本机排队写入；恢复网络后重试。').fontSize(12).fontColor('#8A6742').backgroundColor('#FFF3D8').borderRadius(12).padding(10).width('100%');
+      if (this.growthPhase === 'loading') {
+        Column({ space: 10 }) { LoadingProgress().width(28).height(28); Text('正在读取共享成长页面模型…').fontSize(13).fontColor('#806E68'); }.width('100%').padding(28);
+      } else if (this.growthPhase === 'error' || this.growth === null) {
+        Column({ space: 10 }) { Text('成长页面暂时无法读取').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.statusMessage).fontSize(13).fontColor('#806E68').textAlign(TextAlign.Center); Button('重试').onClick(() => this.loadGrowth()); }.width('100%').padding(24).backgroundColor('#FFFCF8').borderRadius(18);
+      } else {
+        Row({ space: 8 }) {
+          ForEach(this.growth.metrics, (metric: NativeGrowthMetric) => this.growthMetricCard(metric), (metric: NativeGrowthMetric) => metric.id);
+        }.width('100%');
+        Row() { Text(`年龄依据：${itemText(this.growth.age, 'basis', '实际年龄')}`).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text(itemText(this.growth.age, 'ageDays', '—') + ' 天').fontSize(12).fontColor('#806E68'); }.width('100%').padding(12).backgroundColor('#F2EEE7').borderRadius(14);
+        Column({ space: 8 }) {
+          Text(`当前阶段：${itemText(this.growth.stage, 'label', '年龄信息不足')}`).fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(nestedText(this.growth.stage, 'rangeLabel', '阶段范围待确认')).fontSize(12).fontColor('#A65E51').width('100%');
+          Text(nestedText(this.growth.stageContent, 'intro', '阶段内容暂不可用。')).fontSize(this.largeText ? 15 : 12).fontColor('#806E68').width('100%');
+          Text('家长行动').fontSize(14).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          ForEach(itemList(itemRecord(this.growth.stageContent)['parentActions']), (action: Object) => Text(localizedText(action, String(action))).fontSize(12).fontColor('#806E68').width('100%'), (action: Object, index: number) => `${index}-${String(action)}`);
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+        ForEach(this.growth.charts, (chart: NativeGrowthItem) => this.growthChart(chart), (chart: NativeGrowthItem) => itemText(chart, 'metric'));
+        Column({ space: 8 }) {
+          Text('成长历史与测量冲突').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          if (this.growth.measurements.length === 0) Text('还没有有效成长事实；可从上方快速记录。').fontSize(13).fontColor('#806E68').width('100%');
+          ForEach(this.growth.measurements.slice(0, 18), (measurement: NativeGrowthItem) => {
+            Row({ space: 8 }) {
+              Text(itemText(measurement, 'measuredAt', '日期未知')).fontSize(11).fontColor('#A65E51').width(82);
+              Text(`${itemText(measurement, 'type')} ${itemText(measurement, 'value')} ${itemText(measurement, 'unit')}`).fontSize(13).fontColor('#4E3B35').layoutWeight(1);
+              if (Boolean(itemRecord(measurement)['conflict'])) Text('冲突').fontSize(11).fontColor('#B85F53');
+              Button('去记录纠正').height(30).fontSize(10).onClick(() => this.selectTab('record'));
+            }.width('100%').padding(9).backgroundColor('#FFF8F3').borderRadius(12);
+          }, (measurement: NativeGrowthItem) => itemText(measurement, 'id'));
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+        Column({ space: 8 }) {
+          Text('里程碑、照护计划与管理事项').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          ForEach(this.growth.milestones, (milestone: NativeGrowthItem) => {
+            Row({ space: 8 }) { Text(itemText(milestone, 'status') === 'done' ? '✓' : '○').fontSize(19).fontColor('#7A9A80'); Column() { Text(nestedText(milestone, 'title', itemText(milestone, 'id'))).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(nestedText(milestone, 'detail')).fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Button(itemText(milestone, 'status') === 'done' ? '已完成' : '完成').height(31).fontSize(10).enabled(Boolean(this.resource?.permissions.canEdit)).onClick(() => this.markGrowthMilestone(itemText(milestone, 'id'), itemText(milestone, 'status') === 'done' ? 'pending' : 'done')); }.width('100%').padding(9).backgroundColor('#FFF8F3').borderRadius(12);
+          }, (milestone: NativeGrowthItem) => itemText(milestone, 'id'));
+          ForEach(this.growth.carePlanItems, (plan: NativeGrowthItem) => {
+            Row({ space: 8 }) { Text(itemText(plan, 'status') === 'done' ? '✓' : '○').fontSize(19).fontColor('#7A9A80'); Text(itemText(plan, 'title', itemText(plan, 'id'))).fontSize(13).fontColor('#4E3B35').layoutWeight(1); Text(itemText(plan, 'status', 'pending')).fontSize(11).fontColor('#806E68'); }.width('100%').padding(9).backgroundColor('#F2F6EE').borderRadius(12);
+          }, (plan: NativeGrowthItem) => itemText(plan, 'id'));
+          ForEach(this.growth.adminTasks, (task: NativeGrowthItem) => {
+            Row({ space: 8 }) { Text(itemText(task, 'status') === 'done' ? '✓' : '○').fontSize(19).fontColor('#7A9A80'); Column() { Text(nestedText(task, 'title', itemText(task, 'id'))).fontSize(13).fontColor('#4E3B35'); Text(itemText(task, 'state', 'upcoming')).fontSize(11).fontColor('#806E68'); }.layoutWeight(1); Button(itemText(task, 'status') === 'done' ? '已完成' : '完成').height(31).fontSize(10).enabled(Boolean(this.resource?.permissions.canEdit)).onClick(() => this.markAdminTask(itemText(task, 'taskId'), itemText(task, 'status') === 'done' ? 'pending' : 'done')); }.width('100%').padding(9).backgroundColor('#FFF8F3').borderRadius(12);
+          }, (task: NativeGrowthItem) => itemText(task, 'id'));
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+        if (this.growth.interpretation !== null) Column({ space: 7 }) { Text('确定性成长洞察').fontSize(16).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%'); Text(itemText(this.growth.interpretation, 'summary', '当前只展示已确认成长事实。')).fontSize(13).fontColor('#806E68').width('100%'); Text(`状态：${itemText(this.growth.interpretation, 'status', 'limited')} · 受限于事实与标准字段`).fontSize(11).fontColor('#A65E51').width('100%'); Button('进入受限 AI 洞察入口').height(38).onClick(() => this.selectTab('ai')); }.width('100%').padding(15).backgroundColor('#F2EEE7').borderRadius(18);
+        if (this.growth.limitations.length > 0) Text(`限制：${this.growth.limitations.join('；')}`).fontSize(11).fontColor('#806E68').width('100%');
+        Text('模型来源、年龄口径和权限来自共享页面模型；本页不保存原生专属成长状态。').fontSize(11).fontColor('#806E68').width('100%');
+      }
+    }.width('100%');
+  }
+
+  private currentDisease(): NativeExploreItem | null {
+    if (this.explore === null) return null;
+    const found = this.explore.diseases.find((disease: NativeExploreItem) => itemText(disease, 'id') === this.selectedDiseaseId);
+    return found || (this.explore.diseases.length > 0 ? this.explore.diseases[0] || null : null);
+  }
+
+  private organControlled(organ: NativeExploreItem): Object {
+    return itemRecord(organ)['controlled3d'] || JSON.parse('{}') as Object;
+  }
+
+  private organRelatedCount(organ: NativeExploreItem): number {
+    return itemList(itemRecord(organ)['relatedDiseaseIds']).length;
+  }
+
+  private currentExperience(): Object | null {
+    return this.explore?.experience || null;
+  }
+
+  private experienceArticles(): Array<Object> {
+    return itemList(itemRecord(this.currentExperience())['articles']);
+  }
+
+  private articleSource(article: Object): Object {
+    return itemRecord(itemRecord(article)['source']);
+  }
+
+  private settingsReadOnly(): boolean {
+    return this.settings?.permissions.readOnly !== false;
+  }
+
+  private emailSubscriptionEnabled(): boolean {
+    return itemText(this.settings?.subscription, 'enabled') === 'true';
+  }
+
+  @Builder
+  private exploreRootSurface(): void {
+    Column({ space: 14 }) {
+      this.nativeHeader(`探索 · ${String(this.explore?.baby.nickname || '宝宝')}`, '疫苗、疾病、器官学习和第三方育儿经验');
+      if (this.exploreStale) Text('当前为离线缓存：已保留来源和缓存时间；恢复网络后可重试。').fontSize(12).fontColor('#8A6742').backgroundColor('#FFF3D8').borderRadius(12).padding(10).width('100%');
+      Text('宝宝水彩主题入口').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+      Column({ space: 10 }) {
+        Button() { Row({ space: 12 }) { Text('💉').fontSize(28); Column() { Text('疫苗计划').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('节点、状态、时间和国家程序来源').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(`${this.explore?.vaccines.length || 0} 项`).fontSize(12).fontColor('#A65E51'); }.width('100%').padding(15); }.width('100%').backgroundColor('#FFF0E8').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.vaccine')).accessibilityText('打开疫苗计划');
+        Button() { Row({ space: 12 }) { Text('🩺').fontSize(28); Column() { Text('疾病词典').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('完整定义、观察、照护和就医准备').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(`${this.explore?.diseases.length || 0} 项`).fontSize(12).fontColor('#A65E51'); }.width('100%').padding(15); }.width('100%').backgroundColor('#F7EFEA').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.disease')).accessibilityText('打开疾病词典');
+        Button() { Row({ space: 12 }) { Text('🫀').fontSize(28); Column() { Text('器官学习').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('儿童结构、相关疾病和受控三维入口').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(`${this.explore?.organs.length || 0} 个`).fontSize(12).fontColor('#A65E51'); }.width('100%').padding(15); }.width('100%').backgroundColor('#EEF5EC').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.organ')).accessibilityText('打开器官学习');
+        Button() { Row({ space: 12 }) { Text('📚').fontSize(28); Column() { Text('第三方育儿经验').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('按年龄与主题筛选，保留来源身份和缓存时间').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(itemText(this.currentExperience(), 'cacheState', 'empty')).fontSize(11).fontColor('#A65E51'); }.width('100%').padding(15); }.backgroundColor('#F2EEFA').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.experience')).accessibilityText('打开第三方育儿经验');
+      }.width('100%');
+      Text('已审阅知识与第三方经验分开呈现；第三方文章不会伪装成 BabyForge 已审阅结论。').fontSize(12).fontColor('#806E68').width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(14);
+    }.width('100%');
+  }
+
+  @Builder
+  private vaccineSurface(): void {
+    Column({ space: 12 }) {
+      Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('疫苗计划').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
+      Text('程序、适用性和接种医生现场评估以共享疫苗内容为准；本页不替代接种门诊决定。').fontSize(12).fontColor('#806E68').width('100%');
+      ForEach(this.explore?.vaccines || [], (vaccine: NativeExploreItem) => {
+        Row({ space: 8 }) {
+          Text(itemText(vaccine, 'completed') === 'true' || itemText(vaccine, 'status') === 'completed' ? '✓' : '○').fontSize(21).fontColor('#7A9A80');
+          Column() { Text(`${itemText(vaccine, 'ageLabel')} · ${itemText(vaccine, 'vaccine')}`).fontSize(this.largeText ? 15 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(`${itemText(vaccine, 'doseLabel')} · ${itemText(vaccine, 'dueAt', '出生资料不足')}`).fontSize(11).fontColor('#806E68'); Text(itemText(vaccine, 'purpose')).fontSize(11).fontColor('#806E68').maxLines(3); Text(`来源：${itemText(itemRecord(vaccine)['source'], 'title', '国家免疫规划')} · ${itemText(itemRecord(vaccine)['source'], 'version')}`).fontSize(10).fontColor('#A65E51'); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+          Button(itemText(vaccine, 'status') === 'completed' ? '已完成' : '标记完成').height(34).fontSize(10).enabled(Boolean(this.resource?.permissions.canEdit) && itemText(vaccine, 'status') !== 'completed').onClick(() => this.markVaccine(itemText(vaccine, 'id')));
+        }.width('100%').padding(11).backgroundColor('#FFFCF8').borderRadius(14).accessibilityText(`${itemText(vaccine, 'vaccine')} ${itemText(vaccine, 'doseLabel')}`);
+      }, (vaccine: NativeExploreItem) => itemText(vaccine, 'id'));
+      Text('记录疫苗状态会写入共享事件流；状态确认后再从共享源回读。').fontSize(11).fontColor('#806E68').width('100%');
+    }.width('100%');
+  }
+
+  @Builder
+  private diseaseSurface(): void {
+    Column({ space: 12 }) {
+      Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('疾病词典').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
+      Row({ space: 8 }) { TextInput({ text: this.diseaseQuery, placeholder: '搜索疾病、别名或主题' }).layoutWeight(1).height(44).onChange((value: string) => this.diseaseQuery = value); Button('搜索').height(44).onClick(() => { this.selectedDiseaseId = ''; this.loadExplore(this.exploreCategory, this.diseaseQuery, ''); }); }.width('100%');
+      if (this.explore !== null && this.explore.diseases.length === 0) Text('没有匹配的疾病条目；可清空搜索后查看完整词典。').fontSize(13).fontColor('#806E68').width('100%').padding(14);
+      ForEach(this.explore?.diseases || [], (entry: NativeExploreItem) => Button() { Row() { Text(nestedText(entry, 'name', itemText(entry, 'id'))).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text(itemText(entry, 'category')).fontSize(10).fontColor('#A65E51'); }.width('100%').padding(11); }.width('100%').backgroundColor(itemText(entry, 'id') === this.selectedDiseaseId ? '#FFE8DE' : '#FFFCF8').borderRadius(12).onClick(() => this.selectedDiseaseId = itemText(entry, 'id')), (entry: NativeExploreItem) => itemText(entry, 'id'));
+      if (this.currentDisease() !== null) {
+        Column({ space: 8 }) {
+          Text(nestedText(this.currentDisease(), 'name', itemText(this.currentDisease(), 'id'))).fontSize(this.largeText ? 22 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(nestedText(this.currentDisease(), 'shortDefinition')).fontSize(13).fontColor('#806E68').width('100%');
+          Text(nestedText(this.currentDisease(), 'quickTake')).fontSize(13).fontColor('#4E3B35').width('100%').padding(10).backgroundColor('#FFF3D8').borderRadius(10);
+          Text(`机制：${itemText(this.currentDisease(), 'mechanismSteps') || '以完整条目为准'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`常见表现：${itemText(this.currentDisease(), 'commonSymptoms') || '以完整条目为准'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`观察：${itemText(this.currentDisease(), 'observationGuidance') || '记录实际表现、时间和变化趋势。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`照护：${itemText(this.currentDisease(), 'homeCareGuidance') || '按共享条目和专业建议执行。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`就医准备：${itemText(this.currentDisease(), 'carePreparation') || '整理已确认事实、时间和用药信息。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`预防：${itemText(this.currentDisease(), 'prevention') || '以条目来源和当地专业建议为准。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`来源：${itemText(this.currentDisease(), 'sourceRefs') || '共享疾病注册表'}`).fontSize(11).fontColor('#A65E51').width('100%');
+          Text(`升级规则：${itemText(this.currentDisease(), 'escalationRuleRef') || '出现明显担忧时及时寻求专业帮助。'}`).fontSize(12).fontColor('#B85F53').width('100%');
+          Row({ space: 8 }) { Button('记录已确认症状').layoutWeight(1).onClick(() => { this.selectTab('record'); this.openSurfaceDetail('record.secondary.症状 / 生病'); }); Button('进入受限预评估').layoutWeight(1).onClick(() => this.selectTab('ai')); }.width('100%');
+          Text('预评估只整理已确认输入，不作自动诊断；来源和治理状态保留在共享疾病注册表。').fontSize(11).fontColor('#806E68').width('100%');
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+      }
+    }.width('100%');
+  }
+
+  @Builder
+  private organSurface(): void {
+    Column({ space: 12 }) {
+      Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('器官学习').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
+      Text('结构学习与疾病关联来自共享内容；三维模型受设备资源控制，加载失败时保留完整文字。').fontSize(12).fontColor('#806E68').width('100%');
+      ForEach(this.explore?.organs || [], (organ: NativeExploreItem) => {
+        Row({ space: 10 }) {
+          Text(itemText(organ, 'icon', '◌')).fontSize(28).width(40);
+          Column() { Text(nestedText(organ, 'title', itemText(organ, 'id'))).fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(`儿童结构重点 · 相关疾病 ${this.organRelatedCount(organ)} 项`).fontSize(11).fontColor('#806E68'); Text(`三维：${itemText(this.organControlled(organ), 'status', 'text-fallback')}`).fontSize(11).fontColor('#A65E51'); Text(itemText(this.organControlled(organ), 'fallbackText', '当前保留完整结构文字与观察重点。')).fontSize(11).fontColor('#806E68').maxLines(2); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+          Button('关联疾病').height(34).fontSize(10).onClick(() => { this.selectedOrganId = itemText(organ, 'id'); this.selectedDiseaseId = ''; this.openSurfaceDetail('explore.disease'); this.loadExplore(this.exploreCategory, '', this.selectedOrganId); });
+        }.width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(14).accessibilityText(`${nestedText(organ, 'title')} 器官学习`);
+      }, (organ: NativeExploreItem) => itemText(organ, 'id'));
+      if ((this.explore?.anatomy.length || 0) > 0) {
+        Text('受控解剖资源').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+        ForEach(this.explore?.anatomy || [], (resource: NativeExploreItem) => Text(`${nestedText(resource, 'title', itemText(resource, 'id'))} · ${itemText(itemRecord(resource['controlled3d']), 'status', 'text-fallback')}`).fontSize(12).fontColor('#806E68').width('100%').padding(8), (resource: NativeExploreItem) => itemText(resource, 'id'));
+      }
+    }.width('100%');
+  }
+
+  @Builder
+  private experienceSurface(): void {
+    Column({ space: 12 }) {
+      Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('第三方育儿经验').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
+      Row({ space: 6 }) { Text(`年龄：${itemText(this.currentExperience(), 'ageText', '年龄信息不足')}`).fontSize(12).fontColor('#806E68').layoutWeight(1); Text(`缓存：${itemText(this.currentExperience(), 'cacheState', 'empty')}`).fontSize(12).fontColor('#A65E51'); }.width('100%');
+      Row({ space: 6 }) { ForEach(this.explore?.experienceCategories || [], (category: NativeExploreItem) => Button(nestedText(category, 'label', itemText(category, 'id'))).height(34).fontSize(10).backgroundColor(itemText(category, 'id') === this.exploreCategory ? '#FFE8DE' : '#F5EFEA').onClick(() => this.loadExplore(itemText(category, 'id'), this.diseaseQuery, this.selectedOrganId)), (category: NativeExploreItem) => itemText(category, 'id')); }.width('100%');
+      Text(itemText(this.currentExperience(), 'notice', '第三方内容请结合来源信息独立判断。')).fontSize(12).fontColor('#806E68').width('100%').padding(11).backgroundColor('#FFF3D8').borderRadius(12);
+      if (itemText(this.currentExperience(), 'cacheState') === 'error') Button('重试第三方经验源').width('100%').height(40).onClick(() => this.loadExplore(this.exploreCategory, this.diseaseQuery, this.selectedOrganId));
+      if (this.experienceArticles().length === 0) Text('当前没有可展示的经验文章；真实空状态不会伪造推荐。').fontSize(13).fontColor('#806E68').width('100%').padding(15);
+      ForEach(this.experienceArticles(), (article: Object) => {
+        Row({ space: 8 }) { Column() { Text(itemText(article, 'title', '未命名文章')).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(itemText(article, 'summary', '保留原文摘要，未转写为 BabyForge 审阅知识。')).fontSize(11).fontColor('#806E68').maxLines(3); Text(`来源：${itemText(article, 'sourceName', itemText(this.articleSource(article), 'name', '第三方来源'))} · ${itemText(article, 'publishedAt', itemText(this.currentExperience(), 'generatedAt', '时间未知'))}`).fontSize(10).fontColor('#A65E51'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Button('打开原文').height(34).fontSize(10).onClick(() => this.openExternal(itemText(article, 'url'))); }.width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(14);
+      }, (article: Object) => itemText(article, 'id', itemText(article, 'url')));
+      Text('来源身份、生成时间、过期时间和原始链接均保留；第三方经验不冒充已审阅医学知识。').fontSize(11).fontColor('#806E68').width('100%');
+    }.width('100%');
+  }
+
+  @Builder
+  private exploreSurface(): void {
+    Column({ space: 14 }) {
+      if (this.explorePhase === 'loading') {
+        this.nativeHeader('探索', '正在读取共享内容与来源元数据');
+        Column({ space: 10 }) { LoadingProgress().width(28).height(28); Text('正在读取探索页面模型…').fontSize(13).fontColor('#806E68'); }.width('100%').padding(28);
+      } else if (this.explorePhase === 'error' || this.explore === null) {
+        this.nativeHeader('探索', '共享探索模型暂时不可用');
+        Column({ space: 10 }) { Text('探索页面暂时无法读取').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.statusMessage).fontSize(13).fontColor('#806E68').textAlign(TextAlign.Center); Button('重试').onClick(() => this.loadExplore()); }.width('100%').padding(24).backgroundColor('#FFFCF8').borderRadius(18);
+      } else if (this.selectedRoute === 'explore.root') this.exploreRootSurface();
+      else if (this.selectedRoute === 'explore.vaccine') this.vaccineSurface();
+      else if (this.selectedRoute === 'explore.disease') this.diseaseSurface();
+      else if (this.selectedRoute === 'explore.organ') this.organSurface();
+      else this.experienceSurface();
+    }.width('100%');
+  }
+
+  @Builder
+  private settingsSurface(): void {
+    Column({ space: 14 }) {
+      Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('设置').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
+      if (this.settingsStale) Text('当前为设置缓存：可以查看，不要在离线状态提交资料或权限变更。').fontSize(12).fontColor('#8A6742').backgroundColor('#FFF3D8').borderRadius(12).padding(10).width('100%');
+      if (this.settingsPhase === 'loading') {
+        Column({ space: 10 }) { LoadingProgress().width(28).height(28); Text('正在读取共享设置模型…').fontSize(13).fontColor('#806E68'); }.width('100%').padding(28);
+      } else if (this.settingsPhase === 'error' || this.settings === null) {
+        Column({ space: 10 }) { Text('设置页面暂时无法读取').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.settingsMessage).fontSize(13).fontColor('#806E68').textAlign(TextAlign.Center); Button('重试').onClick(() => this.loadSettings()); }.width('100%').padding(24).backgroundColor('#FFFCF8').borderRadius(18);
+      } else {
+        Column({ space: 8 }) {
+          Text('账号与家庭').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(`${itemText(this.settings.user, 'email', '邮箱未知')} · ${itemText(this.settings.user, 'id', '账户未知')}`).fontSize(12).fontColor('#806E68').width('100%');
+          TextInput({ text: this.settingsNickname, placeholder: '账号昵称' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsNickname = value);
+          TextInput({ text: this.settingsBabyNickname, placeholder: '宝宝昵称' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsBabyNickname = value);
+          TextInput({ text: this.settingsBabyBirthDate, placeholder: '出生日期 YYYY-MM-DD' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsBabyBirthDate = value);
+          Row({ space: 8 }) { Button('简体中文').layoutWeight(1).backgroundColor(this.settingsLocale === 'zh-CN' ? '#FFE8DE' : '#F5EFEA').enabled(!this.settingsReadOnly()).onClick(() => this.settingsLocale = 'zh-CN'); Button('English').layoutWeight(1).backgroundColor(this.settingsLocale === 'en-US' ? '#FFE8DE' : '#F5EFEA').enabled(!this.settingsReadOnly()).onClick(() => this.settingsLocale = 'en-US'); }.width('100%');
+          Button(this.busy ? '等待共享确认…' : '保存账号与宝宝资料').width('100%').height(44).enabled(!this.settingsReadOnly() && !this.busy).fontColor(Color.White).backgroundColor('#D98372').borderRadius(22).onClick(() => this.saveSettings());
+          Text('更新出生资料后，年龄、阶段、疫苗与时间计划会从共享源重新计算。').fontSize(11).fontColor('#806E68').width('100%');
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+        Column({ space: 8 }) {
+          Text('通知与家庭联系人').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Button(this.emailSubscriptionEnabled() ? '关键更新邮件：已开启' : '关键更新邮件：已关闭').width('100%').height(40).enabled(!this.settingsReadOnly()).onClick(() => this.toggleEmailSubscription(!this.emailSubscriptionEnabled()));
+          TextInput({ text: this.settingsContactEmail, placeholder: '新增家庭通知联系人邮箱' }).enabled(!this.settingsReadOnly() && this.settings.permissions.canManageHousehold).height(44).onChange((value: string) => this.settingsContactEmail = value);
+          Button('添加联系人').width('100%').height(40).enabled(!this.settingsReadOnly() && this.settings.permissions.canManageHousehold && !this.busy).onClick(() => this.addContact());
+          ForEach(this.settings.contacts, (contact: NativeSettingsItem) => Row() { Text(itemText(contact, 'email')).fontSize(13).fontColor('#4E3B35').layoutWeight(1); Button('移除').height(30).fontSize(10).enabled(!this.settingsReadOnly() && this.settings?.permissions.canManageHousehold === true).onClick(() => this.removeContact(itemText(contact, 'id'))); }.width('100%').padding(8).backgroundColor('#F2F6EE').borderRadius(10), (contact: NativeSettingsItem) => itemText(contact, 'id'));
+          if (this.settings.permissions.canManageHousehold) {
+            Button('生成临时只读访客链接').width('100%').height(40).enabled(!this.busy).onClick(() => this.createVisitorLink());
+            if (this.visitorShareUrl.length > 0) Column({ space: 4 }) { Text('本次生成的可复制链接').fontSize(11).fontColor('#A65E51').width('100%'); Text(this.visitorShareUrl).fontSize(11).fontColor('#4E3B35').width('100%').maxLines(3).accessibilityText('新生成的访客分享链接'); }.width('100%').padding(10).backgroundColor('#F2F6EE').borderRadius(10);
+            ForEach(this.settings.visitorLinks, (link: NativeSettingsItem) => Row() { Column() { Text(`${itemText(link, 'status')} · ${itemText(link, 'expiresAt')}`).fontSize(12).fontColor('#4E3B35'); Text('只读 · 去标识分享').fontSize(10).fontColor('#806E68'); }.layoutWeight(1); Button('撤销').height(30).fontSize(10).onClick(() => this.revokeVisitorLink(itemText(link, 'id'))); }.width('100%').padding(8).backgroundColor('#FFF8F3').borderRadius(10), (link: NativeSettingsItem) => itemText(link, 'id'));
+          } else Text('当前成员没有访客链接管理权限。').fontSize(11).fontColor('#806E68').width('100%');
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+        Column({ space: 8 }) {
+          Text('自定义模型').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(`已保存 Key：${itemText(this.settings.llmConfig, 'apiKeyMasked', '未配置')}`).fontSize(12).fontColor('#806E68').width('100%');
+          TextInput({ text: this.settingsLlmBaseUrl, placeholder: 'Base URL' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsLlmBaseUrl = value);
+          TextInput({ text: this.settingsLlmModel, placeholder: '模型名称' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsLlmModel = value);
+          TextInput({ placeholder: 'API Key（只写入，不回显）' }).type(InputType.Password).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsLlmApiKey = value);
+          Row({ space: 8 }) { Button('保存模型配置').layoutWeight(1).enabled(!this.settingsReadOnly() && !this.busy).onClick(() => this.saveLlmConfig()); Button('清除').layoutWeight(1).enabled(!this.settingsReadOnly() && !this.busy).onClick(() => this.clearLlmConfig()); }.width('100%');
+          Text('API Key 永不回显；页面只显示脱敏值。').fontSize(11).fontColor('#806E68').width('100%');
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+        Column({ space: 8 }) {
+          Text('同步与本机数据').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(`同步状态：${itemText(this.settings.sync, 'status', 'unknown')} · ${itemText(this.settings.sync, 'lastSyncedAt', '未知')}`).fontSize(12).fontColor('#806E68').width('100%');
+          Row({ space: 8 }) { Button('重试同步').layoutWeight(1).onClick(() => { this.loadResource(); this.loadSettings(); }); Button('清除本机缓存').layoutWeight(1).onClick(() => this.clearNativeCache()); }.width('100%');
+          Button('安全退出').width('100%').height(42).fontColor(Color.White).backgroundColor('#C36B63').borderRadius(21).onClick(() => this.logout());
+          Row({ space: 8 }) { Button(`大字号：${this.largeText ? '开' : '关'}`).layoutWeight(1).onClick(() => { this.largeText = !this.largeText; this.chartContexts.clear(); }); Button(`减少动态：${this.reducedMotion ? '开' : '关'}`).layoutWeight(1).onClick(() => this.reducedMotion = !this.reducedMotion); }.width('100%');
+          Text('清除本机缓存不会删除云端事实、计划、媒体或家庭记录。').fontSize(11).fontColor('#806E68').width('100%');
+        }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
+        if (this.settingsReadOnly()) Text('当前为只读 / 无写入权限：设置写入、联系人、模型配置和状态变更均已禁用。').fontSize(12).fontColor('#B85F53').width('100%').padding(11).backgroundColor('#FFF3D8').borderRadius(12);
+        if (this.settingsMessage.length > 0) Text(this.settingsMessage).fontSize(12).fontColor('#A65E51').width('100%').accessibilityLevel('yes');
+      }
+    }.width('100%');
+  }
+
+  @Builder
   private placeholderSurface(): void {
     Column({ space: 16 }) {
       this.nativeHeader(this.surfaceTitle(), this.resource?.household?.baby?.nickname || '当前宝宝');
@@ -1514,10 +2376,13 @@ struct Index {
 
   @Builder
   private nativeSurface(): void {
-    if (this.activeTab === 'today') this.todaySurface();
+    if (this.selectedRoute === 'settings.secondary') this.settingsSurface();
+    else if (this.activeTab === 'today') this.todaySurface();
     else if (this.activeTab === 'record' && this.selectedRoute === 'record.root') this.recordSurface();
     else if (this.activeTab === 'record') this.recordDetailSurface();
     else if (this.activeTab === 'ai') this.aiSurface();
+    else if (this.activeTab === 'growth') this.growthSurface();
+    else if (this.activeTab === 'explore') this.exploreSurface();
     else this.placeholderSurface();
   }
 

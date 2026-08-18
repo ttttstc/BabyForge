@@ -21,6 +21,10 @@ async function householdForRequest(request, env) {
   return { ...principal, household }
 }
 
+function ownerOnly(auth) {
+  return auth.household.role === 'owner' ? null : json({ error: '只有 Owner 可以管理家庭通知联系人' }, 403)
+}
+
 function contactFromRow(row) {
   return {
     id: row.id,
@@ -48,6 +52,8 @@ export async function onRequestPost({ request, env }) {
   if (!env.DB) return json({ error: 'D1 未配置' }, 503)
   const auth = await householdForRequest(request, env)
   if (auth.response) return auth.response
+  const ownerError = ownerOnly(auth)
+  if (ownerError) return ownerError
   let body
   try { body = await request.json() } catch { return json({ error: '请求格式不正确' }, 400) }
   const email = normalizeContactEmail(body?.email)
