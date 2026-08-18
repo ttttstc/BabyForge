@@ -172,6 +172,12 @@ test('new and legacy invite links resolve to the shared household route', () => 
   assert.equal(parseInviteToken('not-an-invite'), '')
 })
 
+test('legacy pediatric links resolve to the canonical health routes', () => {
+  assert.equal(parseHashLocation('#/topic/pediatric-diseases').route, '#/health/diseases')
+  assert.equal(parseHashLocation('#/topic/pediatric-diseases?view=diseases').route, '#/health/diseases')
+  assert.equal(parseHashLocation('#/topic/pediatric-diseases?view=organs').route, '#/health/organs')
+})
+
 test('demo login uses server-side authentication then stays in the browser sandbox', async () => {
   const values = new Map()
   const paths = []

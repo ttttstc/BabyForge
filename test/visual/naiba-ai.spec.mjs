@@ -42,6 +42,7 @@ test('Naiba AI page asks about facts before making a health conclusion', async (
   await createBaby(page)
   await page.getByRole('button', { name: '奶爸 AI', exact: true }).click()
   await expect(page).toHaveURL(/#\/naiba-ai(?:\?.*)?$/)
+  await expect(page.getByRole('button', { name: '奶爸 AI', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { name: '奶爸AI', exact: true })).toBeVisible()
   await page.getByPlaceholder('自由提问，或描述刚刚发生的事…').fill('宝宝呼吸好像不太对')
   await page.getByRole('button', { name: '发送' }).click()

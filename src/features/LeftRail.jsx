@@ -47,7 +47,7 @@ export function LeftRail({ baby, ageDays, careEvents = [], locale = 'zh-CN', rea
         <button className="rail-guide-link" onClick={() => navigate(guidance ? `${ROUTES.experience}?category=cui-yutao` : ROUTES.growth)}>{guidance ? (isEnglish ? 'Open Cui Yutao parenting column' : '查看崔玉涛育儿专栏') : (isEnglish ? 'Open growth stage guide' : '查看成长阶段指南')}<ChevronRight size={15} /></button>
       </section>
 
-      <button className="topic-entry" onClick={() => navigate(ROUTES.pediatric)}>
+      <button className="topic-entry" onClick={() => navigate(ROUTES.healthDiseases)}>
         <span><BookOpen size={18} /><span><strong>{copy.topicEntry}</strong><small>{copy.topicEntryHint}</small></span></span>
         <ChevronRight size={18} />
       </button>
