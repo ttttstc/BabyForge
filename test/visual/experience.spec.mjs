@@ -105,6 +105,14 @@ test('experience search failure stays inside the experience surface', async ({ p
   await expect(page.getByRole('button', { name: '成长', exact: true })).toBeVisible()
 })
 
+test('route chunk failure stays recoverable', async ({ page }) => {
+  await page.route('**/src/features/ExperienceView.jsx*', (route) => route.abort())
+  await createBaby(page)
+  await page.getByRole('button', { name: '经验', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('页面加载失败')
+  await expect(page.getByRole('button', { name: '重新加载', exact: true })).toBeVisible()
+})
+
 test('Cui Yutao column is locally curated and shows every 0–12 month stage', async ({ page }) => {
   const requestedCategories = []
   await page.route('**/api/experience*', (route) => {

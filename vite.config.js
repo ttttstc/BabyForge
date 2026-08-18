@@ -58,6 +58,10 @@ function sendJson(response, status, value) {
   response.end(JSON.stringify(value))
 }
 
+export function filterVisualEventsByBaby(events, babyId) {
+  return events.filter((event) => !babyId || String(event.babyId) === String(babyId))
+}
+
 function localDemoPlugin(mode) {
   return {
     name: 'babyforge-local-demo-auth',
@@ -188,7 +192,9 @@ function localVisualTestPlugin() {
         const url = new URL(request.url, 'http://visual-test.local')
         const eventId = url.pathname.split('/').filter(Boolean).pop()
         if (request.method === 'GET') {
-          sendJson(response, 200, { events: [...visualEvents.values()], carePlanItems: [], concerns: [] })
+          const babyId = url.searchParams.get('babyId')
+          const events = filterVisualEventsByBaby([...visualEvents.values()], babyId)
+          sendJson(response, 200, { events, carePlanItems: [], concerns: [] })
           return
         }
         if (request.method === 'POST') {

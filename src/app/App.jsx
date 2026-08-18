@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
@@ -38,7 +38,33 @@ function RouteLoading({ locale }) {
   return <main className="login-shell" aria-busy="true"><section className="login-card"><p className="eyebrow">BabyForge</p><h2>{isEnglish ? 'Opening this space…' : '正在打开页面…'}</h2><p className="muted">{isEnglish ? 'Preparing your caregiver workspace.' : '正在准备你的照护工作区。'}</p></section></main>
 }
 
-export function App() {
+class RouteErrorBoundary extends Component {
+  state = { error: null }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  componentDidCatch(error) {
+    console.error('[BabyForge] Failed to load route chunk', error)
+  }
+
+  handleRetry = () => {
+    if (typeof globalThis.location?.reload === 'function') {
+      globalThis.location.reload()
+      return
+    }
+    this.setState({ error: null })
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    const isEnglish = this.props.locale === 'en-US'
+    return <main className="login-shell" role="alert"><section className="login-card"><p className="eyebrow">BabyForge</p><h2>{isEnglish ? 'This page could not be loaded' : '页面加载失败'}</h2><p className="muted">{isEnglish ? 'The connection may have been interrupted. Reload and try again.' : '页面资源可能加载中断，请重新加载后重试。'}</p><button type="button" className="primary-button compact" onClick={this.handleRetry}>{isEnglish ? 'Reload' : '重新加载'}</button></section></main>
+  }
+}
+
+function AppContent() {
   const location = useHashLocation()
   const route = location.route
   const inviteToken = inviteTokenFromLocation(location)
@@ -656,4 +682,8 @@ export function App() {
   }
 
   return <Suspense fallback={<RouteLoading locale={state.preferences.locale} />}><Workspace route={route} state={state} setState={commitState} onClear={clearWorkspace} onLogout={handleLogout} readOnly={readOnly} role={session?.role} cloudMode={session?.mode === 'cloudflare'} showcaseMode={session?.mode === 'showcase'} /></Suspense>
+}
+
+export function App() {
+  return <RouteErrorBoundary><AppContent /></RouteErrorBoundary>
 }
