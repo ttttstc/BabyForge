@@ -1,4 +1,4 @@
-import { Component, useEffect, useRef, useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
@@ -23,6 +23,10 @@ import { VaccineView } from '../features/VaccineView.jsx'
 import { VisitorView } from '../features/VisitorView.jsx'
 
 const REMOTE_WORKSPACE_FIELDS = ['baby', 'observations', 'questions', 'taskLogs', 'adminTaskRecords', 'growthMeasurements', 'milestoneRecords']
+
+const HarmonyNativePrototype = import.meta.env.DEV
+  ? lazy(() => import('../features/prototype/HarmonyNativePrototype.jsx').then((module) => ({ default: module.HarmonyNativePrototype })))
+  : null
 
 function demoWorkspace(session) {
   return createDemoWorkspace(new Date(), session?.demoVariant === 'mock' ? 'mock' : 'niwa')
@@ -272,6 +276,7 @@ function AppContent() {
   }
 
   useEffect(() => {
+    if (import.meta.env.DEV && route === ROUTES.harmonyPrototype) return
     if (route === ROUTES.resetPassword) return
     if (visitorToken) return
     // A Google/email callback updates the auth session before its household
@@ -621,6 +626,14 @@ function AppContent() {
     setState(initial)
     navigate(session && canEdit(session) ? ROUTES.onboarding : ROUTES.login)
     return true
+  }
+
+  if (import.meta.env.DEV && route === ROUTES.harmonyPrototype && HarmonyNativePrototype) {
+    return (
+      <Suspense fallback={null}>
+        <HarmonyNativePrototype />
+      </Suspense>
+    )
   }
 
   if (visitorToken) return <VisitorView token={visitorToken} locale={state.preferences.locale} />

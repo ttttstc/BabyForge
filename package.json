@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prototype:harmony": "vite --open \"/#/prototype/harmony-native?variant=B&screen=today\"",
     "build": "vite build",
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
