@@ -7,6 +7,7 @@ import { getAdminTasks, getDailyTasks, getStageMilestones, localDateKey } from '
 import { SUPPORT_TOPICS } from '../domain/healthSupport.js'
 import { projectBabyState } from '../domain/babyState.js'
 import { updateBabyProfileState, validateBasicInfoForm } from '../domain/babyProfile.js'
+import { calendarDateKey } from '../domain/date.js'
 import { navigate, parseHashLocation, RECORD_PANEL_TYPES as RECORD_PANEL_TYPE_LIST, resolveRecordReturnTo, ROUTES, useHashLocation } from '../app/router.js'
 import { Header } from './Header.jsx'
 import { CareTaskList } from './CareTaskList.jsx'
@@ -55,6 +56,15 @@ function currentCount(snapshot, stateKey) {
   return snapshot.recent24h.facts.filter((fact) => fact.stateKey === stateKey).length
 }
 
+function selectedDayFromQuery(value) {
+  if (!value || value === 'today') return localDayKey()
+  try {
+    return calendarDateKey(value)
+  } catch {
+    return localDayKey()
+  }
+}
+
 export function RecordCenter({ state, commitState, onLogout, readOnly = false, role = 'admin' }) {
   const locale = state.preferences.locale
   const isEnglish = locale === 'en-US'
@@ -72,10 +82,7 @@ export function RecordCenter({ state, commitState, onLogout, readOnly = false, r
   })
   const [editingEvent, setEditingEvent] = useState(null)
   const [eventDetailId, setEventDetailId] = useState(() => recordQuery.get('event') || '')
-  const [selectedDay, setSelectedDay] = useState(() => {
-    const requested = recordQuery.get('date')
-    return requested && requested !== 'today' && /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : localDayKey()
-  })
+  const [selectedDay, setSelectedDay] = useState(() => selectedDayFromQuery(recordQuery.get('date')))
   const [timelineFilter, setTimelineFilter] = useState(() => recordQuery.get('filter') || '')
   const [toast, setToast] = useState('')
   const [entryError, setEntryError] = useState('')
@@ -173,7 +180,6 @@ export function RecordCenter({ state, commitState, onLogout, readOnly = false, r
     return operation.then((result) => {
       if (result !== false) {
         closePanel()
-        setSelectedDay(localDayKey())
         setTimelineFilter('')
         if (hasReturnContext) navigate(returnTo)
       }
@@ -287,7 +293,7 @@ export function RecordCenter({ state, commitState, onLogout, readOnly = false, r
 
         {eventDetail && <RecordEventDetail event={eventDetail} locale={locale} readOnly={readOnly} onClose={cancelEntry} onCorrect={() => editRecord(eventDetail)} onVoid={() => voidRecord(eventDetail)} />}
 
-        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}:${recordQuery.get('metric') || ''}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} initialGrowthType={recordQuery.get('metric')} onSave={saveP0Record} onCancel={cancelEntry} />}
+        {activePanel && P0_PANEL_TYPES.has(activePanel) && <P0RecordComposer key={`${activePanel}:${editingEvent?.id || 'new'}:${recordQuery.get('metric') || ''}:${selectedDay}`} type={activePanel} locale={locale} readOnly={readOnly} initialEvent={editingEvent} recentGrowth={recentGrowth} initialGrowthType={recordQuery.get('metric')} selectedDay={selectedDay} onSave={saveP0Record} onCancel={cancelEntry} />}
 
         {activePanel && !P0_PANEL_TYPES.has(activePanel) && <section className="record-entry-sheet" data-testid={`record-entry-${activePanel}`}>
           <header className="record-entry-header"><div><p className="eyebrow">{isEnglish ? 'Add a note' : '补充记录'}</p><h2>{entryTitle(activePanel, isEnglish)}</h2></div><button className="record-close" type="button" onClick={cancelEntry} aria-label={isEnglish ? 'Close' : '关闭'}><X size={18} /></button></header>

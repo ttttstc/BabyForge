@@ -6,10 +6,12 @@ import {
   dateTimeInputValue,
   deleteBabyPhoto,
   detectPhotoTime,
+  getBabyPhotoBlob,
   isSupportedPhoto,
   listBabyPhotos,
   uploadBabyPhoto,
 } from '../domain/babyAlbum.js'
+import { calendarDateKey } from '../domain/date.js'
 
 function strings(locale) {
   return locale === 'en-US' ? {
@@ -110,12 +112,11 @@ function displayDate(value, locale) {
 }
 
 function calendarDayKey(value) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  try {
+    return calendarDateKey(value)
+  } catch {
+    return ''
+  }
 }
 
 function monthDays(cursor) {
@@ -128,18 +129,56 @@ function monthDays(cursor) {
   })
 }
 
-function withPhotoUrl(photo, remote, objectUrls) {
-  if (remote) return { ...photo, url: photo.contentUrl }
-  const url = URL.createObjectURL(photo.blob)
-  objectUrls.current.add(url)
-  return { ...photo, url }
+function usePhotoUrl(photo, { babyId, remote = false, eager = false } = {}) {
+  const targetRef = useRef(null)
+  const [intersecting, setIntersecting] = useState(false)
+  const [resolved, setResolved] = useState({ id: '', url: '' })
+  const visible = eager || typeof IntersectionObserver === 'undefined' || intersecting
+
+  useEffect(() => {
+    if (eager || !targetRef.current || typeof IntersectionObserver === 'undefined') {
+      return undefined
+    }
+    const observer = new IntersectionObserver(([entry]) => setIntersecting(Boolean(entry?.isIntersecting)), { rootMargin: '240px' })
+    observer.observe(targetRef.current)
+    return () => observer.disconnect()
+  }, [eager, photo?.id])
+
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    if (!photo || (!eager && !visible)) return undefined
+    if (remote) {
+      Promise.resolve().then(() => {
+        if (active) setResolved({ id: photo.id, url: photo.contentUrl || photo.url || '' })
+      })
+      return () => { active = false }
+    }
+    Promise.resolve(photo.blob || getBabyPhotoBlob({ babyId, photoId: photo.id }))
+      .then((blob) => {
+        if (!active || !blob) return
+        objectUrl = URL.createObjectURL(blob)
+        setResolved({ id: photo.id, url: objectUrl })
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [babyId, eager, photo, remote, visible])
+
+  return { ref: targetRef, url: visible && resolved.id === photo?.id ? resolved.url : '' }
+}
+
+function LazyPhotoImage({ photo, babyId, remote = false, alt = '', className = '', eager = false, ...props }) {
+  const { ref, url } = usePhotoUrl(photo, { babyId, remote, eager })
+  return <img ref={ref} className={className} src={url || undefined} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" {...props} />
 }
 
 export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = false, showcase = false }) {
   const copy = strings(locale)
   const inputRef = useRef(null)
   const dailyInputRef = useRef(null)
-  const objectUrls = useRef(new Set())
   const pendingUrls = useRef(new Set())
   const [photos, setPhotos] = useState([])
   const [selectedId, setSelectedId] = useState('')
@@ -160,7 +199,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     let active = true
     listBabyPhotos(baby.id, { remote, showcase }).then((records) => {
       if (!active) return
-      const next = records.map((photo) => withPhotoUrl(photo, remote, objectUrls))
+      const next = records
       setPhotos(next)
       setSelectedId(next[0]?.id || '')
     }).catch((nextError) => {
@@ -173,19 +212,15 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     }
   }, [baby.id, remote, showcase, copy.loadError])
 
-  useEffect(() => {
-    return () => {
-      const photosToRelease = objectUrls.current
-      const previewsToRelease = pendingUrls.current
-      objectUrls.current = new Set()
-      pendingUrls.current = new Set()
-      photosToRelease.forEach((url) => URL.revokeObjectURL(url))
-      previewsToRelease.forEach((url) => URL.revokeObjectURL(url))
-    }
+  useEffect(() => () => {
+    const previewsToRelease = pendingUrls.current
+    pendingUrls.current = new Set()
+    previewsToRelease.forEach((url) => URL.revokeObjectURL(url))
   }, [])
 
   const selectedIndex = Math.max(0, photos.findIndex((photo) => photo.id === selectedId))
   const selected = photos[selectedIndex] || null
+  const selectedImage = usePhotoUrl(selected, { babyId: baby.id, remote, eager: true })
   const shelfClass = photos.length <= 4 ? 'album-shelf-track is-short' : 'album-shelf-track'
   const dialogLabel = locale === 'en-US' ? `Add ${pending.length} photos` : `添加 ${pending.length} 张照片`
 
@@ -256,7 +291,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
           takenAt: manual || item.takenAt,
           timeSource: manual ? 'manual' : item.timeSource,
         }, { remote })
-        saved.push(withPhotoUrl(photo, remote, objectUrls))
+        saved.push(photo)
         setSaveProgress(index + 1)
       }
       setPhotos((current) => [...current, ...saved])
@@ -284,11 +319,6 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     try {
       await deleteBabyPhoto({ babyId: baby.id, photoId: selected.id }, { remote })
       const removedIndex = selectedIndex
-      const removedUrl = selected.url
-      if (removedUrl && objectUrls.current.has(removedUrl)) {
-        URL.revokeObjectURL(removedUrl)
-        objectUrls.current.delete(removedUrl)
-      }
       setPhotos((current) => current.filter((photo) => photo.id !== selected.id))
       setSelectedId(photos[removedIndex + 1]?.id || photos[removedIndex - 1]?.id || '')
     } catch (nextError) {
@@ -303,7 +333,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     setDownloading(true)
     setError('')
     try {
-      let blob = selected.blob
+      let blob = selected.blob || await getBabyPhotoBlob({ babyId: baby.id, photoId: selected.id }, { remote })
       if (!blob && remote) {
         const source = selected.contentUrl || selected.url
         const response = await fetch(`${source}${source.includes('?') ? '&' : '?'}download=1`, { credentials: 'include' })
@@ -379,8 +409,8 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
         ) : selected ? (
           <figure className="album-photo-feature" key={selected.id}>
             <div className="album-feature-media">
-              <img className="album-feature-ambient" src={selected.url} alt="" aria-hidden="true" />
-              <img className="album-feature-image" src={selected.url} alt={`${baby.nickname} · ${selectedDate}`} />
+              <img className="album-feature-ambient" src={selectedImage.url || undefined} alt="" aria-hidden="true" loading="eager" decoding="async" />
+              <img className="album-feature-image" src={selectedImage.url || undefined} alt={`${baby.nickname} · ${selectedDate}`} loading="eager" decoding="async" />
               <span className="album-photo-corner" aria-hidden="true"><Sparkles size={14} /></span>
             </div>
             <figcaption><span><Clock3 size={14} />{selectedDate}</span><small>{selected.fileName}</small><div className="album-photo-actions">{!readOnly && <button className="album-download-button" type="button" disabled={downloading || deleting} onClick={downloadSelectedPhoto} aria-label={copy.download} title={copy.download}>{downloading ? <Clock3 size={14} /> : <Download size={14} />}{downloading ? copy.downloading : copy.download}</button>}{!readOnly && <button className="album-delete-button" type="button" disabled={deleting || downloading} onClick={deleteSelectedPhoto} aria-label={copy.delete} title={copy.delete}>{deleting ? <Clock3 size={14} /> : <Trash2 size={14} />}{deleting ? copy.deleting : copy.delete}</button>}</div></figcaption>
@@ -417,7 +447,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
                     aria-label={`${displayTime(photo.takenAt, locale)} · ${photo.fileName}`}
                     data-testid="album-shelf-photo"
                   >
-                    <img src={photo.url} alt="" />
+                    <LazyPhotoImage photo={photo} babyId={baby.id} remote={remote} alt="" />
                     <span><CalendarClock size={12} />{displayDate(photo.takenAt, locale)}</span>
                   </button>
                 )
@@ -455,12 +485,12 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
           </form>
         </div>
       )}
-      {calendarOpen && <PhotoCalendarDialog locale={locale} copy={copy} photos={photos} photosByDay={photosByDay} cursor={calendarCursor} selectedDay={calendarDay} onChangeCursor={setCalendarCursor} onSelectDay={setCalendarDay} onSelectPhoto={selectCalendarPhoto} onClose={() => setCalendarOpen(false)} />}
+      {calendarOpen && <PhotoCalendarDialog locale={locale} copy={copy} babyId={baby.id} remote={remote} photos={photos} photosByDay={photosByDay} cursor={calendarCursor} selectedDay={calendarDay} onChangeCursor={setCalendarCursor} onSelectDay={setCalendarDay} onSelectPhoto={selectCalendarPhoto} onClose={() => setCalendarOpen(false)} />}
     </section>
   )
 }
 
-function PhotoCalendarDialog({ locale, copy, photos, photosByDay, cursor, selectedDay, onChangeCursor, onSelectDay, onSelectPhoto, onClose }) {
+function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, photosByDay, cursor, selectedDay, onChangeCursor, onSelectDay, onSelectPhoto, onClose }) {
   const isEnglish = locale === 'en-US'
   const days = monthDays(cursor)
   const selectedPhotos = photosByDay.get(selectedDay) || []
@@ -493,7 +523,7 @@ function PhotoCalendarDialog({ locale, copy, photos, photosByDay, cursor, select
           const dayPhotos = photosByDay.get(day.key) || []
           const active = day.key === selectedDay
           return <button type="button" key={day.key} className={`album-calendar-day${day.inMonth ? '' : ' muted'}${active ? ' selected' : ''}${dayPhotos.length ? ' has-photos' : ''}`} onClick={() => onSelectDay(day.key)} aria-label={`${day.key}${dayPhotos.length ? ` · ${dayPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : ''}`}>
-            {dayPhotos[0] ? <img src={dayPhotos[0].url} alt="" /> : <span>{day.date.getDate()}</span>}
+            {dayPhotos[0] ? <LazyPhotoImage photo={dayPhotos[0]} babyId={babyId} remote={remote} alt="" /> : <span>{day.date.getDate()}</span>}
             {dayPhotos.length > 0 && <b>{dayPhotos.length}</b>}
             {!dayPhotos.length && <small>{day.date.getDate()}</small>}
           </button>
@@ -501,7 +531,7 @@ function PhotoCalendarDialog({ locale, copy, photos, photosByDay, cursor, select
       </div>
       <section className="album-calendar-day-panel" aria-live="polite">
         <header><strong>{selectedDay}</strong><span>{selectedPhotos.length ? `${selectedPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : copy.calendarEmpty}</span></header>
-        {selectedPhotos.length > 0 && <div className="album-calendar-photo-list">{selectedPhotos.map((photo) => <button type="button" key={photo.id} onClick={() => onSelectPhoto(photo)}><img src={photo.url} alt="" /><span>{displayTime(photo.takenAt, locale)}</span></button>)}</div>}
+        {selectedPhotos.length > 0 && <div className="album-calendar-photo-list">{selectedPhotos.map((photo) => <button type="button" key={photo.id} onClick={() => onSelectPhoto(photo)}><LazyPhotoImage photo={photo} babyId={babyId} remote={remote} alt="" /><span>{displayTime(photo.takenAt, locale)}</span></button>)}</div>}
       </section>
     </article>
   </div>

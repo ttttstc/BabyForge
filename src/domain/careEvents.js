@@ -269,9 +269,14 @@ export function assertCareEvent(event) {
 
 export function createCorrectedCareEvent(original, patch = {}, options = {}) {
   const now = options.now || new Date().toISOString()
+  const sameCategory = !patch.category || patch.category === original.category
+  const payload = patch.payload && sameCategory
+    ? { ...(original.payload || {}), ...clone(patch.payload) }
+    : patch.payload === undefined ? original.payload : patch.payload
   return createCareEvent({
     ...original,
     ...patch,
+    payload,
     id: patch.id || options.id || makeId('event'),
     babyId: original.babyId,
     actor: patch.actor || patch.recordedBy || original.actor,
@@ -302,10 +307,16 @@ export function voidCareEvent(event, options = {}) {
 export function queryCareEvents(events = [], filters = {}) {
   const parseBoundary = (value, end = false) => {
     if (!value) return end ? Infinity : -Infinity
-    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(String(value))
-      ? `${value}T${end ? '23:59:59.999' : '00:00:00.000'}Z`
-      : value
-    return new Date(normalized).getTime()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+      const date = new Date(`${value}T00:00:00`)
+      if (Number.isNaN(date.getTime())) return Number.NaN
+      if (end) {
+        date.setDate(date.getDate() + 1)
+        return date.getTime() - 1
+      }
+      return date.getTime()
+    }
+    return new Date(value).getTime()
   }
   const from = parseBoundary(filters.from)
   const to = parseBoundary(filters.to, true)

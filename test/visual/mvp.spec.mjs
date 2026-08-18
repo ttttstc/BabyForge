@@ -95,6 +95,9 @@ test('parent uploads, switches, and reloads album photos', async ({ page }) => {
   await dialog.getByRole('button', { name: /保存照片/ }).click()
 
   await expect(page.getByTestId('album-shelf-photo')).toHaveCount(2)
+  await expect(page.getByTestId('album-shelf-photo').first().locator('img')).toHaveAttribute('loading', 'lazy')
+  await expect(page.getByTestId('album-shelf-photo').first().locator('img')).toHaveAttribute('decoding', 'async')
+  await expect(page.locator('.album-photo-feature .album-feature-image')).toHaveAttribute('loading', 'eager')
   await expect(page.locator('.album-photo-feature figcaption small')).toHaveText('login-hero.png')
   const featureBox = await page.locator('.album-photo-feature').boundingBox()
   const shelfBox = await page.locator('.album-shelf-section').boundingBox()
