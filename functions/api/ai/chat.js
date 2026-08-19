@@ -4,7 +4,7 @@ import { describeNaibaAgentFailure, runNaibaAgent } from '../../_shared/naibaAge
 import { getSkillContract, selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
-import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, getDecisionUnit, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
+import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, getDecisionUnit, runDecisionUnit, selectDecisionUnit, selectExplicitDecisionUnit } from '../../../src/domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
 import { searchApprovedKnowledge } from '../../../src/domain/knowledgePack.js'
@@ -278,13 +278,34 @@ export function provenanceSources({ knowledge = [], recommendation, decision }) 
   return [...new Map(items.filter((item) => item.id && item.version && item.url).map((item) => [`${item.id}:${item.version}`, item])).values()]
 }
 
-export function scopeAgentContext(context, injectedPageContext) {
+const CARE_FACT_SKILLS = new Set(['daily_care_analysis', 'detailed_care_analysis', 'visit_brief_generator', 'caregiver_handoff_builder'])
+const HEALTH_FACT_CATEGORIES = new Set(['temperature', 'temperature_observation', 'symptom_observation', 'medication', 'health_visit'])
+
+export function scopeAgentContext(context, injectedPageContext, skillId = '', contextMode = 'auto') {
+  if (contextMode === 'excluded') return { careEvents: [], growthEvents: [], carePlanItems: [], concerns: [], pageContext: null }
+  if (contextMode === 'selected' && injectedPageContext) {
+    const usedEventIds = new Set(injectedPageContext.usedEventIds || [])
+    return {
+      careEvents: context.careEvents.filter((event) => usedEventIds.has(event.id)),
+      growthEvents: context.growthEvents.filter((event) => usedEventIds.has(event.id)),
+      carePlanItems: injectedPageContext.source === 'today' && injectedPageContext.focus === 'plan' ? context.carePlanItems : [],
+      concerns: [],
+      pageContext: injectedPageContext,
+    }
+  }
+  const careEvents = CARE_FACT_SKILLS.has(skillId)
+    ? context.careEvents
+    : skillId === 'daily_feeding_recommender'
+      ? context.careEvents.filter((event) => ['breastfeeding', 'bottle_feeding'].includes(event.category))
+      : skillId === 'triage_and_preassessment'
+        ? context.careEvents.filter((event) => HEALTH_FACT_CATEGORIES.has(event.category))
+        : []
   return {
-    careEvents: context.careEvents,
-    growthEvents: context.growthEvents,
-    carePlanItems: context.carePlanItems,
-    concerns: context.concerns,
-    pageContext: injectedPageContext,
+    careEvents,
+    growthEvents: skillId === 'growth_and_development_interpreter' ? context.growthEvents : [],
+    carePlanItems: ['daily_growth_plan_builder', 'visit_brief_generator', 'caregiver_handoff_builder'].includes(skillId) ? context.carePlanItems : [],
+    concerns: ['triage_and_preassessment', 'visit_brief_generator', 'caregiver_handoff_builder'].includes(skillId) ? context.concerns : [],
+    pageContext: null,
   }
 }
 
@@ -306,6 +327,7 @@ export async function onRequestPost({ request, env }) {
   if (!babyId) return json({ error: '缺少宝宝档案编号' }, 422)
   const requestId = newRequestId()
   const pageContext = normalizeNaibaContext(body?.context)
+  const contextMode = body?.contextMode === 'excluded' ? 'excluded' : pageContext ? 'selected' : 'auto'
   let history
   try { history = normalizeNaibaHistory(body?.history) } catch { return json({ error: '当前对话上下文无效' }, 422) }
   let attachments
@@ -318,11 +340,6 @@ export async function onRequestPost({ request, env }) {
     : ['weight', 'length', 'headCircumference'].includes(String(pageContext?.focus || '')) ? String(pageContext.focus) : null
   const requestedSkillId = String(body?.skillId || '').slice(0, 120)
   const injectedPageContext = authorizedPageContext(pageContext, context)
-  const agentContext = scopeAgentContext(context, injectedPageContext)
-  const agentCareEvents = agentContext.careEvents
-  const agentGrowthEvents = agentContext.growthEvents
-  const scopedRecommendation = calculateFeedingRecommendation({ baby: context.baby, events: agentCareEvents, locale: context.baby.locale || 'zh-CN' })
-  const agentCarePlanItems = agentContext.carePlanItems
   const transcript = userTranscript(history, message)
   const historyHasTopic = history.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text))
   const historyHasHealthTopic = HEALTH_SENSITIVE_PATTERN.test(transcript)
@@ -330,12 +347,18 @@ export async function onRequestPost({ request, env }) {
   const contextualFollowUp = isNaibaContextualFollowUp(message) && (Boolean(pageContext) || historyHasTopic || historyHasHealthTopic)
   const routingMessage = contextualFollowUp || historyHasHealthTopic ? transcript : message
   const skillId = selectSkillId(routingMessage, requestedSkillId)
+  const agentContext = scopeAgentContext(context, injectedPageContext, skillId, contextMode)
+  const agentCareEvents = agentContext.careEvents
+  const agentGrowthEvents = agentContext.growthEvents
+  const scopedRecommendation = calculateFeedingRecommendation({ baby: context.baby, events: agentCareEvents, locale: context.baby.locale || 'zh-CN' })
+  const agentCarePlanItems = agentContext.carePlanItems
   const requestedDecisionUnitId = String(body?.decisionUnitId || '').trim()
   const explicitDecisionUnit = getDecisionUnit(requestedDecisionUnitId) ? requestedDecisionUnitId : ''
+  const explicitTopicUnit = selectExplicitDecisionUnit(message)
   const healthSensitive = HEALTH_SENSITIVE_PATTERN.test(message)
   // Replay every bounded user turn deterministically. The model transcript is
   // not the state machine: the server owns the unit and the allowlisted facts.
-  const decisionUnitId = explicitDecisionUnit || ((skillId === 'triage_and_preassessment' || healthSensitive || historyHasHealthTopic) ? selectDecisionUnit(transcript) : '')
+  const decisionUnitId = explicitTopicUnit || explicitDecisionUnit || ((skillId === 'triage_and_preassessment' || healthSensitive || historyHasHealthTopic) ? selectDecisionUnit(transcript) : '')
   const accumulatedFacts = accumulatedDecisionFacts(history, message)
   const hasDecisionContext = Object.keys(accumulatedFacts).length > 0
   const decisionFollowUp = Boolean(decisionUnitId && historyHasHealthTopic && (isNaibaContextualFollowUp(message) || Object.keys(extractedCurrentFacts).length > 0))

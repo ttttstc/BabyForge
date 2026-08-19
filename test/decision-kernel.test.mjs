@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractDecisionFacts, parseDecisionAnswer, runDecisionUnit, runUniversalSafetyGate, selectDecisionUnit } from '../src/domain/decisionKernel.js'
+import { extractDecisionFacts, parseDecisionAnswer, runDecisionUnit, runUniversalSafetyGate, selectDecisionUnit, selectExplicitDecisionUnit } from '../src/domain/decisionKernel.js'
 
 test('decision kernel asks for the highest-value missing fact', () => {
   const result = runDecisionUnit({ unitId: 'general_health_preassessment', facts: { breathing: 'steady' } })
@@ -47,6 +47,12 @@ test('decision intent and structured fact extraction cover specialist flows', ()
   assert.equal(selectDecisionUnit('宝宝趴睡安全吗'), 'safe_sleep')
   assert.deepEqual(extractDecisionFacts('腋下体温 38.2℃'), { measurementMethod: 'axillary', temperatureC: 38.2 })
   assert.equal(extractDecisionFacts('安静时呼吸每分钟 65 次').breathingRate, 65)
+})
+
+test('explicit topic switching ignores incidental sleep words in another health flow', () => {
+  assert.equal(selectExplicitDecisionUnit('现在呼吸有点急促'), 'breathing_abnormal')
+  assert.equal(selectExplicitDecisionUnit('晚上睡觉正常，也容易叫醒'), '')
+  assert.equal(selectExplicitDecisionUnit('宝宝趴睡安全吗'), 'safe_sleep')
 })
 
 test('numeric extraction does not treat height or breathing rate as temperature', () => {

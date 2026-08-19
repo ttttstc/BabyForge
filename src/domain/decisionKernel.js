@@ -171,13 +171,23 @@ export function extractDecisionFacts(message = '') {
   return facts
 }
 
-export function selectDecisionUnit(message = '') {
+export function selectExplicitDecisionUnit(message = '') {
   const text = String(message)
-  if (/睡眠|睡觉|仰卧|侧睡|趴睡|婴儿床|枕头|被子|safe sleep/i.test(text)) return 'safe_sleep'
+  // Generic words such as “睡觉正常” are common answers in another health
+  // flow and must not silently switch the active decision unit. Only concrete
+  // safe-sleep topics count as an explicit topic transition.
+  if (/仰卧|侧睡|趴睡|婴儿床|同床|睡眠表面|枕头|厚被|柔软物|safe sleep/i.test(text)) return 'safe_sleep'
   if (/黄疸|黄染|发黄|jaundice/i.test(text)) return 'jaundice_observation'
   if (/呼吸|喘|胸壁|发青|breath|cyan/i.test(text)) return 'breathing_abnormal'
   if (/体温|发热|发烧|低温|temperature|fever/i.test(text)) return 'temperature_abnormal'
   if (/吃奶少|吃得少|拒奶|喂养减少|feeding less|refuses feeds/i.test(text)) return 'feeding_change'
+  return ''
+}
+
+export function selectDecisionUnit(message = '') {
+  const explicit = selectExplicitDecisionUnit(message)
+  if (explicit) return explicit
+  if (/睡眠|睡觉/i.test(String(message))) return 'safe_sleep'
   return 'general_health_preassessment'
 }
 

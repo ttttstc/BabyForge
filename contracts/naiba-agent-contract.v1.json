@@ -1,10 +1,11 @@
 {
   "contract": "babyforge.naiba.agent",
-  "contractVersion": "1.0.0",
+  "contractVersion": "1.1.0",
   "endpoint": "/api/ai/chat",
   "request": {
     "required": ["message", "babyId", "history"],
-    "optional": ["skillId", "context", "decisionUnitId", "decisionFacts", "attachments"],
+    "optional": ["skillId", "context", "contextMode", "decisionUnitId", "decisionFacts", "attachments"],
+    "contextModes": ["auto", "selected", "excluded"],
     "maxHistoryTurns": 20,
     "maxHistoryCharacters": 16000,
     "contextSources": ["today", "record", "growth", "explore"],

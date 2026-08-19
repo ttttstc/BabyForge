@@ -164,17 +164,34 @@ test('page context injects only server-authorized facts for the selected surface
   assert.deepEqual(authorizedPageContext({ source: 'growth', focus: 'weight', label: '成长', selectedDay: '2026-08-18', timezone: 'UTC' }, context).measurements.map((event) => event.id), ['growth'])
 })
 
-test('Agent root receives authorized shared facts while removable page context only narrows emphasis', () => {
+test('Agent context separates capability-scoped facts, selected page facts, and explicit removal', () => {
   const careEvents = [{ id: 'care-1' }, { id: 'care-2' }]
   const growthEvents = [{ id: 'growth-1' }]
   const carePlanItems = [{ id: 'plan-1' }]
   const concerns = [{ id: 'concern-1' }]
   const context = { careEvents, growthEvents, carePlanItems, concerns }
-  assert.deepEqual(scopeAgentContext(context, null), { careEvents, growthEvents, carePlanItems, concerns, pageContext: null })
-  assert.deepEqual(scopeAgentContext(context, { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] }), {
-    careEvents, growthEvents, carePlanItems, concerns,
+  assert.deepEqual(scopeAgentContext(context, null, 'daily_care_analysis', 'auto'), { careEvents, growthEvents: [], carePlanItems: [], concerns: [], pageContext: null })
+  assert.deepEqual(scopeAgentContext(context, { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] }, 'daily_care_analysis', 'selected'), {
+    careEvents: [careEvents[1]], growthEvents: [], carePlanItems: [], concerns: [],
     pageContext: { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] },
   })
+  assert.deepEqual(scopeAgentContext(context, null, 'daily_care_analysis', 'excluded'), { careEvents: [], growthEvents: [], carePlanItems: [], concerns: [], pageContext: null })
+})
+
+test('explicit health topic switches override a pinned previous decision unit', async () => {
+  const fixture = apiFixture()
+  const response = await onRequestPost({ request: new Request('https://babyforge.test/api/ai/chat', {
+    method: 'POST',
+    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      message: '现在呼吸有点急促',
+      babyId: fixture.baby.id,
+      history: [{ role: 'user', text: '宝宝体温 38.2℃' }, { role: 'assistant', text: '测量部位是什么？' }],
+      decisionUnitId: 'temperature_abnormal',
+    }),
+  }), env: fixture })
+  const payload = await response.json()
+  assert.equal(payload.events.find((event) => event.type === 'decision')?.result.unitId, 'breathing_abnormal')
 })
 
 test('displayed authority sources are projected from the exact retrieved knowledge set', () => {

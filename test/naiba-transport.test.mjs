@@ -6,7 +6,7 @@ import { describeNaibaAgentFailure } from '../functions/_shared/naibaAgent.js'
 
 test('Naiba SSE parser keeps answer text and top-level fallback metadata', () => {
   const result = parseNaibaSse([
-    'data: {"type":"meta","contract":"babyforge.naiba.agent","contractVersion":"1.0.0","requestId":"request-1"}',
+    'data: {"type":"meta","contract":"babyforge.naiba.agent","contractVersion":"1.1.0","requestId":"request-1"}',
     'data: {"type":"message","delta":"本地回答"}',
     'data: {"type":"meta","fallback":true,"reason":"provider_auth_failed"}',
     'data: {"type":"done"}',

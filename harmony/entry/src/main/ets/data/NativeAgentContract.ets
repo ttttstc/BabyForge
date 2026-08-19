@@ -1,5 +1,5 @@
 export const NAIBA_AGENT_CONTRACT: string = 'babyforge.naiba.agent';
-export const NAIBA_AGENT_CONTRACT_VERSION: string = '1.0.0';
+export const NAIBA_AGENT_CONTRACT_VERSION: string = '1.1.0';
 
 export interface NativeAgentAttachmentSummary {
   kind: string;

@@ -1,5 +1,5 @@
 export const NAIBA_AGENT_CONTRACT = 'babyforge.naiba.agent'
-export const NAIBA_AGENT_CONTRACT_VERSION = '1.0.0'
+export const NAIBA_AGENT_CONTRACT_VERSION = '1.1.0'
 export const NAIBA_CONTEXT_SOURCES = Object.freeze(['today', 'record', 'growth', 'explore'])
 export const NAIBA_MAX_ATTACHMENTS = 3
 export const NAIBA_MAX_ATTACHMENT_BYTES = 6_000_000

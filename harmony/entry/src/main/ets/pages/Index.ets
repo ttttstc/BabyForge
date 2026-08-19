@@ -237,6 +237,7 @@ struct Index {
   @State private aiStatus: string = 'idle';
   @State private aiError: string = '';
   @State private aiContext: NativeAgentContext | null = null;
+  @State private aiContextExcluded: boolean = false;
   @State private aiAttachment: NativeAgentAttachmentDraft | null = null;
   @State private aiDraft: Object | null = null;
   @State private aiDraftId: string = '';
@@ -349,6 +350,7 @@ struct Index {
     this.aiSkillsExpanded = false;
     this.aiDecisionUnitId = '';
     this.aiContext = null;
+    this.aiContextExcluded = false;
     this.aiStatus = 'idle';
     this.aiError = '';
     this.busy = false;
@@ -1269,7 +1271,11 @@ struct Index {
       const ids = this.growth?.measurements.map((item: NativeGrowthItem) => itemText(item, 'id')).filter((id: string) => id.length > 0) || [];
       if (ids.length > 0) context.resourceIds = ids.slice(-40);
     } else if (source === 'explore') {
-      if (this.selectedDiseaseId.length > 0) {
+      const displayedDisease = this.selectedRoute === 'explore.disease' ? this.currentDisease() : null;
+      if (displayedDisease !== null) {
+        context.contentType = 'disease';
+        context.contentId = itemText(displayedDisease, 'id');
+      } else if (this.selectedDiseaseId.length > 0) {
         context.contentType = 'disease';
         context.contentId = this.selectedDiseaseId;
       } else if (this.selectedOrganId.length > 0) {
@@ -1278,6 +1284,7 @@ struct Index {
       }
     }
     this.aiContext = context;
+    this.aiContextExcluded = false;
     this.aiSelectedSkillId = source === 'today' ? 'daily_care_analysis' : source === 'growth' ? 'growth_and_development_interpreter' : '';
     if (this.aiInput.length === 0) this.setAiInput(prompt);
     this.selectTab('ai');
@@ -1526,7 +1533,8 @@ struct Index {
       const attachments = await this.aiAttachmentPayload();
       if (generation !== this.aiGeneration || this.aiStopRequested) return;
       this.aiMessages = this.aiMessages.concat([{ id: `user-${Date.now()}`, role: 'user', text: message, activity: '', sources: [], attachments }]);
-      const reply = await adapter.aiChat(message, String(baby.id), history, this.aiContext, attachments, this.aiSelectedSkillId, this.aiDecisionUnitId);
+      const contextMode = this.aiContext !== null ? 'selected' : this.aiContextExcluded ? 'excluded' : 'auto';
+      const reply = await adapter.aiChat(message, String(baby.id), history, this.aiContext, contextMode, attachments, this.aiSelectedSkillId, this.aiDecisionUnitId);
       if (generation !== this.aiGeneration || this.aiStopRequested) return;
       if (reply.decision !== null) {
         const unitId = String((reply.decision as Record<string, Object>)['unitId'] || '');
@@ -2411,7 +2419,7 @@ struct Index {
       if (this.aiContext !== null) {
         Row({ space: 8 }) {
           Column() { Text('页面上下文').fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5B97'); Text(this.aiContext.label).fontSize(13).fontColor('#735F98').margin({ top: 3 }); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-          Button('移除').height(32).fontSize(11).onClick(() => this.aiContext = null);
+          Button('移除').height(32).fontSize(11).onClick(() => { this.aiContext = null; this.aiContextExcluded = true; });
         }.width('100%').padding(12).backgroundColor('#F5F0FB').borderRadius(15);
       }
       Column({ space: 10 }) {
