@@ -1264,8 +1264,10 @@ struct Index {
   }
 
   private openAiFrom(source: NativeTab): void {
-    const label = source === 'today' ? '今天的已确认照护事实' : source === 'record' ? '照护事实时间线' : source === 'growth' ? '当前成长测量趋势' : '当前育儿内容';
-    const prompt = source === 'today' ? '请分析今天的照护记录。' : source === 'record' ? '请帮我整理最近的照护事实。' : source === 'growth' ? '请解释当前成长趋势。' : '请结合当前内容回答我的问题。';
+    const displayedDisease: NativeExploreItem | null = source === 'explore' && this.selectedRoute === 'explore.disease' ? this.currentDisease() : null;
+    if (source === 'explore' && displayedDisease === null) return;
+    const label = source === 'today' ? '今天的已确认照护事实' : source === 'record' ? '照护事实时间线' : source === 'growth' ? '当前成长测量趋势' : '当前疾病内容';
+    const prompt = source === 'today' ? '请分析今天的照护记录。' : source === 'record' ? '请帮我整理最近的照护事实。' : source === 'growth' ? '请解释当前成长趋势。' : '请解释当前疾病内容和适用边界。';
     const timezone = this.deviceTimezone();
     const context: NativeAgentContext = {
       source,
@@ -1279,18 +1281,9 @@ struct Index {
     } else if (source === 'growth') {
       const ids = this.growth?.measurements.map((item: NativeGrowthItem) => itemText(item, 'id')).filter((id: string) => id.length > 0) || [];
       if (ids.length > 0) context.resourceIds = ids.slice(-40);
-    } else if (source === 'explore') {
-      const displayedDisease = this.selectedRoute === 'explore.disease' ? this.currentDisease() : null;
-      if (displayedDisease !== null) {
-        context.contentType = 'disease';
-        context.contentId = itemText(displayedDisease, 'id');
-      } else if (this.selectedDiseaseId.length > 0) {
-        context.contentType = 'disease';
-        context.contentId = this.selectedDiseaseId;
-      } else if (this.selectedOrganId.length > 0) {
-        context.contentType = 'organ';
-        context.contentId = this.selectedOrganId;
-      }
+    } else if (displayedDisease !== null) {
+      context.contentType = 'disease';
+      context.contentId = itemText(displayedDisease, 'id');
     }
     this.aiContext = context;
     this.aiSelectedSkillId = source === 'today'
@@ -1299,9 +1292,7 @@ struct Index {
         ? 'detailed_care_analysis'
         : source === 'growth'
           ? 'growth_and_development_interpreter'
-          : context.contentType === 'disease'
-            ? 'disease_explainer'
-            : 'stage_parenting_qa';
+          : 'disease_explainer';
     if (this.aiInput.length === 0) this.setAiInput(prompt);
     this.selectTab('ai');
   }
@@ -2319,7 +2310,7 @@ struct Index {
           Text(`预防：${itemText(this.currentDisease(), 'prevention') || '以条目来源和当地专业建议为准。'}`).fontSize(12).fontColor('#806E68').width('100%');
           Text(`来源：${itemText(this.currentDisease(), 'sourceRefs') || '共享疾病注册表'}`).fontSize(11).fontColor('#A65E51').width('100%');
           Text(`升级规则：${itemText(this.currentDisease(), 'escalationRuleRef') || '出现明显担忧时及时寻求专业帮助。'}`).fontSize(12).fontColor('#B85F53').width('100%');
-          Row({ space: 8 }) { Button('记录已确认症状').layoutWeight(1).onClick(() => { this.selectTab('record'); this.openSurfaceDetail('record.secondary.症状 / 生病'); }); Button('进入受限预评估').layoutWeight(1).onClick(() => this.selectTab('ai')); }.width('100%');
+          Row({ space: 8 }) { Button('记录已确认症状').layoutWeight(1).onClick(() => { this.selectTab('record'); this.openSurfaceDetail('record.secondary.症状 / 生病'); }); Button('让奶爸 AI 解释').layoutWeight(1).onClick(() => this.openAiFrom('explore')); }.width('100%');
           Text('预评估只整理已确认输入，不作自动诊断；来源和治理状态保留在共享疾病注册表。').fontSize(11).fontColor('#806E68').width('100%');
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
       }
@@ -2375,7 +2366,6 @@ struct Index {
       else if (this.selectedRoute === 'explore.disease') this.diseaseSurface();
       else if (this.selectedRoute === 'explore.organ') this.organSurface();
       else this.experienceSurface();
-      if (this.explorePhase === 'ready' && this.explore !== null) Button('带着当前内容问奶爸 AI').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('explore'));
     }.width('100%');
   }
 
@@ -2440,7 +2430,6 @@ struct Index {
       this.nativeHeader(this.surfaceTitle(), this.resource?.household?.baby?.nickname || '当前宝宝');
       Column({ space: 12 }) { Text(this.activeTab === 'ai' ? '奶爸 AI 原生入口已就绪' : '原生业务表面已就绪').fontSize(this.largeText ? 22 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.surfaceDetail()).fontSize(this.largeText ? 16 : 13).fontColor('#806E68').textAlign(TextAlign.Center); }.width('100%').padding(30).backgroundColor('#FFFCF8').borderRadius(22);
       if (this.activeTab === 'growth') Button('让奶爸 AI 解释成长趋势').width('100%').height(44).onClick(() => this.openAiFrom('growth'));
-      if (this.activeTab === 'explore') Button('带着当前内容问奶爸 AI').width('100%').height(44).onClick(() => this.openAiFrom('explore'));
     }.width('100%');
   }
 

@@ -2,7 +2,6 @@ import { tool } from '@openai/agents'
 import { z } from 'zod'
 import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { buildCaregiverHandoff, buildDailyGrowthPlan, buildDetailedCareAnalysis, buildGrowthInterpretation, buildVisitBrief, calculateCareStatistics, parseMedicalReportText } from '../../src/domain/naibaCapabilities.js'
-import { parseCareEventDraft } from '../../src/domain/careEventDraft.js'
 import { calculateFeedingRecommendation } from '../../src/domain/feedingRecommendation.js'
 import { runDecisionUnit, runUniversalSafetyGate } from '../../src/domain/decisionKernel.js'
 import { toolOutputAllowed } from '../../src/domain/naibaGuardrails.js'
@@ -119,16 +118,6 @@ const decisionUnit = tool({
   },
 })
 
-const createDraft = tool({
-  name: 'create_care_event_draft',
-  description: 'Create an editable factual care-event draft. It does not save anything and always requires caregiver confirmation.',
-  parameters: z.object({ message: z.string().min(1).max(1_000) }),
-  execute: ({ message }, runContext) => {
-    const value = runtime(runContext)
-    return parseCareEventDraft({ message, baby: value.baby, actor: value.actor, now: new Date(value.now || Date.now()).toISOString(), locale: value.locale })
-  },
-})
-
 const parseReport = tool({
   name: 'parse_medical_report',
   description: 'Extract checkable fields from report text. Preserve uncertainty; do not diagnose.',
@@ -168,7 +157,6 @@ const COMMON = [getBabyContext, getRecentCareEvents]
 const SKILL_TOOLS = {
   baby_context_injector: [getBabyContext],
   authority_knowledge_retriever: [searchKnowledge],
-  care_event_quick_logger: [createDraft],
   daily_care_analysis: [calculateStatistics],
   daily_feeding_recommender: [getFeedingProfile, calculateFeedingReference, searchKnowledge],
   detailed_care_analysis: [calculateStatistics, buildDetailedAnalysis],

@@ -34,7 +34,7 @@ export function buildNaibaLocalAnswer(message, { recommendation = {}, decision =
     return recommendation.message || (english ? 'I need one more detail about the baby before I can make this useful.' : '我还差一点宝宝的信息，补上后我才能给你更贴合的建议。')
   }
   if (/记录|record|log/.test(value)) {
-    return english ? 'Sure — I can turn what just happened into a record draft. Please check the details before saving it.' : '可以，我先把刚才发生的事整理成记录草稿；保存前你再帮我核对一下细节。'
+    return english ? 'Use the Record page to save this as a verified care fact. Naiba AI does not create ordinary care-record drafts.' : '请到“记录”页通过确定性流程保存这条照护事实；奶爸 AI 不生成普通照护记录草稿。'
   }
   return english ? 'I’m here with you. Tell me what worries you most right now — feeding, sleep, diapers, or anything that feels different from usual — and we’ll sort it out together.' : '我在这儿。你直接告诉我现在最担心什么就好：吃、睡、排便，或者哪里和平时不一样，我们一起一步一步捋清楚。'
 }

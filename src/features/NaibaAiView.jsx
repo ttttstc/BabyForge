@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowDown, ArrowLeft, BookOpenCheck, CheckCircle2, ChevronDown, ChevronUp, CircleStop, FileUp, ImagePlus, Info, RotateCcw, Send, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { getAgeDays } from '../domain/baby.js'
 import { createCareEvent } from '../domain/careEvents.js'
-import { draftText, isCareEventDraftIntent, parseCareEventDraft, validateCareEventDraft } from '../domain/careEventDraft.js'
+import { validateCareEventDraft } from '../domain/careEventDraft.js'
 import { createReportFactDraft, parseMedicalReportText } from '../domain/naibaCapabilities.js'
 import { calculateFeedingRecommendation } from '../domain/feedingRecommendation.js'
 import { extractDecisionFacts, parseDecisionAnswer, runDecisionUnit, selectDecisionUnit, selectExplicitDecisionUnit } from '../domain/decisionKernel.js'
@@ -84,9 +84,9 @@ function initialPageContext(topic, locale, state) {
   }
   if (topic === 'record') return { source: 'record', focus: 'timeline', label: english ? 'Care record timeline' : '照护事实时间线', timezone, ...(dayEventIds.length ? { resourceIds: dayEventIds } : {}) }
   if (topic === 'explore' || routeParams.get('contentType')) {
-    const contentType = ['disease', 'organ', 'article'].includes(routeParams.get('contentType')) ? routeParams.get('contentType') : ''
+    const contentType = routeParams.get('contentType') === 'disease' ? 'disease' : ''
     const contentId = String(routeParams.get('contentId') || '').trim()
-    return { source: 'explore', focus: 'current-topic', label: english ? 'Current parenting topic' : '当前育儿内容', timezone, ...(contentType && contentId ? { contentType, contentId } : {}) }
+    return contentType && contentId ? { source: 'explore', focus: 'current-topic', label: english ? 'Current condition' : '当前疾病内容', timezone, contentType, contentId } : null
   }
   return null
 }
@@ -124,7 +124,6 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
   const [healthUnitId, setHealthUnitId] = useState('general_health_preassessment')
   const [healthFacts, setHealthFacts] = useState({})
   const [healthEpisodeId, setHealthEpisodeId] = useState('')
-  const [recordContext, setRecordContext] = useState(null)
   const [pageContext, setPageContext] = useState(() => initialPageContext(topic, locale, state))
   const [pendingImages, setPendingImages] = useState([])
   const [lastFailedInput, setLastFailedInput] = useState(null)
@@ -241,7 +240,6 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
     setInput('')
     setPendingImages([])
     setLastFailedInput(null)
-    setRecordContext(null)
     setHealthActive(false)
     setHealthFacts({})
     setHealthEpisodeId('')
@@ -318,22 +316,14 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
     setLastFailedInput(null)
     setError('')
     if (!retrying) setMessages((current) => [...current, { id: userMessageId, role: 'user', text: message, attachments }])
-    const contextualFollowUp = (recordContext || healthActive || pageContext || conversationMessages.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text))) && isNaibaContextualFollowUp(message)
+    const contextualFollowUp = (healthActive || pageContext || conversationMessages.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text))) && isNaibaContextualFollowUp(message)
     if (!isNaibaTopicInScope(message) && !contextualFollowUp) {
       setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: 'assistant', text: NAIBA_OUT_OF_SCOPE_MESSAGE }])
       return
     }
     setBusy(true)
     try {
-      const recordRequested = Boolean(recordContext) || isCareEventDraftIntent(message)
-      let parsedDraft = !cloudMode && recordRequested ? parseCareEventDraft({ message, baby: state.baby, actor, context: recordContext, locale }) : null
-      if (parsedDraft?.status === 'draft_ready') parsedDraft = await persistDraft(parsedDraft)
-      if (!isCurrent()) {
-        await discardServerDraft(parsedDraft?.draftId)
-        return
-      }
-      const urgentRecordSignal = /呼吸困难|呼吸费力|喘不上气|发青|蓝唇|叫不醒|无法唤醒|高热|严重呕吐|持续腹泻/i.test(message)
-      const handlesHealth = healthActive || (isHealthMessage(message) && (!recordRequested || urgentRecordSignal))
+      const handlesHealth = healthActive || isHealthMessage(message)
       let decision = null
       if (handlesHealth) {
         const explicitTopicUnit = selectExplicitDecisionUnit(message)
@@ -353,21 +343,9 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
       if (!isCurrent()) return
       let answer
       const assistantId = userMessageId.replace('user-', 'assistant-')
-      if (parsedDraft && !handlesHealth) {
-        if (parsedDraft.status === 'needs_information') {
-          setRecordContext({ category: parsedDraft.category })
-          answer = draftText(parsedDraft, locale)
-        } else if (parsedDraft.status === 'draft_ready') {
-          setRecordContext(null)
-          answer = draftText(parsedDraft, locale)
-        } else {
-          setRecordContext(null)
-          answer = parsedDraft.message || draftText(parsedDraft, locale)
-        }
-        setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer, ...(parsedDraft.status === 'draft_ready' ? { draft: parsedDraft } : {}) }])
-      } else if (!cloudMode && decision && decision.status !== 'decision_ready') {
+      if (!cloudMode && decision && decision.status !== 'decision_ready') {
         answer = localAnswer(message, recommendation, locale, decision)
-        setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer, ...(parsedDraft?.status === 'draft_ready' ? { draft: parsedDraft } : {}) }])
+        setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer }])
       }
       else {
         if (demoMode) {
@@ -442,8 +420,8 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
           <div className="naiba-context-strip"><div><strong>{isEnglish ? 'I know this baby' : '我已了解这个宝宝'}</strong><span>{state.baby.nickname} · {isEnglish ? `${ageDays} days old` : `出生后 ${ageDays} 天`} · {recommendation.feedingModeLabel || (isEnglish ? 'Feeding mode unknown' : '喂养方式待补充')}</span></div><span className="naiba-context-status"><CheckCircle2 size={14} />{isEnglish ? 'Facts stay separate from guesses' : '事实与推断分开'}</span></div>
           {pageContext && <div className="naiba-page-context"><div><Sparkles size={15} /><span><strong>{isEnglish ? 'Page context (read-only)' : '页面上下文（自动注入）'}</strong>{naibaContextLabel(pageContext, locale)}</span></div></div>}
           <div className="naiba-message-viewport"><div ref={messageListRef} className="naiba-message-list" onScroll={handleMessageScroll}>{messages.map((message) => <article key={message.id} className={`naiba-message ${message.role}`}><span className="naiba-message-role">{message.role === 'assistant' ? <Sparkles size={14} /> : (isEnglish ? 'You' : '你')}</span><div>{message.attachments?.length > 0 && <div className="naiba-message-images">{message.attachments.map((item) => <img key={item.name} src={item.dataUrl} alt={item.name} />)}</div>}<NaibaMessageContent role={message.role} text={message.text} locale={locale} />{message.activity?.map((item) => <p className="naiba-activity" key={`${item.skillId}-${item.status}`}><CheckCircle2 size={13} />{item.label}</p>)}{message.sources?.length > 0 && <div className="naiba-sources">{message.sources.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}>{isEnglish ? 'Authority source' : '权威来源'}</a>)}</div>}{message.artifact && <NaibaCapabilityCard artifact={message.artifact} locale={locale} />}{message.draft && <DraftConfirmationCard draft={message.draft} locale={locale} readOnly={readOnly} busy={busy} onConfirm={(event) => confirmDraft(message.id, event, message.draft?.draftId)} onDismiss={() => void dismissDraft(message.id, message.draft?.draftId)} />}</div></article>)}{busy && <article className="naiba-message assistant"><span className="naiba-message-role"><Sparkles size={14} /></span><p className="naiba-thinking">{isEnglish ? 'Checking facts and evidence…' : '正在核对事实和依据…'}</p></article>}</div>{showScrollToBottom && <button type="button" className="naiba-scroll-bottom" onClick={() => scrollMessagesToBottom()} aria-label={isEnglish ? 'Back to bottom' : '回到底部'} title={isEnglish ? 'Back to bottom' : '回到底部'}><ArrowDown size={15} /></button>}</div>
-          <div className="naiba-suggestion-row">{[(isEnglish ? 'What should my baby eat today?' : '今天宝宝怎么吃？'), (isEnglish ? 'Why this quantity?' : '为什么推荐这个量？'), (isEnglish ? 'Help me record a feed' : '帮我记录刚才的喂养')].map((suggestion) => <button key={suggestion} type="button" onClick={() => sendMessage(suggestion)}>{suggestion}</button>)}</div>
-          <form className="naiba-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage() }}>{pendingImages.length > 0 && <div className="naiba-pending-images">{pendingImages.map((item, index) => <div key={`${item.name}-${index}`}><img src={item.dataUrl} alt={item.name} /><button type="button" onClick={() => setPendingImages((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={isEnglish ? 'Remove image' : '移除图片'}><X size={12} /></button></div>)}<small>{isEnglish ? 'Images are sent only when you press Send.' : '图片仅在你点击发送后传给 AI。'}</small></div>}<textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !(event.nativeEvent?.isComposing || event.keyCode === 229)) { event.preventDefault(); void sendMessage() } }} placeholder={isEnglish ? 'Ask anything about this baby…' : '自由提问，或描述刚刚发生的事…'} rows="2" disabled={busy} /><div className="naiba-composer-actions"><div className="naiba-attachment-actions"><label className={`naiba-attach ${busy ? 'disabled' : ''}`}><ImagePlus size={15} />{isEnglish ? 'Photo' : '图片'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(change) => { const file = change.target.files?.[0]; change.target.value = ''; void stageImage(file) }} /></label><label className={`naiba-attach ${busy ? 'disabled' : ''}`}><FileUp size={15} />{isEnglish ? 'Report' : '报告'}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" disabled={busy} onChange={(change) => { const file = change.target.files?.[0]; change.target.value = ''; void handleReportFile(file) }} /></label></div>{generating ? <button type="button" className="naiba-send naiba-stop" onClick={stopGeneration} aria-label={isEnglish ? 'Stop generation' : '停止生成'}><CircleStop size={15} />{isEnglish ? 'Stop' : '停止生成'}</button> : <button type="submit" className="naiba-send" disabled={busy || (!input.trim() && pendingImages.length === 0)}><Send size={15} />{isEnglish ? 'Send' : '发送'}</button>}</div></form>
+          <div className="naiba-suggestion-row">{[(isEnglish ? 'What should my baby eat today?' : '今天宝宝怎么吃？'), (isEnglish ? 'Why this quantity?' : '为什么推荐这个量？'), (isEnglish ? 'Explain the recent growth trend' : '解释最近的成长趋势')].map((suggestion) => <button key={suggestion} type="button" onClick={() => sendMessage(suggestion)}>{suggestion}</button>)}</div>
+          <form className="naiba-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage() }}>{pendingImages.length > 0 && <div className="naiba-pending-images">{pendingImages.map((item, index) => <div key={`${item.name}-${index}`}><img src={item.dataUrl} alt={item.name} /><button type="button" onClick={() => setPendingImages((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={isEnglish ? 'Remove image' : '移除图片'}><X size={12} /></button></div>)}<small>{isEnglish ? 'Images are sent only when you press Send.' : '图片仅在你点击发送后传给 AI。'}</small></div>}<textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !(event.nativeEvent?.isComposing || event.keyCode === 229)) { event.preventDefault(); void sendMessage() } }} placeholder={isEnglish ? 'Ask anything about this baby…' : '自由提问，或描述宝宝当前情况…'} rows="2" disabled={busy} /><div className="naiba-composer-actions"><div className="naiba-attachment-actions"><label className={`naiba-attach ${busy ? 'disabled' : ''}`}><ImagePlus size={15} />{isEnglish ? 'Photo' : '图片'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(change) => { const file = change.target.files?.[0]; change.target.value = ''; void stageImage(file) }} /></label><label className={`naiba-attach ${busy ? 'disabled' : ''}`}><FileUp size={15} />{isEnglish ? 'Report' : '报告'}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" disabled={busy} onChange={(change) => { const file = change.target.files?.[0]; change.target.value = ''; void handleReportFile(file) }} /></label></div>{generating ? <button type="button" className="naiba-send naiba-stop" onClick={stopGeneration} aria-label={isEnglish ? 'Stop generation' : '停止生成'}><CircleStop size={15} />{isEnglish ? 'Stop' : '停止生成'}</button> : <button type="submit" className="naiba-send" disabled={busy || (!input.trim() && pendingImages.length === 0)}><Send size={15} />{isEnglish ? 'Send' : '发送'}</button>}</div></form>
           {error && <div className="naiba-error-row"><p className="save-error" role="alert">{error}</p>{lastFailedInput && <button type="button" onClick={() => void sendMessage(lastFailedInput.message, lastFailedInput.attachments, true)}><RotateCcw size={13} />{isEnglish ? 'Retry' : '重试'}</button>}</div>}
         </section>
         <aside className="naiba-evidence-rail">

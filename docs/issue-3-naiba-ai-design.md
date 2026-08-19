@@ -44,7 +44,7 @@ React UI
 - 临时外部证据只补充一般教育建议，不能驱动或改写最低行动要求。
 - 无法验证、来源冲突或超出适用范围时失败关闭，明确说明能力限制。
 
-## 5. 十四个 Skill
+## 5. 十三个 Skill
 
 Skill 是单 Agent 内的任务协议，不是独立机器人。每个 Skill 固定声明触发条件、输入、所需上下文、允许工具、输出 Schema、安全门和失败退化。
 
@@ -52,7 +52,6 @@ Skill 是单 Agent 内的任务协议，不是独立机器人。每个 Skill 固
 |---|---|---|---|---|
 | `baby_context_injector` | 自动使用宝宝背景，减少重复询问 | 档案、阶段、基线、近期事实、关注事项、医生安排 | `get_baby_context`、`get_recent_care_events` | 生成紧凑上下文；不做诊断 |
 | `authority_knowledge_retriever` | 提供可追溯的科学育儿依据 | 主题、年龄、特殊背景、知识包版本 | `search_approved_knowledge`、受控外部检索 | 返回 claims、适用范围、来源和限制 |
-| `care_event_quick_logger` | 一句话生成记录草稿 | 当前记录人、宝宝、时间上下文 | `create_care_event_draft`、`confirm_care_event` | 未经确认不写入 |
 | `daily_care_analysis` | 首页给出一条短分析 | 最近 24h/72h、个人基线、覆盖度 | `calculate_care_statistics` | 不把缺失当 0，不伪造趋势 |
 | `daily_feeding_recommender` | 首页给出今日奶量/辅食与用量建议 | 月龄/纠正月龄、体重、喂养方式、过敏与已引入食物、近期摄入、医生安排 | `get_feeding_profile`、`calculate_feeding_reference`、知识检索 | 用量必须来自确定性规则；缺关键输入只请求补充；不生成药物剂量或替代特殊医嘱 |
 | `detailed_care_analysis` | 解释当前情况和下一步 | 状态快照、统计、相关知识 | 统计、知识检索、决策查询 | 最多三个动作，健康行动服从规则 |
@@ -70,7 +69,7 @@ Skill 是单 Agent 内的任务协议，不是独立机器人。每个 Skill 固
 - 首页分析、今日饮食建议、详细分析、成长计划、报告解读等显式入口直接选择对应 Skill，不让模型猜。
 - 自由对话由结构化意图分类产生一个主 Skill，可附加上下文和知识检索两个支持 Skill。
 - 实际健康主诉强制进入 `triage_and_preassessment`，不能只走疾病解释。
-- 记录意图只能生成草稿；健康问答和记录同时出现时，先完成安全门，再展示记录草稿。
+- 普通照护记录不进入 Agent，由记录页的确定性原生流程完成；仅报告提取结果可以形成待确认事实草稿。
 
 ## 6. Function Tools
 

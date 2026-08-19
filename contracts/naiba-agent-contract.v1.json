@@ -1,6 +1,6 @@
 {
   "contract": "babyforge.naiba.agent",
-  "contractVersion": "1.2.0",
+  "contractVersion": "1.3.0",
   "endpoint": "/api/ai/chat",
   "request": {
     "required": ["message", "babyId", "history"],
@@ -27,7 +27,6 @@
     "ids": [
       "baby_context_injector",
       "authority_knowledge_retriever",
-      "care_event_quick_logger",
       "daily_care_analysis",
       "daily_feeding_recommender",
       "detailed_care_analysis",

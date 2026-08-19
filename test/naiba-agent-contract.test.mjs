@@ -19,13 +19,15 @@ test('shared Agent contract keeps multi-turn context bounded and ordered', () =>
 })
 
 test('every skill publishes one formal context policy', () => {
-  assert.equal(NAIBA_SKILLS.length, 14)
+  assert.equal(NAIBA_SKILLS.length, 13)
   for (const skill of NAIBA_SKILLS) assert.equal(typeof skill.contextPolicy, 'object', skill.id)
 })
 
 test('page context is allowlisted and image send requires explicit confirmation', () => {
   assert.deepEqual(normalizeNaibaContext({ source: 'growth', focus: 'weight', label: '体重趋势', ignored: 'x' }), { source: 'growth', focus: 'weight', label: '体重趋势' })
   assert.equal(normalizeNaibaContext({ source: 'settings' }), null)
+  assert.equal(normalizeNaibaContext({ source: 'explore', focus: 'current-topic', contentType: 'organ', contentId: 'heart' }), null)
+  assert.deepEqual(normalizeNaibaContext({ source: 'explore', focus: 'current-topic', contentType: 'disease', contentId: 'jaundice' }), { source: 'explore', focus: 'current-topic', label: '', contentType: 'disease', contentId: 'jaundice' })
   assert.throws(() => normalizeNaibaAttachments([{ kind: 'image', name: 'a.jpg', mimeType: 'image/jpeg', size: 1, dataUrl: 'data:image/jpeg;base64,AA==', confirmed: false }]), /consent/)
   assert.throws(() => normalizeNaibaAttachments([{ kind: 'image', name: 'a.jpg', mimeType: 'image/jpeg', size: 10, dataUrl: 'data:image/jpeg;base64,AA==', confirmed: true }]), /size/)
   assert.equal(normalizeNaibaAttachments([{ kind: 'image', name: 'a.jpg', mimeType: 'image/jpeg', size: 1, dataUrl: 'data:image/jpeg;base64,AA==', confirmed: true }]).length, 1)
@@ -51,23 +53,29 @@ test('Web and Harmony pin one Agent contract and endpoint without a native runti
   assert.doesNotMatch(adapter, /\/api\/native\/ai\//)
 })
 
-test('Harmony renders every skill from the shared registry projection', async () => {
-  const [manifest, arkts, indexPage] = await Promise.all([
+test('Harmony renders every approved skill from the shared registry projection', async () => {
+  const [manifest, arkts, indexPage, webPage, server] = await Promise.all([
     readFile(new URL('../contracts/naiba-agent-contract.v1.json', import.meta.url)).then(JSON.parse),
     readFile(new URL('../harmony/entry/src/main/ets/data/NativeAgentContract.ets', import.meta.url), 'utf8'),
     readFile(new URL('../harmony/entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8'),
+    readFile(new URL('../src/features/NaibaAiView.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../functions/api/ai/chat.js', import.meta.url), 'utf8'),
   ])
   assert.deepEqual(manifest.skillRegistry.ids, NAIBA_SKILLS.map((skill) => skill.id))
   for (const skill of NAIBA_SKILLS) assert.match(arkts, new RegExp(`id: '${skill.id}'`))
   assert.match(indexPage, /visibleAiSkills/)
   assert.match(indexPage, /this\.openAiFrom\('growth'\)/)
-  assert.match(indexPage, /this\.openAiFrom\('explore'\)/)
+  assert.equal(indexPage.match(/this\.openAiFrom\('explore'\)/g)?.length, 1)
+  assert.doesNotMatch(indexPage, /带着当前内容问奶爸 AI/)
   assert.match(indexPage, /this\.aiHealthEpisodeId/)
   assert.match(indexPage, /adapter\.aiChat\([^\n]+this\.aiHealthEpisodeId\)/)
   assert.doesNotMatch(indexPage, /aiContextExcluded|页面上下文[^\n]+移除/)
   assert.match(indexPage, /this\.currentDisease\(\)/)
+  assert.doesNotMatch(arkts, /care_event_quick_logger/)
+  assert.doesNotMatch(webPage, /parseCareEventDraft|isCareEventDraftIntent|帮我记录刚才的喂养/)
+  assert.doesNotMatch(server, /care_event_quick_logger|parseCareEventDraft/)
   assert.match(indexPage, /source === 'record'[\s\S]+?'detailed_care_analysis'/)
-  assert.match(indexPage, /context\.contentType === 'disease'[\s\S]+?'disease_explainer'/)
+  assert.match(indexPage, /displayedDisease[\s\S]+?'disease_explainer'/)
   assert.match(indexPage, /aiDetailSurface/)
   assert.match(indexPage, /aiResultSheet/)
   assert.match(indexPage, /setScrollPosition\(this\.activeTab, yOffset\)/)

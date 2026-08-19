@@ -1,7 +1,6 @@
 const CONTRACTS = [
   ['baby_context_injector', '宝宝上下文注入', 'system', ['baby', 'careEvents', 'concerns'], ['get_baby_context', 'get_recent_care_events'], 'BabyContextSummary', '只整理档案和事实，不做诊断'],
   ['authority_knowledge_retriever', '权威知识检索', 'support', ['topic', 'age'], ['search_approved_knowledge'], 'KnowledgeResult[]', '只返回 approved 版本化知识和来源'],
-  ['care_event_quick_logger', '照护事件快速记录', 'record', ['baby', 'actor', 'message'], ['create_care_event_draft'], 'CareEventDraft', '只生成待确认草稿'],
   ['daily_care_analysis', '今日照护分析', 'today', ['baby', 'careEvents'], ['calculate_care_statistics'], 'DailyCareAnalysis', '不把缺失当作零'],
   ['daily_feeding_recommender', '今日饮食建议', 'today', ['baby', 'feedingProfile', 'careEvents'], ['get_feeding_profile', 'calculate_feeding_reference', 'search_approved_knowledge'], 'FeedingRecommendation', '用量只来自 FeedingRuleSet'],
   ['detailed_care_analysis', '详细照护分析', 'analysis', ['babyContext', 'careEvents'], ['calculate_care_statistics', 'get_baby_context'], 'DetailedCareAnalysis', '最多三个可执行动作'],
@@ -18,7 +17,6 @@ const CONTRACTS = [
 const CONTEXT_POLICIES = Object.freeze({
   baby_context_injector: { careEvents: { windowHours: 72, limit: 40 }, concerns: true },
   authority_knowledge_retriever: {},
-  care_event_quick_logger: {},
   daily_care_analysis: { careEvents: { windowHours: 24, limit: 40 }, pageSources: ['today', 'record'] },
   daily_feeding_recommender: { careEvents: { categories: ['breastfeeding', 'bottle_feeding'], windowHours: 72, limit: 40 }, plans: true, pageSources: ['today', 'record'] },
   detailed_care_analysis: { careEvents: { windowHours: 72, limit: 60 }, concerns: true, plans: true, pageSources: ['today', 'record'] },
@@ -46,7 +44,6 @@ export const NAIBA_SKILLS = Object.freeze(CONTRACTS.map(([id, label, entry, requ
 })))
 
 const INTENT_PATTERNS = [
-  { skillId: 'care_event_quick_logger', pattern: /记录(?:一下|一条|下)?|保存(?:一下|这条)?|录入|帮我(?:记|记录)|刚(?:刚)?(?:喂|喝|换|测|量)|log(?: this)?\b|record(?: this| an? (?:event|feed|fact))?\b/i },
   { skillId: 'daily_feeding_recommender', pattern: /吃|奶|喂|饮食|辅食|用量|feed|milk|food|feeding|amount/i },
   { skillId: 'medical_report_interpreter', pattern: /报告|化验|检查单|report|lab/i },
   { skillId: 'visit_brief_generator', pattern: /就医摘要|问医生|就诊材料|visit brief/i },

@@ -1,5 +1,5 @@
 export const NAIBA_AGENT_CONTRACT = 'babyforge.naiba.agent'
-export const NAIBA_AGENT_CONTRACT_VERSION = '1.2.0'
+export const NAIBA_AGENT_CONTRACT_VERSION = '1.3.0'
 export const NAIBA_CONTEXT_SOURCES = Object.freeze(['today', 'record', 'growth', 'explore'])
 export const NAIBA_MAX_ATTACHMENTS = 3
 export const NAIBA_MAX_ATTACHMENT_BYTES = 6_000_000
@@ -16,8 +16,9 @@ export function normalizeNaibaContext(value) {
   const resourceIds = Array.isArray(value.resourceIds)
     ? [...new Set(value.resourceIds.map((item) => String(item || '').trim().slice(0, 120)).filter(Boolean))].slice(0, 40)
     : []
-  const contentType = ['disease', 'organ', 'article'].includes(String(value.contentType || '')) ? String(value.contentType) : ''
+  const contentType = value.source === 'explore' && value.contentType === 'disease' ? 'disease' : ''
   const contentId = String(value.contentId || '').trim().slice(0, 160)
+  if (value.source === 'explore' && (!contentType || !contentId)) return null
   return {
     source: value.source,
     focus: String(value.focus || '').slice(0, 80),

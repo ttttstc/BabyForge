@@ -2,7 +2,7 @@ import { getAgeDays } from './baby.js'
 import { projectBabyState } from './babyState.js'
 import { createCareEvent } from './careEvents.js'
 import { getCareSnapshot, eventTitle } from './careSummary.js'
-import { parseCareEventDraft, sanitizeMedicalReport } from './careEventDraft.js'
+import { sanitizeMedicalReport } from './careEventDraft.js'
 import { calculateFeedingRecommendation } from './feedingRecommendation.js'
 import { searchApprovedKnowledge } from './knowledgePack.js'
 import { buildBabyContextSummary } from './naibaContext.js'
@@ -228,7 +228,6 @@ export function executeNaibaSkill(skillId, input = {}, runtime = {}) {
   switch (skillId) {
     case 'baby_context_injector': return buildBabyContextSummary(common)
     case 'authority_knowledge_retriever': return { status: 'ready', results: searchApprovedKnowledge(input.query || '', { ageDays: getAgeDays(runtime.baby?.birthDate, common.now), ageMonths: Math.floor(getAgeDays(runtime.baby?.birthDate, common.now) / 30.4375), domain: input.domain }) }
-    case 'care_event_quick_logger': return parseCareEventDraft({ message: input.message, baby: runtime.baby, actor: runtime.actor, context: input.context, now: new Date(common.now).toISOString(), locale: common.locale })
     case 'daily_care_analysis': return buildDailyCareAnalysis(common)
     case 'daily_feeding_recommender': return calculateFeedingRecommendation({ baby: runtime.baby, events: common.events, now: common.now, locale: common.locale })
     case 'detailed_care_analysis': return buildDetailedCareAnalysis(common)

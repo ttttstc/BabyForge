@@ -8,11 +8,10 @@ import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionF
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
 import { searchApprovedKnowledge } from '../../../src/domain/knowledgePack.js'
-import { DISEASE_CONTENT_VERSION, DISEASE_TOPICS, ORGAN_TOPICS } from '../../../src/content/diseaseRegistry.js'
+import { DISEASE_CONTENT_VERSION, DISEASE_TOPICS } from '../../../src/content/diseaseRegistry.js'
 import { localDayForTimezone } from '../../../src/domain/nativeToday.js'
 import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 import { NAIBA_AGENT_CONTRACT, NAIBA_AGENT_CONTRACT_VERSION, normalizeNaibaAttachments, normalizeNaibaContext, normalizeNaibaHistory } from '../../../src/domain/naibaAgentContract.js'
-import { draftText, parseCareEventDraft } from '../../../src/domain/careEventDraft.js'
 import { resolveNaibaSkillContext } from '../../../src/domain/naibaContextResolver.js'
 import { searchAuthorityKnowledge } from '../../_shared/authoritySearch.js'
 
@@ -59,29 +58,21 @@ function uniqueStrings(value, limit = 40) {
 }
 
 function exploreContent(requested) {
-  if (!requested?.contentType || !requested?.contentId) return null
-  if (requested.contentType === 'disease') {
-    const disease = DISEASE_TOPICS.find((item) => item.id === requested.contentId)
-    if (!disease) return { type: 'disease', id: requested.contentId, available: false }
-    return {
-      type: 'disease',
-      id: disease.id,
-      available: true,
-      version: DISEASE_CONTENT_VERSION,
-      name: disease.name,
-      shortDefinition: disease.shortDefinition,
-      definition: disease.definition,
-      observation: disease.observation,
-      escalationRuleRef: disease.escalationRuleRef,
-      sourceIds: disease.sourceIds,
-    }
+  if (requested?.contentType !== 'disease' || !requested?.contentId) return null
+  const disease = DISEASE_TOPICS.find((item) => item.id === requested.contentId)
+  if (!disease) return null
+  return {
+    type: 'disease',
+    id: disease.id,
+    available: true,
+    version: DISEASE_CONTENT_VERSION,
+    name: disease.name,
+    shortDefinition: disease.shortDefinition,
+    definition: disease.definition,
+    observation: disease.observation,
+    escalationRuleRef: disease.escalationRuleRef,
+    sourceIds: disease.sourceIds,
   }
-  if (requested.contentType === 'organ') {
-    const organ = ORGAN_TOPICS.find((item) => item.id === requested.contentId)
-    if (!organ) return { type: 'organ', id: requested.contentId, available: false }
-    return { type: 'organ', id: organ.id, available: true, version: DISEASE_CONTENT_VERSION, name: organ.name, description: organ.description, relatedDiseaseIds: organ.relatedDiseaseIds }
-  }
-  return { type: 'article', id: requested.contentId, available: false, reason: 'third_party_article_requires_server_verified_source' }
 }
 
 async function loadAuthorizedContext(env, principalOrAccountId, babyId, requestedPageContext = null) {
@@ -132,15 +123,16 @@ export function authorizedPageContext(requested, context, now = new Date()) {
   const currentDay = localDayForTimezone(now.toISOString(), timezone)
   const requestedDay = /^\d{4}-\d{2}-\d{2}$/.test(String(requested.selectedDay || '')) ? String(requested.selectedDay) : ''
   if ((requested.source === 'today' || requested.source === 'record') && requestedDay && requestedDay !== currentDay) return null
-  const selectedDay = requested.source === 'today' || requested.source === 'record' ? currentDay : (requestedDay || currentDay)
+  const dayScoped = requested.source === 'today' || requested.source === 'record'
+  const selectedDay = dayScoped ? currentDay : ''
   const resourceIds = new Set(uniqueStrings(requested.resourceIds))
   const matchesRequestedPage = (event) => localDayForTimezone(event.occurredAt || event.recordedAt, timezone) === selectedDay
     && (resourceIds.size === 0 || resourceIds.has(String(event.id)))
   const pageContext = {
     source: requested.source,
     focus: allowedFocus[requested.source]?.has(requested.focus) ? requested.focus : '',
-    selectedDay,
     timezone,
+    ...(dayScoped ? { selectedDay } : {}),
     ...(resourceIds.size ? { resourceIds: [...resourceIds] } : {}),
   }
   const compactEvent = (event) => ({ id: event.id, category: event.category, occurredAt: event.occurredAt, payload: event.payload, status: event.status })
@@ -153,10 +145,11 @@ export function authorizedPageContext(requested, context, now = new Date()) {
     return { ...pageContext, facts: facts.map(compactEvent), usedEventIds: facts.map((event) => event.id) }
   }
   if (requested.source === 'growth') {
-    const measurements = context.growthEvents.filter(matchesRequestedPage).slice(-16)
+    const measurements = context.growthEvents.filter((event) => resourceIds.size === 0 || resourceIds.has(String(event.id))).slice(-16)
     return { ...pageContext, measurements: measurements.map(compactEvent), usedEventIds: measurements.map((event) => event.id) }
   }
-  return { ...pageContext, content: context.exploreContent }
+  if (requested.source === 'explore' && context.exploreContent?.type === 'disease' && context.exploreContent.available === true) return { ...pageContext, content: context.exploreContent }
+  return null
 }
 
 export const SAFE_DECISION_FACT_KEYS = Object.freeze([...DECISION_INPUT_FACT_KEYS])
@@ -371,7 +364,7 @@ export async function onRequestPost({ request, env }) {
     await closeHealthEpisode(env, healthEpisode.id, 'superseded')
     healthEpisode = null
   }
-  const handlesHealth = skillId !== 'care_event_quick_logger' && (healthSensitive || healthFollowUp || skillId === 'triage_and_preassessment')
+  const handlesHealth = healthSensitive || healthFollowUp || skillId === 'triage_and_preassessment'
   const decisionUnitId = handlesHealth ? (explicitTopicUnit || healthEpisode?.topic || selectDecisionUnit(message)) : ''
   if (!isNaibaTopicInScope(message) && !contextualFollowUp && !healthFollowUp) {
     return agentResponse([{ type: 'meta', contract: NAIBA_AGENT_CONTRACT, contractVersion: NAIBA_AGENT_CONTRACT_VERSION, requestId }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }], jsonMode)
@@ -413,15 +406,6 @@ export async function onRequestPost({ request, env }) {
   }
 
   const activity = { type: 'activity', skillId, label: getSkillContract(skillId)?.label || '奶爸 AI', status: 'completed' }
-  if (skillId === 'care_event_quick_logger') {
-    const draft = parseCareEventDraft({
-      message: contextualFollowUp ? transcript : message,
-      baby: context.baby,
-      actor: { id: session.accountId, displayName: session.displayName || '家庭成员' },
-      locale: context.baby.locale || 'zh-CN',
-    })
-    return respond([activity, { type: 'message', delta: draftText(draft, context.baby.locale || 'zh-CN') }, ...(draft.status === 'draft_ready' ? [{ type: 'draft', draft }] : []), { type: 'done' }])
-  }
   if (decision && decision.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: clientDecision }, ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
   if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
   if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])

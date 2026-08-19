@@ -1,5 +1,5 @@
 export const NAIBA_AGENT_CONTRACT: string = 'babyforge.naiba.agent';
-export const NAIBA_AGENT_CONTRACT_VERSION: string = '1.2.0';
+export const NAIBA_AGENT_CONTRACT_VERSION: string = '1.3.0';
 export const NAIBA_CHAT_TIMEOUT_MS: number = 60000;
 export const NAIBA_REPORT_TIMEOUT_MS: number = 90000;
 
@@ -80,7 +80,6 @@ export interface NativeNaibaSkill {
 export const NAIBA_SKILLS: Array<NativeNaibaSkill> = [
   { id: 'baby_context_injector', label: '宝宝上下文', entry: 'system', group: '常用', prompt: '请结合当前宝宝档案回答我的问题。' },
   { id: 'authority_knowledge_retriever', label: '权威知识', entry: 'support', group: '知识', prompt: '请用权威知识解释这个育儿问题，并标注适用边界。' },
-  { id: 'care_event_quick_logger', label: '快速记录', entry: 'record', group: '记录', prompt: '帮我记录刚刚发生的照护事实。' },
   { id: 'daily_care_analysis', label: '今日照护', entry: 'today', group: '今日', prompt: '请分析今天的照护记录。' },
   { id: 'daily_feeding_recommender', label: '喂养参考', entry: 'today', group: '今日', prompt: '今天宝宝怎么吃？' },
   { id: 'detailed_care_analysis', label: '详细分析', entry: 'analysis', group: '分析', prompt: '请详细分析最近的照护事实。' },

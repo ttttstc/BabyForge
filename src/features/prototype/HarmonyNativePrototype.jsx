@@ -250,7 +250,7 @@ function AiA(props) {
 }
 
 function AiB(props) {
-  return <main className="hp-page hp-ai-b"><header><img src={aiBaby} alt="奶爸 AI 宝宝" /><div><p className="hp-eyebrow">奶爸 AI</p><h1>今天想一起看什么？</h1></div></header><ContextCard /><section className="hp-ai-insight-grid"><button><Milk /><strong>喂养观察</strong><span>今日 540ml</span></button><button><Moon /><strong>睡眠观察</strong><span>今日 13h</span></button><button><MessageCircle /><strong>今日总结</strong><span>生成报告</span></button><button><Plus /><strong>快捷记录</strong><span>整理草稿</span></button></section><CompactEntryStrip eyebrow="全部能力" title="继续处理" items={[{ label: '报告解读', icon: BookOpenCheck }, { label: '就医摘要', icon: ShieldCheck }, { label: '照护交接', icon: Users }, { label: '成长计划', icon: Sparkles }]} onOpen={props.onUnavailable} /><ChatThread messages={props.messages} /><ChatComposer {...props} compact /></main>
+  return <main className="hp-page hp-ai-b"><header><img src={aiBaby} alt="奶爸 AI 宝宝" /><div><p className="hp-eyebrow">奶爸 AI</p><h1>今天想一起看什么？</h1></div></header><ContextCard /><section className="hp-ai-insight-grid"><button><Milk /><strong>喂养观察</strong><span>今日 540ml</span></button><button><Moon /><strong>睡眠观察</strong><span>今日 13h</span></button><button><MessageCircle /><strong>今日总结</strong><span>生成报告</span></button><button><Sparkles /><strong>成长解读</strong><span>解释趋势</span></button></section><CompactEntryStrip eyebrow="全部能力" title="继续处理" items={[{ label: '报告解读', icon: BookOpenCheck }, { label: '就医摘要', icon: ShieldCheck }, { label: '照护交接', icon: Users }, { label: '成长计划', icon: Sparkles }]} onOpen={props.onUnavailable} /><ChatThread messages={props.messages} /><ChatComposer {...props} compact /></main>
 }
 
 function AiC(props) {
