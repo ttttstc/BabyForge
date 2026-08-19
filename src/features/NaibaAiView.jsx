@@ -41,7 +41,7 @@ async function remoteAnswer(message, history, state, skillId, decision, context,
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
       signal: controller.signal,
-      body: JSON.stringify({ message, history, skillId, babyId: state.baby.id, context, attachments, decisionFacts: decision ? decision.facts || null : null }),
+      body: JSON.stringify({ message, history, skillId, babyId: state.baby.id, context, attachments, decisionUnitId: decision?.unitId || null, decisionFacts: decision?.facts || null }),
     })
   } finally {
     clearTimeout(timeout)
@@ -57,12 +57,34 @@ async function remoteAnswer(message, history, state, skillId, decision, context,
   return result
 }
 
-function initialPageContext(topic, locale) {
+function localDayForTimezone(value = new Date(), timezone = 'Asia/Shanghai') {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value))
+    const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+    return `${values.year}-${values.month}-${values.day}`
+  } catch {
+    return new Date(value).toISOString().slice(0, 10)
+  }
+}
+
+function initialPageContext(topic, locale, state) {
   const english = locale === 'en-US'
-  if (topic === 'analysis' || topic === 'feeding' || topic === 'plan') return { source: 'today', focus: topic, label: english ? 'Today\'s confirmed care facts' : '今天的已确认照护事实' }
-  if (topic === 'growth') return { source: 'growth', focus: 'trend', label: english ? 'Current growth measurements' : '当前成长测量趋势' }
-  if (topic === 'record') return { source: 'record', focus: 'timeline', label: english ? 'Care record timeline' : '照护事实时间线' }
-  if (topic === 'explore') return { source: 'explore', focus: 'current-topic', label: english ? 'Current parenting topic' : '当前育儿内容' }
+  const routeParams = new URLSearchParams(window.location.hash.split('?')[1] || '')
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
+  const selectedDay = localDayForTimezone(new Date(), timezone)
+  const careEvents = Array.isArray(state?.careEvents) ? state.careEvents : []
+  const dayEventIds = careEvents.filter((event) => localDayForTimezone(event.occurredAt || event.recordedAt, timezone) === selectedDay).map((event) => event.id).filter(Boolean).slice(-40)
+  if (topic === 'analysis' || topic === 'feeding' || topic === 'plan') return { source: 'today', focus: topic, label: english ? 'Today\'s confirmed care facts' : '今天的已确认照护事实', selectedDay, timezone, ...(dayEventIds.length ? { resourceIds: dayEventIds } : {}) }
+  if (topic === 'growth') {
+    const growthIds = careEvents.filter((event) => event.category === 'growth_measurement').map((event) => event.id).filter(Boolean).slice(-40)
+    return { source: 'growth', focus: 'trend', label: english ? 'Current growth measurements' : '当前成长测量趋势', selectedDay, timezone, ...(growthIds.length ? { resourceIds: growthIds } : {}) }
+  }
+  if (topic === 'record') return { source: 'record', focus: 'timeline', label: english ? 'Care record timeline' : '照护事实时间线', selectedDay, timezone, ...(dayEventIds.length ? { resourceIds: dayEventIds } : {}) }
+  if (topic === 'explore' || routeParams.get('contentType')) {
+    const contentType = ['disease', 'organ', 'article'].includes(routeParams.get('contentType')) ? routeParams.get('contentType') : ''
+    const contentId = String(routeParams.get('contentId') || '').trim()
+    return { source: 'explore', focus: 'current-topic', label: english ? 'Current parenting topic' : '当前育儿内容', timezone, ...(contentType && contentId ? { contentType, contentId } : {}) }
+  }
   return null
 }
 
@@ -88,10 +110,11 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
   const [healthUnitId, setHealthUnitId] = useState('general_health_preassessment')
   const [healthFacts, setHealthFacts] = useState({})
   const [recordContext, setRecordContext] = useState(null)
-  const [pageContext, setPageContext] = useState(() => initialPageContext(topic, locale))
+  const [pageContext, setPageContext] = useState(() => initialPageContext(topic, locale, state))
   const [pendingImages, setPendingImages] = useState([])
   const [lastFailedInput, setLastFailedInput] = useState(null)
   const activeRequestRef = useRef(null)
+  const conversationGenerationRef = useRef(0)
   const messageListRef = useRef(null)
   const messageSequenceRef = useRef(0)
   const actor = state.careActors?.find((item) => item.id === state.preferences?.currentRecorderId) || state.careActors?.[0]
@@ -109,9 +132,15 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
     setShowScrollToBottom((current) => current === shouldShow ? current : shouldShow)
   }
 
-  function stopGeneration() {
+  function stopGeneration({ silent = false } = {}) {
+    conversationGenerationRef.current += 1
     const controller = activeRequestRef.current
     if (controller && !controller.signal.aborted) controller.abort('user')
+    if (!silent) {
+      setGenerating(false)
+      setBusy(false)
+      setError(isEnglish ? 'Generation stopped.' : '已停止生成。')
+    }
   }
 
   useEffect(() => {
@@ -123,18 +152,24 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
     setMessages((current) => current.map((item) => item.id === messageId ? { ...item, draft: nextDraft } : item))
   }
 
-  async function persistDraft(draft) {
+  async function persistDraft(draft, signal = null) {
     if (!cloudMode || draft?.status !== 'draft_ready') return draft
-    const response = await fetch('/api/ai/drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ draft, draftType: draft.event?.category || 'care_event' }) })
+    const response = await fetch('/api/ai/drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', ...(signal ? { signal } : {}), body: JSON.stringify({ draft, draftType: draft.event?.category || 'care_event' }) })
     const payload = await response.json()
     if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'The draft could not be prepared.' : '记录草稿创建失败。'))
     return { ...draft, draftId: payload.draftId, expiresAt: payload.expiresAt }
   }
 
+  async function discardServerDraft(draftId) {
+    if (!cloudMode || !draftId) return
+    try {
+      await fetch('/api/ai/drafts', { method: 'PATCH', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ draftId, status: 'discarded' }) })
+    } catch { /* draft expires automatically */ }
+  }
+
   async function dismissDraft(messageId, draftId) {
     replaceDraft(messageId, null)
-    if (!cloudMode || !draftId) return
-    try { await fetch('/api/ai/drafts', { method: 'PATCH', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ draftId, status: 'discarded' }) }) } catch { /* draft expires automatically */ }
+    await discardServerDraft(draftId)
   }
 
   function addArtifact(skillId, data, text, draft = null) {
@@ -143,6 +178,9 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
 
   async function handleReportFile(file) {
     if (!file || busy) return
+    const generation = conversationGenerationRef.current
+    const requestController = new AbortController()
+    activeRequestRef.current = requestController
     setError('')
     setBusy(true)
     try {
@@ -156,23 +194,32 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
           ? 'This report image/PDF will be sent to the configured AI provider for temporary processing. BabyForge does not save the original file. Continue?'
           : '这份报告图片/PDF 会发送给当前配置的 AI 服务商进行识别；BabyForge 不保存原始文件。是否同意继续？'
         if (typeof window === 'undefined' || !window.confirm(consentMessage)) return
-        const response = await fetch('/api/ai/report', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ babyId: state.baby.id, name: file.name, mimeType: file.type, dataUrl: await fileDataUrl(file), thirdPartyProcessingConsent: true }) })
+        const response = await fetch('/api/ai/report', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', signal: requestController.signal, body: JSON.stringify({ babyId: state.baby.id, name: file.name, mimeType: file.type, dataUrl: await fileDataUrl(file), thirdPartyProcessingConsent: true }) })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload?.error || (isEnglish ? 'Report recognition failed.' : '报告识别失败。'))
         report = payload.report
       }
+      if (generation !== conversationGenerationRef.current) return
       if (!report?.fields?.length) throw new Error(report?.uncertainties?.[0] || (isEnglish ? 'No checkable fields were recognized.' : '没有识别出可核对字段。'))
       const draft = await persistDraft(createReportFactDraft({ report, baby: state.baby, actor }))
+      if (generation !== conversationGenerationRef.current) {
+        await discardServerDraft(draft?.draftId)
+        return
+      }
       addArtifact('medical_report_interpreter', report, isEnglish ? 'I extracted checkable fields. Review every field before saving.' : '已提取可核对字段。请逐项核对后再确认保存。', draft.status === 'draft_ready' ? draft : null)
     } catch (cause) {
+      if (generation !== conversationGenerationRef.current) return
       setError(cause?.message || (isEnglish ? 'Report recognition failed.' : '报告识别失败。'))
     } finally {
-      setBusy(false)
+      if (activeRequestRef.current === requestController) activeRequestRef.current = null
+      if (generation === conversationGenerationRef.current) setBusy(false)
     }
   }
 
   function newConversation() {
-    stopGeneration()
+    const pendingDraftIds = messages.map((item) => item.draft?.draftId).filter(Boolean)
+    stopGeneration({ silent: true })
+    pendingDraftIds.forEach((draftId) => { void discardServerDraft(draftId) })
     setMessages([welcomeMessage(isEnglish)])
     setInput('')
     setPendingImages([])
@@ -182,6 +229,8 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
     setHealthFacts({})
     setPageContext(null)
     setError('')
+    setGenerating(false)
+    setBusy(false)
   }
 
   async function stageImage(file) {
@@ -232,11 +281,18 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
   }
 
   async function sendMessage(value = input, suppliedImages = pendingImages, retrying = false) {
+    const generation = conversationGenerationRef.current
+    const isCurrent = () => generation === conversationGenerationRef.current
     const attachments = Array.isArray(suppliedImages) ? suppliedImages : []
     const message = String(value || '').trim() || (attachments.length ? (isEnglish ? 'Please analyze these images for baby-care-relevant observations.' : '请分析这些图片中与宝宝照护有关的可见信息。') : '')
-    if (!message || busy) return
+    if (!message || busy || !isCurrent()) return
     const conversationMessages = retrying && messages.at(-1)?.role === 'user' ? messages.slice(0, -1) : messages
-    const history = conversationMessages.filter((item) => item.id !== 'welcome' && ['user', 'assistant'].includes(item.role) && item.text).slice(-20).map(({ role, text, attachments: itemAttachments }) => ({ role, text, ...(itemAttachments?.length ? { attachments: itemAttachments } : {}) }))
+    const history = conversationMessages.filter((item) => item.id !== 'welcome' && ['user', 'assistant'].includes(item.role) && item.text).slice(-20).map(({ role, text, attachments: itemAttachments }) => {
+      const attachmentSummary = role === 'user' && itemAttachments?.length
+        ? itemAttachments.map(({ kind, name, mimeType, size }) => ({ kind, name, mimeType, size }))
+        : []
+      return { role, text, ...(attachmentSummary.length ? { attachmentSummary } : {}) }
+    })
     messageSequenceRef.current += 1
     const userMessageId = `user-${messageSequenceRef.current}`
     setInput('')
@@ -254,6 +310,10 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
       const recordRequested = Boolean(recordContext) || isCareEventDraftIntent(message)
       let parsedDraft = !cloudMode && recordRequested ? parseCareEventDraft({ message, baby: state.baby, actor, context: recordContext, locale }) : null
       if (parsedDraft?.status === 'draft_ready') parsedDraft = await persistDraft(parsedDraft)
+      if (!isCurrent()) {
+        await discardServerDraft(parsedDraft?.draftId)
+        return
+      }
       const urgentRecordSignal = /呼吸困难|呼吸费力|喘不上气|发青|蓝唇|叫不醒|无法唤醒|高热|严重呕吐|持续腹泻/i.test(message)
       const handlesHealth = healthActive || (isHealthMessage(message) && (!recordRequested || urgentRecordSignal))
       let decision = null
@@ -273,6 +333,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
         setHealthUnitId(nextUnitId)
         setHealthFacts(candidateFacts)
       }
+      if (!isCurrent()) return
       let answer
       const assistantId = userMessageId.replace('user-', 'assistant-')
       if (parsedDraft && !handlesHealth) {
@@ -306,6 +367,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
         let remoteDraft = null
         try {
           remote = await remoteAnswer(message, history, state, '', decision ? { ...decision, facts: nextHealthFacts } : null, pageContext, attachments, requestController)
+          if (!isCurrent()) return
           if (remote.fallback) {
             answer = naibaFallbackMessage(remote.meta?.reason, locale)
             setError(answer)
@@ -314,8 +376,15 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
           } else {
             answer = remote.text
           }
-          if (!requestFailed && remote.draft?.status === 'draft_ready') remoteDraft = await persistDraft(remote.draft)
+          if (!requestFailed && remote.draft?.status === 'draft_ready') {
+            remoteDraft = await persistDraft(remote.draft)
+            if (!isCurrent()) {
+              await discardServerDraft(remoteDraft?.draftId)
+              return
+            }
+          }
         } catch (cause) {
+          if (!isCurrent()) return
           stopped = requestController.signal.reason === 'user'
           if (stopped) {
             setError(isEnglish ? 'Generation stopped.' : '已停止生成。')
@@ -327,14 +396,15 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
           requestFailed = true
         } finally {
           if (activeRequestRef.current === requestController) activeRequestRef.current = null
-          setGenerating(false)
+          if (isCurrent()) setGenerating(false)
         }
-        if (!stopped && !requestFailed) setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer, activity: remote?.activity || [], sources: remote?.sources || [], ...(remoteDraft ? { draft: remoteDraft } : {}) }])
+        if (isCurrent() && !stopped && !requestFailed) setMessages((current) => [...current, { id: assistantId, role: 'assistant', text: answer, activity: remote?.activity || [], sources: remote?.sources || [], ...(remoteDraft ? { draft: remoteDraft } : {}) }])
       }
     } catch (cause) {
+      if (!isCurrent()) return
       setError(cause?.message || (isEnglish ? 'The answer could not be generated.' : '暂时无法生成回答。'))
     } finally {
-      setBusy(false)
+      if (isCurrent()) setBusy(false)
     }
   }
 

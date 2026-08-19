@@ -59,6 +59,7 @@ interface NativeAgentRequest {
   context: NativeAgentContext | null;
   attachments: Array<NativeAgentAttachment>;
   skillId: string;
+  decisionUnitId: string;
   decisionFacts: Object | null;
 }
 
@@ -278,8 +279,8 @@ export class NativeResourceAdapter {
     return parseNativeToday(await this.request(`/api/native/today${query}`));
   }
 
-  async aiChat(message: string, babyId: string, history: Array<NativeAgentHistoryMessage>, context: NativeAgentContext | null, attachments: Array<NativeAgentAttachment>, skillId: string = ''): Promise<NativeAgentReply> {
-    const payload: NativeAgentRequest = { message, babyId, history, context, attachments, skillId, decisionFacts: null };
+  async aiChat(message: string, babyId: string, history: Array<NativeAgentHistoryMessage>, context: NativeAgentContext | null, attachments: Array<NativeAgentAttachment>, skillId: string = '', decisionUnitId: string = '', decisionFacts: Object | null = null): Promise<NativeAgentReply> {
+    const payload: NativeAgentRequest = { message, babyId, history, context, attachments, skillId, decisionUnitId, decisionFacts };
     return parseNativeAgentReply(await this.request('/api/ai/chat', http.RequestMethod.POST, payload as Object, true));
   }
 

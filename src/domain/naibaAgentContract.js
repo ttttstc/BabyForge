@@ -5,15 +5,27 @@ export const NAIBA_MAX_ATTACHMENTS = 3
 export const NAIBA_MAX_ATTACHMENT_BYTES = 6_000_000
 export const NAIBA_MAX_HISTORY_MESSAGES = 20
 export const NAIBA_MAX_HISTORY_CHARACTERS = 16_000
+export const NAIBA_MAX_ATTACHMENT_SUMMARIES = 3
 
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 export function normalizeNaibaContext(value) {
   if (!value || typeof value !== 'object' || !NAIBA_CONTEXT_SOURCES.includes(value.source)) return null
+  const selectedDay = /^\d{4}-\d{2}-\d{2}$/.test(String(value.selectedDay || '')) ? String(value.selectedDay) : ''
+  const timezone = String(value.timezone || '').trim().slice(0, 80)
+  const resourceIds = Array.isArray(value.resourceIds)
+    ? [...new Set(value.resourceIds.map((item) => String(item || '').trim().slice(0, 120)).filter(Boolean))].slice(0, 40)
+    : []
+  const contentType = ['disease', 'organ', 'article'].includes(String(value.contentType || '')) ? String(value.contentType) : ''
+  const contentId = String(value.contentId || '').trim().slice(0, 160)
   return {
     source: value.source,
     focus: String(value.focus || '').slice(0, 80),
     label: String(value.label || '').slice(0, 80),
+    ...(selectedDay ? { selectedDay } : {}),
+    ...(timezone ? { timezone } : {}),
+    ...(resourceIds.length ? { resourceIds } : {}),
+    ...(contentType && contentId ? { contentType, contentId } : {}),
   }
 }
 
@@ -37,16 +49,28 @@ export function normalizeNaibaAttachments(value) {
   })
 }
 
+function normalizeNaibaAttachmentSummaries(value) {
+  if (!Array.isArray(value)) return []
+  if (value.length > NAIBA_MAX_ATTACHMENT_SUMMARIES) throw new TypeError('naiba-attachment-summary-count')
+  return value.map((attachment) => {
+    const mimeType = String(attachment?.mimeType || '').toLowerCase()
+    const size = Number(attachment?.size || 0)
+    if (attachment?.kind !== 'image' || !IMAGE_TYPES.has(mimeType)) throw new TypeError('naiba-attachment-summary-type')
+    if (!Number.isFinite(size) || size <= 0 || size > NAIBA_MAX_ATTACHMENT_BYTES) throw new TypeError('naiba-attachment-summary-size')
+    return { kind: 'image', name: String(attachment.name || 'image').slice(0, 160), mimeType, size }
+  })
+}
+
 export function normalizeNaibaHistory(value) {
   if (!Array.isArray(value)) return []
-  let keptAttachmentTurn = false
   const history = value.slice(-NAIBA_MAX_HISTORY_MESSAGES).reverse().map((item) => {
     const role = item?.role === 'assistant' ? 'assistant' : item?.role === 'user' ? 'user' : ''
     const text = String(item?.text || '').trim().slice(0, 4_000)
     if (!role || !text) throw new TypeError('naiba-history-message')
-    const attachments = role === 'user' && !keptAttachmentTurn ? normalizeNaibaAttachments(item?.attachments) : []
-    if (attachments.length) keptAttachmentTurn = true
-    return { role, text, ...(attachments.length ? { attachments } : {}) }
+    const attachmentSummary = role === 'user'
+      ? normalizeNaibaAttachmentSummaries(item?.attachmentSummary || item?.attachments)
+      : []
+    return { role, text, ...(attachmentSummary.length ? { attachmentSummary } : {}) }
   }).reverse()
   let remaining = NAIBA_MAX_HISTORY_CHARACTERS
   return history.reverse().reduce((result, item) => {

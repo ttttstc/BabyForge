@@ -4,7 +4,7 @@
   "endpoint": "/api/ai/chat",
   "request": {
     "required": ["message", "babyId", "history"],
-    "optional": ["skillId", "context", "decisionFacts", "attachments"],
+    "optional": ["skillId", "context", "decisionUnitId", "decisionFacts", "attachments"],
     "maxHistoryTurns": 20,
     "maxHistoryCharacters": 16000,
     "contextSources": ["today", "record", "growth", "explore"],
@@ -16,6 +16,25 @@
   "events": ["meta", "activity", "message", "decision", "draft", "sources", "done"],
   "encodings": ["text/event-stream", "application/json"],
   "conversationPersistence": false,
+  "skillRegistry": {
+    "source": "src/domain/naibaSkills.js",
+    "ids": [
+      "baby_context_injector",
+      "authority_knowledge_retriever",
+      "care_event_quick_logger",
+      "daily_care_analysis",
+      "daily_feeding_recommender",
+      "detailed_care_analysis",
+      "stage_parenting_qa",
+      "disease_explainer",
+      "triage_and_preassessment",
+      "growth_and_development_interpreter",
+      "daily_growth_plan_builder",
+      "medical_report_interpreter",
+      "visit_brief_generator",
+      "caregiver_handoff_builder"
+    ]
+  },
   "sharedRuntime": "functions/_shared/naibaAgent.js",
   "platformAdapters": ["web", "harmony"]
 }

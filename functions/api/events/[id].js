@@ -1,5 +1,5 @@
 import { json, requireSession } from '../../_shared/auth.js'
-import { accessibleEvent, eventFromRow, legacySourceForEvent, legacyTypeForEvent, safeEventInput } from '../../_shared/care.js'
+import { accessibleEvent, eventFromRow, legacySourceForEvent, legacyTypeForEvent, safeEventInput, writableBaby } from '../../_shared/care.js'
 import { conflict } from '../events.js'
 import { appAssetUrl, appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../../_shared/updateNotifications.js'
 import { mergeCorrectedPayload } from '../../../src/domain/careEvents.js'
@@ -47,6 +47,7 @@ async function correctEvent({ request, env, params, waitUntil }) {
   if (auth.session.role === 'guest') return json({ error: '游客账号只读，不能写入' }, 403)
   const current = await accessibleEvent(env, auth.session, params.id)
   if (!current) return json({ error: '事件不存在或无权访问' }, 404)
+  if (!await writableBaby(env, auth.session, current.baby_id)) return json({ error: '当前家庭成员只有只读权限，不能修改记录' }, 403)
   if (current.status && current.status !== 'active') return conflict(current, '只有 active 事件可以纠正')
   let body
   try { body = await request.json() } catch { return json({ error: '请求格式不正确' }, 400) }
@@ -141,6 +142,7 @@ export async function onRequestDelete({ request, env, params, waitUntil }) {
   if (auth.session.role === 'guest') return json({ error: '游客账号只读，不能写入' }, 403)
   const current = await accessibleEvent(env, auth.session, params.id)
   if (!current) return json({ error: '事件不存在或无权访问' }, 404)
+  if (!await writableBaby(env, auth.session, current.baby_id)) return json({ error: '当前家庭成员只有只读权限，不能修改记录' }, 403)
   if (current.status && current.status !== 'active') return conflict(current, '只有 active 事件可以作废')
   let body = {}
   try { body = await request.json() } catch { /* DELETE may omit a body; query/header still work. */ }

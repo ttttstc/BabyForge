@@ -40,7 +40,7 @@ export async function onRequestPost({ request, env }) {
   }
   if (!llmConfig.apiKey) return json({ error: '当前账号未配置报告识别模型；可改用纯文本粘贴或在设置中配置自定义模型。' }, 503)
   try {
-    const report = await runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents, locale: baby.locale || 'zh-CN', model: llmConfig.model, apiKey: llmConfig.apiKey, baseURL: llmConfig.baseUrl, protocol: llmConfig.protocol, useResponses: llmConfig.useResponses })
+    const report = await runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents, locale: baby.locale || 'zh-CN', model: llmConfig.model, apiKey: llmConfig.apiKey, baseURL: llmConfig.baseUrl, protocol: llmConfig.protocol, useResponses: llmConfig.useResponses, signal: request.signal })
     return json({ report, draft: createReportFactDraft({ report, baby, actor }) })
   } catch (error) {
     console.error('Naiba AI report parsing failed', error)

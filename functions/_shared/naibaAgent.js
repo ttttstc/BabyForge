@@ -54,8 +54,15 @@ function openAiUserContent(message, attachments = []) {
   ]
 }
 
+function historyText(item) {
+  const summaries = Array.isArray(item?.attachmentSummary) ? item.attachmentSummary : []
+  if (!summaries.length) return String(item?.text || '')
+  const labels = summaries.map((attachment) => `${attachment.name || '图片'}（${attachment.mimeType}）`).join('、')
+  return `${String(item?.text || '')}\n[上一轮已发送${labels}；原图不会在本轮重复发送]`
+}
+
 function openAiHistory(history = []) {
-  return history.map((item) => ({ role: item.role, content: item.role === 'user' ? openAiUserContent(item.text, item.attachments) : item.text }))
+  return history.map((item) => ({ role: item.role, content: historyText(item) }))
 }
 
 function anthropicUserContent(message, attachments = []) {
@@ -70,13 +77,11 @@ function anthropicUserContent(message, attachments = []) {
 }
 
 function anthropicHistory(history = []) {
-  return history.map((item) => ({ role: item.role, content: item.role === 'user' ? anthropicUserContent(item.text, item.attachments) : item.text }))
+  return history.map((item) => ({ role: item.role, content: historyText(item) }))
 }
 
 function agentUserInput(message, attachments = [], history = []) {
-  const previous = history.map((item) => item.role === 'user' && item.attachments?.length
-    ? { role: 'user', content: [{ type: 'input_text', text: item.text }, ...item.attachments.map((attachment) => ({ type: 'input_image', image: attachment.dataUrl, detail: 'auto' }))] }
-    : { role: item.role, content: item.text })
+  const previous = history.map((item) => ({ role: item.role, content: historyText(item) }))
   if (!attachments.length) return [...previous, { role: 'user', content: String(message) }]
   return [...previous, { role: 'user', content: [
     { type: 'input_text', text: String(message) },
@@ -84,7 +89,7 @@ function agentUserInput(message, attachments = [], history = []) {
   ] }]
 }
 
-async function runOpenAiChat({ message, history, attachments, context, model, apiKey, baseURL, transportFetch, maxRetries = 2 }) {
+async function runOpenAiChat({ message, history, attachments, context, model, apiKey, baseURL, transportFetch, maxRetries = 2, signal = null }) {
   const directIpFetch = await cloudflareDirectIpFetch(baseURL)
   const client = new OpenAI({ apiKey, baseURL: String(baseURL || '').trim() || undefined, fetch: transportFetch || directIpFetch || undefined, maxRetries })
   const request = {
@@ -100,18 +105,19 @@ async function runOpenAiChat({ message, history, attachments, context, model, ap
   // Keep it scoped to that model family so official OpenAI-compatible gateways
   // do not receive an unknown field.
   if (/deepseek|sensenova/i.test(`${model} ${baseURL || ''}`)) request.thinking = { type: 'enabled' }
-  const result = await client.chat.completions.create(request)
+  const result = await client.chat.completions.create(request, signal ? { signal } : undefined)
   const output = chatContentText(result?.choices?.[0]?.message?.content || result?.choices?.[0]?.text).trim()
   if (!output) throw new Error('openai-chat-empty-response')
   return output
 }
 
-async function runAnthropicMessages({ message, history, attachments, context, model, apiKey, baseURL, transportFetch }) {
+async function runAnthropicMessages({ message, history, attachments, context, model, apiKey, baseURL, transportFetch, signal = null }) {
   const directIpFetch = await cloudflareDirectIpFetch(baseURL)
   const fetcher = transportFetch || directIpFetch || globalThis.fetch
   const endpoint = `${String(baseURL || '').trim().replace(/\/+$/, '')}/messages`
   const response = await fetcher(endpoint, {
     method: 'POST',
+    ...(signal ? { signal } : {}),
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model,
@@ -173,7 +179,7 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, history = [], skillId, baby, careEvents, growthEvents = null, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, growthMetric = null, pageContext = null, attachments = [], requestId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2 }) {
+export async function runNaibaAgent({ message, history = [], skillId, baby, careEvents, growthEvents = null, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, growthMetric = null, pageContext = null, attachments = [], requestId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2, signal = null }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
@@ -184,8 +190,8 @@ export async function runNaibaAgent({ message, history = [], skillId, baby, care
   const context = { skillId, baby, events: careEvents, metric: growthMetric, growthMetric, growthInterpretation, concerns, carePlanItems, questions, actor, feedingReference, decisionResult, pageContext, requestId, locale, now, babyContext, localKnowledge }
   if (protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES || protocol === LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS) {
     const output = protocol === LLM_PROTOCOLS.ANTHROPIC_MESSAGES
-      ? await runAnthropicMessages({ message, history, attachments, context, model, apiKey, baseURL, transportFetch })
-      : await runOpenAiChat({ message, history, attachments, context, model, apiKey, baseURL, transportFetch, maxRetries })
+      ? await runAnthropicMessages({ message, history, attachments, context, model, apiKey, baseURL, transportFetch, signal })
+      : await runOpenAiChat({ message, history, attachments, context, model, apiKey, baseURL, transportFetch, maxRetries, signal })
     if (!outputAllowed(output, context)) throw new Error('naiba-output-guardrail')
     return output
   }
@@ -206,7 +212,7 @@ export async function runNaibaAgent({ message, history = [], skillId, baby, care
     traceIncludeSensitiveData: false,
     workflowName: 'BabyForge Naiba AI',
   })
-  const result = await runner.run(agent, agentUserInput(message, attachments, history), { context, maxTurns: 4, groupId: requestId || baby?.id })
+  const result = await runner.run(agent, agentUserInput(message, attachments, history), { context, maxTurns: 4, groupId: requestId || baby?.id, ...(signal ? { signal } : {}) })
   const output = String(result.finalOutput || '').trim()
   if (!output || !outputAllowed(output, context)) throw new Error('naiba-output-guardrail')
   return output
@@ -226,7 +232,7 @@ const REPORT_OUTPUT = z.object({
   questionsForClinician: z.array(z.string()).max(3),
 })
 
-export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents = [], locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses }) {
+export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby, careEvents = [], locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, useResponses, signal = null }) {
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, now })
   const context = { skillId: 'medical_report_interpreter', baby, events: careEvents, locale, now, babyContext, decisionResult: null, localKnowledge: [] }
@@ -244,7 +250,7 @@ export async function runNaibaReportAgent({ name, mimeType, dataUrl, text, baby,
   if (dataUrl && mimeType === 'application/pdf') content.push({ type: 'input_file', file: dataUrl, filename: name })
   else if (dataUrl) content.push({ type: 'input_image', image: dataUrl, detail: 'high' })
   const runner = new Runner({ modelProvider: await createNaibaModelProvider({ apiKey, baseURL, useResponses }), tracingDisabled: true, traceIncludeSensitiveData: false, workflowName: 'BabyForge Naiba AI report' })
-  const result = await runner.run(agent, [{ role: 'user', content }], { context, maxTurns: 3, groupId: baby?.id })
+  const result = await runner.run(agent, [{ role: 'user', content }], { context, maxTurns: 3, groupId: baby?.id, ...(signal ? { signal } : {}) })
   const report = sanitizeMedicalReport(result.finalOutput || {})
   if (!report?.fields) throw new Error('naiba-report-output-invalid')
   return { status: report.fields.length ? 'draft_ready' : 'needs_information', extractedAt: now.toISOString(), ...report }

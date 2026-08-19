@@ -91,13 +91,15 @@ export function resolveRecordReturnTo(value) {
   return RECORD_RETURN_ROUTES.includes(parsed.route) ? value : null
 }
 
-export function buildNaibaRoute({ returnTo, skill, unit, topic, capability } = {}) {
+export function buildNaibaRoute({ returnTo, skill, unit, topic, capability, contentType, contentId } = {}) {
   const params = new URLSearchParams()
   if (returnTo) params.set('returnTo', returnTo)
   if (skill) params.set('skill', skill)
   if (unit) params.set('unit', unit)
   if (topic) params.set('topic', topic)
   if (capability) params.set('capability', capability)
+  if (contentType) params.set('contentType', contentType)
+  if (contentId) params.set('contentId', contentId)
   const query = params.toString()
   return query ? `${ROUTES.naibaAi}?${query}` : ROUTES.naibaAi
 }

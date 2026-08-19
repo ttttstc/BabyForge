@@ -4,10 +4,12 @@ import { describeNaibaAgentFailure, runNaibaAgent } from '../../_shared/naibaAge
 import { getSkillContract, selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
-import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
+import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, getDecisionUnit, runDecisionUnit, selectDecisionUnit } from '../../../src/domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
-import { isApprovedAuthorityUrl } from '../../../src/domain/naibaGuardrails.js'
+import { searchApprovedKnowledge } from '../../../src/domain/knowledgePack.js'
+import { DISEASE_CONTENT_VERSION, DISEASE_TOPICS, ORGAN_TOPICS } from '../../../src/content/diseaseRegistry.js'
+import { localDayForTimezone } from '../../../src/domain/nativeToday.js'
 import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 import { NAIBA_AGENT_CONTRACT, NAIBA_AGENT_CONTRACT_VERSION, normalizeNaibaAttachments, normalizeNaibaContext, normalizeNaibaHistory } from '../../../src/domain/naibaAgentContract.js'
 import { draftText, parseCareEventDraft } from '../../../src/domain/careEventDraft.js'
@@ -27,20 +29,74 @@ function agentResponse(events, jsonMode = false, status = 200) {
     : sse(events, status)
 }
 
+function requestAborted(request) {
+  return Boolean(request?.signal?.aborted)
+}
+
+function abortedResponse() {
+  return new Response(null, { status: 499 })
+}
+
 function localAnswer(message, recommendation = {}, decision = null) {
   return buildNaibaLocalAnswer(message, { recommendation, decision, locale: 'zh-CN' })
 }
 
-async function loadAuthorizedContext(env, principalOrAccountId, babyId) {
+function validTimezone(value, fallback = 'Asia/Shanghai') {
+  const candidate = String(value || '').trim()
+  if (!candidate) return fallback
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format()
+    return candidate
+  } catch {
+    return fallback
+  }
+}
+
+function uniqueStrings(value, limit = 40) {
+  return [...new Set((Array.isArray(value) ? value : []).map((item) => String(item || '').trim()).filter(Boolean))].slice(0, limit)
+}
+
+function exploreContent(requested) {
+  if (!requested?.contentType || !requested?.contentId) return null
+  if (requested.contentType === 'disease') {
+    const disease = DISEASE_TOPICS.find((item) => item.id === requested.contentId)
+    if (!disease) return { type: 'disease', id: requested.contentId, available: false }
+    return {
+      type: 'disease',
+      id: disease.id,
+      available: true,
+      version: DISEASE_CONTENT_VERSION,
+      name: disease.name,
+      shortDefinition: disease.shortDefinition,
+      definition: disease.definition,
+      observation: disease.observation,
+      escalationRuleRef: disease.escalationRuleRef,
+      sourceIds: disease.sourceIds,
+    }
+  }
+  if (requested.contentType === 'organ') {
+    const organ = ORGAN_TOPICS.find((item) => item.id === requested.contentId)
+    if (!organ) return { type: 'organ', id: requested.contentId, available: false }
+    return { type: 'organ', id: organ.id, available: true, version: DISEASE_CONTENT_VERSION, name: organ.name, description: organ.description, relatedDiseaseIds: organ.relatedDiseaseIds }
+  }
+  return { type: 'article', id: requested.contentId, available: false, reason: 'third_party_article_requires_server_verified_source' }
+}
+
+async function loadAuthorizedContext(env, principalOrAccountId, babyId, requestedPageContext = null) {
   const baby = await accessibleBaby(env, principalOrAccountId, babyId)
   if (!baby || baby.status === 'detached') return null
-  const [rows, growthRows, planRows, concernRows] = await Promise.all([
+  const resourceIds = uniqueStrings(requestedPageContext?.resourceIds)
+  const selectedEventsQuery = resourceIds.length
+    ? env.DB.prepare(`SELECT * FROM care_events WHERE baby_id = ? AND id IN (${resourceIds.map(() => '?').join(',')}) AND status != 'voided'`).bind(baby.id, ...resourceIds).all()
+    : Promise.resolve({ results: [] })
+  const [rows, selectedRows, growthRows, planRows, concernRows] = await Promise.all([
     env.DB.prepare(`
       SELECT * FROM care_events
       WHERE baby_id = ? AND status != 'voided'
       ORDER BY occurred_at DESC, created_at DESC
       LIMIT 60
     `).bind(baby.id).all(),
+    selectedEventsQuery,
     env.DB.prepare(`
       SELECT * FROM care_events
       WHERE baby_id = ? AND category = 'growth_measurement' AND status != 'voided'
@@ -49,12 +105,16 @@ async function loadAuthorizedContext(env, principalOrAccountId, babyId) {
     env.DB.prepare('SELECT * FROM care_plan_items WHERE baby_id = ? ORDER BY due_at, created_at').bind(baby.id).all(),
     env.DB.prepare('SELECT * FROM concerns WHERE baby_id = ? ORDER BY updated_at').bind(baby.id).all(),
   ])
+  const events = [...(rows.results || []), ...(selectedRows.results || [])]
+    .reduce((result, row) => result.some((item) => item.id === row.id) ? result : result.concat(row), [])
+    .map(eventFromRow).filter(Boolean)
   return {
     baby,
-    careEvents: (rows.results || []).map(eventFromRow).filter(Boolean).reverse(),
+    careEvents: events.sort((left, right) => String(left.occurredAt || '').localeCompare(String(right.occurredAt || ''))),
     growthEvents: (growthRows.results || []).map(eventFromRow).filter(Boolean),
     carePlanItems: (planRows.results || []).map(planFromRow).filter(Boolean),
     concerns: (concernRows.results || []).map(concernFromRow).filter(Boolean),
+    exploreContent: exploreContent(requestedPageContext),
   }
 }
 
@@ -66,18 +126,35 @@ export function authorizedPageContext(requested, context, now = new Date()) {
     growth: new Set(['trend', 'weight', 'length', 'headCircumference']),
     explore: new Set(['current-topic']),
   }
+  const timezone = validTimezone(requested.timezone)
+  const selectedDay = /^\d{4}-\d{2}-\d{2}$/.test(String(requested.selectedDay || ''))
+    ? String(requested.selectedDay)
+    : localDayForTimezone(now.toISOString(), timezone)
+  const resourceIds = new Set(uniqueStrings(requested.resourceIds))
+  const matchesRequestedPage = (event) => resourceIds.size > 0
+    ? resourceIds.has(String(event.id))
+    : localDayForTimezone(event.occurredAt || event.recordedAt, timezone) === selectedDay
   const pageContext = {
     source: requested.source,
     focus: allowedFocus[requested.source]?.has(requested.focus) ? requested.focus : '',
+    selectedDay,
+    timezone,
+    ...(resourceIds.size ? { resourceIds: [...resourceIds] } : {}),
   }
   const compactEvent = (event) => ({ id: event.id, category: event.category, occurredAt: event.occurredAt, payload: event.payload, status: event.status })
   if (requested.source === 'today') {
-    const cutoff = now.getTime() - 24 * 60 * 60 * 1000
-    return { ...pageContext, facts: context.careEvents.filter((event) => new Date(event.occurredAt || event.recordedAt).getTime() >= cutoff).slice(-16).map(compactEvent) }
+    const facts = context.careEvents.filter(matchesRequestedPage).slice(-16)
+    return { ...pageContext, facts: facts.map(compactEvent), usedEventIds: facts.map((event) => event.id), ...(requested.focus === 'plan' ? { plans: context.carePlanItems.slice(0, 20) } : {}) }
   }
-  if (requested.source === 'record') return { ...pageContext, facts: context.careEvents.slice(-16).map(compactEvent) }
-  if (requested.source === 'growth') return { ...pageContext, measurements: context.growthEvents.slice(-16).map(compactEvent) }
-  return pageContext
+  if (requested.source === 'record') {
+    const facts = context.careEvents.filter(matchesRequestedPage).slice(-16)
+    return { ...pageContext, facts: facts.map(compactEvent), usedEventIds: facts.map((event) => event.id) }
+  }
+  if (requested.source === 'growth') {
+    const measurements = context.growthEvents.filter(matchesRequestedPage).slice(-16)
+    return { ...pageContext, measurements: measurements.map(compactEvent), usedEventIds: measurements.map((event) => event.id) }
+  }
+  return { ...pageContext, content: context.exploreContent }
 }
 
 export const SAFE_DECISION_FACT_KEYS = Object.freeze([...DECISION_INPUT_FACT_KEYS])
@@ -161,15 +238,47 @@ async function persistHealthEpisode(env, accountId, babyId, unitId, facts, resul
 }
 
 async function persistProvisionalEvidence(env, accountId, babyId, output) {
-  const urls = [...new Set(String(output).match(/https?:\/\/[^\s)\]]+/g) || [])].filter(isApprovedAuthorityUrl)
-  if (!urls.length) return
+  const sources = Array.isArray(output) ? output : []
+  if (!sources.length) return
   const now = new Date()
   try {
     await env.DB.prepare('INSERT INTO provisional_knowledge_evidence (id, account_id, baby_id, query, evidence_json, policy_status, created_at, expires_at) VALUES (?, ?, ?, ?, ?, \'accepted_general\', ?, ?)')
-      .bind(newRequestId(), accountId, babyId, 'naiba-authority-source', JSON.stringify({ urls, limitation: 'general_education_only' }), now.toISOString(), new Date(now.getTime() + 7 * 86_400_000).toISOString()).run()
+      .bind(newRequestId(), accountId, babyId, 'naiba-authority-source', JSON.stringify({ sources, limitation: 'general_education_only' }), now.toISOString(), new Date(now.getTime() + 7 * 86_400_000).toISOString()).run()
   } catch (error) {
     console.error('Naiba AI provisional evidence persistence unavailable', error)
   }
+}
+
+const HEALTH_SENSITIVE_PATTERN = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i
+
+function userTranscript(history, message) {
+  return [...history.filter((item) => item.role === 'user').map((item) => item.text), message].join('\n')
+}
+
+function accumulatedDecisionFacts(history, message) {
+  const historicalFacts = history.filter((item) => item.role === 'user').reduce((facts, item) => ({ ...facts, ...extractDecisionFacts(item.text) }), {})
+  return { ...historicalFacts, ...extractDecisionFacts(message) }
+}
+
+const DECISION_SOURCE_KNOWLEDGE = Object.freeze({
+  'who-essential-newborn-care-2024': 'newborn-temperature-breathing-danger',
+  'who-newborn-jaundice-referral': 'newborn-jaundice-referral',
+  'who-newborn-danger-signs': 'newborn-danger-signs',
+  'cdc-safe-sleep-2024': 'infant-safe-sleep',
+})
+
+function provenanceSources({ message, recommendation, decision, baby }) {
+  const ageDays = getAgeDays(baby.birthDate)
+  const ageMonths = Number.isFinite(ageDays) ? Math.floor(ageDays / 30.4375) : null
+  const knowledge = searchApprovedKnowledge(message, { ageDays, ageMonths })
+  const items = [
+    ...knowledge.map((unit) => ({ id: unit.id, version: unit.packVersion, url: unit.source.url, title: unit.source.title, authority: unit.source.publisher, kind: 'knowledge' })),
+    ...(recommendation?.sources || []).map((source) => ({ id: source.id, version: recommendation.knowledgeVersion, url: source.url, title: source.title, authority: source.authority, kind: 'feeding_rule' })),
+  ]
+  const decisionKnowledgeId = DECISION_SOURCE_KNOWLEDGE[decision?.source]
+  const decisionUnit = decisionKnowledgeId ? knowledge.find((unit) => unit.id === decisionKnowledgeId) : null
+  if (decisionUnit) items.push({ id: decisionUnit.id, version: decisionUnit.packVersion, url: decisionUnit.source.url, title: decisionUnit.source.title, authority: decisionUnit.source.publisher, kind: 'decision_rule' })
+  return [...new Map(items.filter((item) => item.id && item.version && item.url).map((item) => [`${item.id}:${item.version}`, item])).values()]
 }
 
 export async function onRequestPost({ request, env }) {
@@ -188,35 +297,55 @@ export async function onRequestPost({ request, env }) {
 
   const babyId = String(body?.babyId || body?.baby?.id || '').trim()
   if (!babyId) return json({ error: '缺少宝宝档案编号' }, 422)
-  const growthMetric = ['weight', 'length', 'headCircumference'].includes(String(body?.growthMetric || '')) ? String(body.growthMetric) : null
-  const context = await loadAuthorizedContext(env, session, babyId)
-  if (!context) return json({ error: '无权访问该宝宝档案' }, 403)
   const requestId = newRequestId()
   const pageContext = normalizeNaibaContext(body?.context)
   let history
   try { history = normalizeNaibaHistory(body?.history) } catch { return json({ error: '当前对话上下文无效' }, 422) }
   let attachments
   try { attachments = normalizeNaibaAttachments(body?.attachments) } catch { return json({ error: '图片格式、大小或发送确认无效' }, 422) }
+  const context = await loadAuthorizedContext(env, session, babyId, pageContext)
+  if (!context) return json({ error: '无权访问该宝宝档案' }, 403)
+  if (requestAborted(request)) return abortedResponse()
+  const growthMetric = ['weight', 'length', 'headCircumference'].includes(String(body?.growthMetric || ''))
+    ? String(body.growthMetric)
+    : ['weight', 'length', 'headCircumference'].includes(String(pageContext?.focus || '')) ? String(pageContext.focus) : null
   const requestedSkillId = String(body?.skillId || '').slice(0, 120)
-  const recommendation = calculateFeedingRecommendation({ baby: context.baby, events: context.careEvents, locale: context.baby.locale || 'zh-CN' })
   const injectedPageContext = authorizedPageContext(pageContext, context)
-  const previousUserMessage = [...history].reverse().find((item) => item.role === 'user')?.text || ''
-  const contextualFollowUp = isNaibaContextualFollowUp(message) && (Boolean(pageContext) || history.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text)))
-  const routingMessage = contextualFollowUp ? `${previousUserMessage}\n${message}` : message
+  const usedEventIds = new Set(injectedPageContext?.usedEventIds || [])
+  const agentCareEvents = usedEventIds.size ? context.careEvents.filter((event) => usedEventIds.has(event.id)) : []
+  const agentGrowthEvents = usedEventIds.size ? context.growthEvents.filter((event) => usedEventIds.has(event.id)) : []
+  const scopedRecommendation = calculateFeedingRecommendation({ baby: context.baby, events: agentCareEvents, locale: context.baby.locale || 'zh-CN' })
+  const agentCarePlanItems = injectedPageContext?.source === 'today' && injectedPageContext.focus === 'plan' ? context.carePlanItems : []
+  const transcript = userTranscript(history, message)
+  const historyHasTopic = history.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text))
+  const historyHasHealthTopic = HEALTH_SENSITIVE_PATTERN.test(transcript)
+  const extractedCurrentFacts = extractDecisionFacts(message)
+  const contextualFollowUp = isNaibaContextualFollowUp(message) && (Boolean(pageContext) || historyHasTopic || historyHasHealthTopic)
+  const routingMessage = contextualFollowUp || historyHasHealthTopic ? transcript : message
   const skillId = selectSkillId(routingMessage, requestedSkillId)
-  const hasDecisionContext = body?.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
-  if (!isNaibaTopicInScope(message) && !contextualFollowUp && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
+  const requestedDecisionUnitId = String(body?.decisionUnitId || '').trim()
+  const explicitDecisionUnit = getDecisionUnit(requestedDecisionUnitId) ? requestedDecisionUnitId : ''
+  const healthSensitive = HEALTH_SENSITIVE_PATTERN.test(message)
+  // Replay every bounded user turn deterministically. The model transcript is
+  // not the state machine: the server owns the unit and the allowlisted facts.
+  const decisionUnitId = explicitDecisionUnit || ((skillId === 'triage_and_preassessment' || healthSensitive || historyHasHealthTopic) ? selectDecisionUnit(transcript) : '')
+  const accumulatedFacts = accumulatedDecisionFacts(history, message)
+  const hasDecisionContext = Object.keys(accumulatedFacts).length > 0
+  const decisionFollowUp = Boolean(decisionUnitId && historyHasHealthTopic && (isNaibaContextualFollowUp(message) || Object.keys(extractedCurrentFacts).length > 0))
+  if (!isNaibaTopicInScope(message) && !contextualFollowUp && !decisionFollowUp && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
     return agentResponse([{ type: 'meta', contract: NAIBA_AGENT_CONTRACT, contractVersion: NAIBA_AGENT_CONTRACT_VERSION, requestId }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }], jsonMode)
   }
-  const healthSensitive = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i.test(message)
-  // The server, not the browser, owns the topic-to-unit mapping. This also
-  // gives health-related explanatory skills the same deterministic floor.
-  const decisionUnitId = (skillId === 'triage_and_preassessment' || healthSensitive) ? selectDecisionUnit(message) : ''
-  const decisionFacts = { ...safeDecisionFacts(body?.decisionFacts), ...extractDecisionFacts(message), ageDays: getAgeDays(context.baby.birthDate) }
+  // The browser may send a compatibility hint, but the safety state is
+  // replayed from the bounded user transcript and the server-owned baby age.
+  // Never let client-supplied facts override or add a decision fact.
+  const decisionFacts = { ...accumulatedFacts, ageDays: getAgeDays(context.baby.birthDate) }
   const decision = decisionUnitId ? runDecisionUnit({ unitId: decisionUnitId, facts: decisionFacts }) : null
+  if (requestAborted(request)) return abortedResponse()
   await persistDecision(env, session.accountId, context.baby.id, decision)
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
-  const fallback = localAnswer(message, recommendation, decision)
+  const fallback = localAnswer(message, scopedRecommendation, decision)
+  const sources = provenanceSources({ message: transcript, recommendation: scopedRecommendation, decision, baby: context.baby })
+  const sourcesEvent = sources.length ? { type: 'sources', items: sources } : null
   let llmConfig
   let configUnavailable = false
   try {
@@ -232,20 +361,20 @@ export async function onRequestPost({ request, env }) {
   const activity = { type: 'activity', skillId, label: getSkillContract(skillId)?.label || '奶爸 AI', status: 'completed' }
   if (skillId === 'care_event_quick_logger') {
     const draft = parseCareEventDraft({
-      message: contextualFollowUp && previousUserMessage ? `${previousUserMessage} ${message}` : message,
+      message: contextualFollowUp ? transcript : message,
       baby: context.baby,
       actor: { id: session.accountId, displayName: session.displayName || '家庭成员' },
       locale: context.baby.locale || 'zh-CN',
     })
     return respond([activity, { type: 'message', delta: draftText(draft, context.baby.locale || 'zh-CN') }, ...(draft.status === 'draft_ready' ? [{ type: 'draft', draft }] : []), { type: 'done' }])
   }
-  if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: decision }, { type: 'done' }])
-  if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), { type: 'done' }])
-  if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, { type: 'done' }])
+  if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: decision }, ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+  if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+  if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
 
   const quotaText = [...history.map((item) => item.text), message].join('\n')
-  const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, quotaText, new Date(), attachments.length + history.reduce((count, item) => count + (item.attachments?.length || 0), 0))
-  if (!quota.allowed) return respond([{ type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, { type: 'done' }])
+  const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, quotaText, new Date(), attachments.length + history.reduce((count, item) => count + (item.attachmentSummary?.length || 0), 0))
+  if (!quota.allowed) return respond([{ type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
 
   try {
     const output = await runNaibaAgent({
@@ -253,12 +382,12 @@ export async function onRequestPost({ request, env }) {
       history,
       skillId,
       baby: context.baby,
-      careEvents: context.careEvents,
-      growthEvents: context.growthEvents,
-      carePlanItems: context.carePlanItems,
-      concerns: context.concerns,
+      careEvents: agentCareEvents,
+      growthEvents: agentGrowthEvents,
+      carePlanItems: agentCarePlanItems,
+      concerns: [],
       questions: [],
-      feedingReference: recommendation,
+      feedingReference: scopedRecommendation,
       decisionResult: decision,
       pageContext: injectedPageContext,
       attachments,
@@ -270,13 +399,15 @@ export async function onRequestPost({ request, env }) {
       protocol: llmConfig.protocol,
       useResponses: llmConfig.useResponses,
       growthMetric,
+      signal: request.signal,
     })
-    await persistProvisionalEvidence(env, session.accountId, context.baby.id, output)
-    const sources = [...new Set(String(output).match(/https?:\/\/[^\s)\]]+/g) || [])].filter(isApprovedAuthorityUrl).map((url) => ({ url, kind: 'authority' }))
-    return respond([activity, { type: 'message', delta: output }, ...(sources.length ? [{ type: 'sources', items: sources }] : []), { type: 'done' }])
+    if (requestAborted(request)) return abortedResponse()
+    await persistProvisionalEvidence(env, session.accountId, context.baby.id, sources)
+    return respond([activity, { type: 'message', delta: output }, ...(sourcesEvent ? [sourcesEvent] : []), ...(decision ? [{ type: 'decision', result: decision }] : []), { type: 'done' }])
   } catch (error) {
+    if (requestAborted(request)) return abortedResponse()
     const failure = describeNaibaAgentFailure(error)
     console.error('Naiba AI agent failed; returning provider error', { ...failure, error })
-    return respond([{ type: 'meta', fallback: true, reason: failure.reason }, { type: 'done' }])
+    return respond([{ type: 'meta', fallback: true, reason: failure.reason }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
   }
 }

@@ -40,6 +40,30 @@ export async function accessibleBaby(env, principalOrAccountId, babyId) {
   `).bind(babyId, ...access.binds).first()
 }
 
+function canWriteMembershipRole(value) {
+  const role = String(value || '').trim().toLowerCase()
+  return role === 'owner' || role === 'member' || role === 'caregiver'
+}
+
+export async function writableBaby(env, principalOrAccountId, babyId) {
+  const access = membershipAccess(principalOrAccountId)
+  const row = await env.DB.prepare(`
+    SELECT b.id, b.household_id AS householdId, b.nickname, b.birth_date AS birthDate,
+      b.gestational_weeks AS gestationalWeeks, b.gestational_days AS gestationalDays, b.growth_age_basis AS growthAgeBasis, b.birth_multiplicity AS birthMultiplicity, b.sex, b.feeding_mode AS feedingMode, b.locale,
+      COALESCE(b.status, 'active') AS status,
+      COALESCE(m.membership_role, CASE WHEN m.role = 'owner' THEN 'owner' WHEN m.role = 'guest' THEN 'readOnly' ELSE 'member' END) AS membershipRole
+    FROM baby_profiles b JOIN household_members m ON m.household_id = b.household_id
+    JOIN households h ON h.id = b.household_id
+    WHERE b.id = ? AND ${access.clause} AND m.active = 1 AND h.deleted_at IS NULL
+  `).bind(babyId, ...access.binds).first()
+  const membershipRole = row?.membershipRole || row?.membership_role || 'member'
+  if (!row || !canWriteMembershipRole(membershipRole)) return null
+  const baby = { ...row }
+  delete baby.membershipRole
+  delete baby.membership_role
+  return baby
+}
+
 export async function accessibleEvent(env, principalOrAccountId, eventId) {
   const access = membershipAccess(principalOrAccountId)
   return env.DB.prepare(`

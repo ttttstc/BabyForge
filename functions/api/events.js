@@ -1,5 +1,5 @@
 import { json, requireSession } from '../_shared/auth.js'
-import { accessibleBaby, eventFromRow, legacySourceForEvent, legacyTypeForEvent, planFromRow, safeEventInput } from '../_shared/care.js'
+import { accessibleBaby, eventFromRow, legacySourceForEvent, legacyTypeForEvent, planFromRow, safeEventInput, writableBaby } from '../_shared/care.js'
 import { appAssetUrl, appUpdateUrl, EMAIL_UPDATE_CATEGORIES, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
 
 function conflict(current, message = '事件版本冲突，请刷新后重新修改') {
@@ -80,7 +80,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   const raw = body?.event || body
   const babyId = raw?.babyId || body?.babyId
   if (!babyId) return json({ error: '缺少 babyId' }, 422)
-  const baby = await accessibleBaby(env, auth.session, babyId)
+  const baby = await writableBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   let event
   try {

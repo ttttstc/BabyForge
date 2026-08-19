@@ -19,7 +19,7 @@ test('OpenAI Chat Completions protocol uses standard chat request', async () => 
   let requestBody
   const answer = await runNaibaAgent({
     ...input(),
-    history: [{ role: 'user', text: '宝宝刚才喝了 60 mL。', attachments: [{ kind: 'image', name: 'prior.jpg', mimeType: 'image/jpeg', size: 4, dataUrl: 'data:image/jpeg;base64,AA==' }] }, { role: 'assistant', text: '我记住当前会话里的这条信息。' }],
+    history: [{ role: 'user', text: '宝宝刚才喝了 60 mL。', attachmentSummary: [{ kind: 'image', name: 'prior.jpg', mimeType: 'image/jpeg', size: 4 }] }, { role: 'assistant', text: '我记住当前会话里的这条信息。' }],
     attachments: [{ kind: 'image', name: 'diaper.jpg', mimeType: 'image/jpeg', size: 4, dataUrl: 'data:image/jpeg;base64,AA==' }],
     baseURL: 'https://provider.test/v1',
     protocol: LLM_PROTOCOLS.OPENAI_CHAT_COMPLETIONS,
@@ -30,8 +30,9 @@ test('OpenAI Chat Completions protocol uses standard chat request', async () => 
   })
   assert.match(answer, /吃奶/)
   assert.equal(requestBody.messages[0].role, 'system')
-  assert.equal(requestBody.messages[1].content[0].text, '宝宝刚才喝了 60 mL。')
-  assert.equal(requestBody.messages[1].content[1].type, 'image_url')
+  assert.equal(typeof requestBody.messages[1].content, 'string')
+  assert.match(requestBody.messages[1].content, /prior\.jpg/)
+  assert.doesNotMatch(requestBody.messages[1].content, /data:image/)
   assert.equal(requestBody.messages[2].role, 'assistant')
   assert.equal(requestBody.messages[3].content[1].type, 'image_url')
   assert.equal(requestBody.model, 'test-model')
