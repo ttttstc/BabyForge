@@ -48,7 +48,10 @@ async function remoteAnswer(message, history, state, skillId, healthEpisodeId, c
   }
   if (!response.ok) {
     let detail = ''
-    try { detail = String((await response.json())?.error || '') } catch { /* response may be plain text */ }
+    try {
+      const payload = await response.json()
+      detail = String(payload?.error?.message || payload?.error || '')
+    } catch { /* response may be plain text */ }
     throw new Error(detail || `AI 服务暂不可用（${response.status}）`)
   }
   const result = parseNaibaSse(await response.text())
@@ -74,18 +77,29 @@ function initialPageContext(topic, locale, state) {
   const selectedDay = localDayForTimezone(new Date(), timezone)
   const careEvents = Array.isArray(state?.careEvents) ? state.careEvents : []
   const dayEventIds = careEvents.filter((event) => localDayForTimezone(event.occurredAt || event.recordedAt, timezone) === selectedDay).map((event) => event.id).filter(Boolean).slice(-40)
-  if (topic === 'analysis' || topic === 'feeding' || topic === 'plan') return { source: 'today', focus: topic, label: english ? 'Today\'s confirmed care facts' : '今天的已确认照护事实', selectedDay, timezone, ...(dayEventIds.length ? { resourceIds: dayEventIds } : {}) }
+  if (topic === 'analysis' || topic === 'feeding' || topic === 'plan') return { source: 'today', focus: topic, label: english ? 'Today\'s confirmed care facts' : '今天的已确认照护事实', timezone, ...(dayEventIds.length ? { resourceIds: dayEventIds } : {}) }
   if (topic === 'growth') {
     const growthIds = careEvents.filter((event) => event.category === 'growth_measurement').map((event) => event.id).filter(Boolean).slice(-40)
     return { source: 'growth', focus: 'trend', label: english ? 'Current growth measurements' : '当前成长测量趋势', selectedDay, timezone, ...(growthIds.length ? { resourceIds: growthIds } : {}) }
   }
-  if (topic === 'record') return { source: 'record', focus: 'timeline', label: english ? 'Care record timeline' : '照护事实时间线', selectedDay, timezone, ...(dayEventIds.length ? { resourceIds: dayEventIds } : {}) }
+  if (topic === 'record') return { source: 'record', focus: 'timeline', label: english ? 'Care record timeline' : '照护事实时间线', timezone, ...(dayEventIds.length ? { resourceIds: dayEventIds } : {}) }
   if (topic === 'explore' || routeParams.get('contentType')) {
     const contentType = ['disease', 'organ', 'article'].includes(routeParams.get('contentType')) ? routeParams.get('contentType') : ''
     const contentId = String(routeParams.get('contentId') || '').trim()
     return { source: 'explore', focus: 'current-topic', label: english ? 'Current parenting topic' : '当前育儿内容', timezone, ...(contentType && contentId ? { contentType, contentId } : {}) }
   }
   return null
+}
+
+function pageContextSkill(topic, context) {
+  if (!context) return ''
+  if (topic === 'analysis') return 'daily_care_analysis'
+  if (topic === 'feeding') return 'daily_feeding_recommender'
+  if (topic === 'plan') return 'daily_growth_plan_builder'
+  if (topic === 'record') return 'detailed_care_analysis'
+  if (topic === 'growth') return 'growth_and_development_interpreter'
+  if (context.source === 'explore') return context.contentType === 'disease' ? 'disease_explainer' : 'stage_parenting_qa'
+  return ''
 }
 
 function welcomeMessage(isEnglish) {
@@ -369,7 +383,7 @@ export function NaibaAiView({ state, commitState, cloudMode = false, demoMode = 
         let remote = null
         let remoteDraft = null
         try {
-          remote = await remoteAnswer(message, history, state, '', healthEpisodeId, pageContext, attachments, requestController)
+          remote = await remoteAnswer(message, history, state, pageContextSkill(topic, pageContext), healthEpisodeId, pageContext, attachments, requestController)
           if (!isCurrent()) return
           if (remote.decision?.healthEpisodeState === 'open') {
             setHealthEpisodeId(String(remote.decision.healthEpisodeId || ''))

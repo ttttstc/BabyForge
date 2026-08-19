@@ -48,3 +48,8 @@ test('native review regressions use device timezone, captured photo time, and on
   assert.match(index, /photoPixel: image\.PixelMap \| null/)
   assert.doesNotMatch(index, /photoPixels: Array<image\.PixelMap>/)
 })
+
+test('native AI restores scroll and separates lightweight from long results', async () => {
+  const source = await readFile(indexUrl, 'utf8')
+  for (const token of ['surfaceScroller', 'setScrollPosition(this.activeTab, yOffset)', "'ai.detail'", 'aiDetailSurface', 'aiResultSheet']) assert.ok(source.includes(token), token)
+})

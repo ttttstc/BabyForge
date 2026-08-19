@@ -165,6 +165,7 @@ function deviceDateKey(value: Date = new Date()): string {
 struct Index {
   private adapter: NativeResourceAdapter | null = null;
   private readonly navigation: NativeNavigationStore = new NativeNavigationStore();
+  private readonly surfaceScroller: Scroller = new Scroller();
   @State private phase: NativePhase = 'loading';
   @State private loginMode: LoginMode = 'login';
   @State private resource: NativeResourceEnvelope | null = null;
@@ -243,6 +244,8 @@ struct Index {
   @State private aiSelectedSkillId: string = '';
   @State private aiSkillsExpanded: boolean = false;
   @State private aiHealthEpisodeId: string = '';
+  @State private aiResultMessage: NativeAgentMessage | null = null;
+  @State private showAiResultSheet: boolean = false;
   private aiStopRequested: boolean = false;
   private aiGeneration: number = 0;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
@@ -285,6 +288,10 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.showAiResultSheet) {
+      this.showAiResultSheet = false;
+      return true;
+    }
     if (this.showFamilyPanel) {
       this.showFamilyPanel = false;
       return true;
@@ -348,6 +355,10 @@ struct Index {
     this.aiSelectedSkillId = '';
     this.aiSkillsExpanded = false;
     this.aiHealthEpisodeId = '';
+    this.aiResultMessage = null;
+    this.showAiResultSheet = false;
+    this.navigation.repeat('ai');
+    if (this.activeTab === 'ai') this.syncNavigation();
     this.aiContext = null;
     this.aiStatus = 'idle';
     this.aiError = '';
@@ -1249,6 +1260,7 @@ struct Index {
     if (tab === 'growth') this.loadGrowth();
     if (tab === 'explore') this.loadExplore();
     this.syncNavigation();
+    setTimeout((): void => this.surfaceScroller.scrollTo({ xOffset: 0, yOffset: this.navigation.state(tab).scrollPosition }), 0);
   }
 
   private openAiFrom(source: NativeTab): void {
@@ -1262,7 +1274,6 @@ struct Index {
       timezone
     };
     if (source === 'today' || source === 'record') {
-      context.selectedDay = this.selectedDay || deviceDateKey();
       const ids = this.today?.recentFacts.map((fact: NativeTodayFact) => fact.id).filter((id: string) => id.length > 0) || [];
       if (ids.length > 0) context.resourceIds = ids.slice(-40);
     } else if (source === 'growth') {
@@ -1282,7 +1293,15 @@ struct Index {
       }
     }
     this.aiContext = context;
-    this.aiSelectedSkillId = source === 'today' ? 'daily_care_analysis' : source === 'growth' ? 'growth_and_development_interpreter' : '';
+    this.aiSelectedSkillId = source === 'today'
+      ? 'daily_care_analysis'
+      : source === 'record'
+        ? 'detailed_care_analysis'
+        : source === 'growth'
+          ? 'growth_and_development_interpreter'
+          : context.contentType === 'disease'
+            ? 'disease_explainer'
+            : 'stage_parenting_qa';
     if (this.aiInput.length === 0) this.setAiInput(prompt);
     this.selectTab('ai');
   }
@@ -1303,6 +1322,21 @@ struct Index {
 
   private visibleAiSkills(): Array<NativeNaibaSkill> {
     return this.aiSkillsExpanded ? NAIBA_SKILLS : NAIBA_SKILLS.slice(0, 6);
+  }
+
+  private aiUsesDetailPage(skillId: string): boolean {
+    return ['detailed_care_analysis', 'medical_report_interpreter', 'visit_brief_generator', 'caregiver_handoff_builder'].includes(skillId);
+  }
+
+  private presentAiResult(message: NativeAgentMessage, skillId: string): void {
+    this.aiResultMessage = message;
+    if (this.aiUsesDetailPage(skillId)) {
+      this.navigation.push('ai', 'ai.detail');
+      this.syncNavigation();
+      setTimeout((): void => this.surfaceScroller.scrollTo({ xOffset: 0, yOffset: 0 }), 0);
+    } else {
+      this.showAiResultSheet = true;
+    }
   }
 
   private setAiInput(value: string): void {
@@ -1394,7 +1428,8 @@ struct Index {
       const report = payload['report'] as Record<string, Object>;
       const draft = payload['draft'];
       const fields = Array.isArray(report?.['fields']) ? report['fields'] as Array<Object> : [];
-      this.aiMessages = this.aiMessages.concat([{ id: `assistant-report-${Date.now()}`, role: 'assistant', text: fields.length > 0 ? `已提取 ${fields.length} 个可核对字段。请逐项核对后确认保存。` : '没有识别出可核对字段。', activity: '医疗报告解读', sources: [] }]);
+      const reportMessage: NativeAgentMessage = { id: `assistant-report-${Date.now()}`, role: 'assistant', text: fields.length > 0 ? `已提取 ${fields.length} 个可核对字段。请逐项核对后确认保存。` : '没有识别出可核对字段。', activity: '医疗报告解读', sources: [] };
+      this.aiMessages = this.aiMessages.concat([reportMessage]);
       if (draft !== null && typeof draft === 'object' && String((draft as Record<string, Object>)['status'] || '') === 'draft_ready') {
         const event = (draft as Record<string, Object>)['event'];
         if (event !== null && typeof event === 'object') {
@@ -1407,8 +1442,10 @@ struct Index {
           }
           this.aiDraft = draft as Object;
           this.aiDraftId = savedDraftId;
+          this.showAiResultSheet = true;
         }
       }
+      this.presentAiResult(reportMessage, 'medical_report_interpreter');
       this.aiAttachment = null;
       this.aiStatus = 'success';
     } catch (error) {
@@ -1482,6 +1519,7 @@ struct Index {
       this.aiDraft = null;
       this.aiDraftId = '';
       this.aiError = '事实已确认写入时间线；它仍是观察事实，不是诊断。';
+      this.showAiResultSheet = false;
       await this.loadToday();
     } catch (error) {
       this.aiError = error instanceof Error ? error.message : '事实写入失败，请重试。';
@@ -1494,6 +1532,7 @@ struct Index {
     }
     this.aiDraft = null;
     this.aiDraftId = '';
+    this.showAiResultSheet = false;
     this.aiError = '草稿已丢弃，未写入正式事实。';
   }
 
@@ -1538,7 +1577,8 @@ struct Index {
         this.aiHealthEpisodeId = episodeState === 'open' ? episodeId : '';
       }
       const answer = reply.text.length > 0 ? reply.text : reply.fallback ? '模型暂时不可用，请检查配置或稍后重试。' : '没有收到可显示的回答，请重试。';
-      this.aiMessages = this.aiMessages.concat([{ id: `assistant-${Date.now()}`, role: 'assistant', text: answer, activity: reply.activity, sources: reply.sources }]);
+      const assistantMessage: NativeAgentMessage = { id: `assistant-${Date.now()}`, role: 'assistant', text: answer, activity: reply.activity, sources: reply.sources };
+      this.aiMessages = this.aiMessages.concat([assistantMessage]);
       if (reply.draft !== null && String((reply.draft as Record<string, Object>)['status'] || '') === 'draft_ready') {
         const event = (reply.draft as Record<string, Object>)['event'];
         if (event !== null && typeof event === 'object') {
@@ -1551,8 +1591,10 @@ struct Index {
           }
           this.aiDraft = reply.draft;
           this.aiDraftId = savedDraftId;
+          this.showAiResultSheet = true;
         }
       }
+      this.presentAiResult(assistantMessage, this.aiSelectedSkillId);
       this.aiAttachment = null;
       this.aiStatus = reply.fallback ? 'fallback' : 'success';
       if (reply.reason.length > 0) this.aiError = `服务状态：${reply.reason}`;
@@ -2406,6 +2448,7 @@ struct Index {
   private aiSurface(): void {
     Column({ space: 14 }) {
       Row() {
+        Image($r('app.media.start_icon')).width(52).height(52).objectFit(ImageFit.Contain).alt('2 至 4 月龄水彩宝宝奶爸 AI 入口');
         Column() { Text('奶爸 AI').fontSize(this.largeText ? 29 : 24).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('当前对话仅保存在本机内存').fontSize(12).fontColor('#806E68').margin({ top: 3 }); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
         Button('新对话').height(38).backgroundColor('#FFF1EB').fontColor('#9A665C').borderRadius(19).onClick(() => this.newAiConversation());
       }.width('100%');
@@ -2452,24 +2495,6 @@ struct Index {
           }
         }.alignItems(HorizontalAlign.Start).width('100%').padding(10).backgroundColor('#FFF5EE').borderRadius(14);
       }
-      if (this.aiDraft !== null) {
-        Column({ space: 8 }) {
-          Text('写入前请核对').fontSize(11).fontColor('#A65E51');
-          Text(this.aiDraftCategory() === 'medical_report_observation' ? '报告字段事实' : '照护事实草稿').fontSize(17).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
-          ForEach(this.aiDraftFields(), (field: Object, index: number) => {
-            Column({ space: 5 }) {
-              TextInput({ text: String((field as Record<string, Object>)['name'] || ''), placeholder: '项目' }).onChange((value: string) => this.updateAiDraftField(index, 'name', value));
-              Row({ space: 6 }) {
-                TextInput({ text: String((field as Record<string, Object>)['value'] || ''), placeholder: '数值' }).layoutWeight(1).onChange((value: string) => this.updateAiDraftField(index, 'value', value));
-                TextInput({ text: String((field as Record<string, Object>)['unit'] || ''), placeholder: '单位' }).layoutWeight(1).onChange((value: string) => this.updateAiDraftField(index, 'unit', value));
-              }.width('100%');
-            }.width('100%').padding(8).backgroundColor('#FFF9F4').borderRadius(10);
-          }, (_field: Object, index: number) => String(index));
-          if (this.aiDraftFields().length === 0) TextInput({ text: this.aiDraftValue(), placeholder: '核对事实值' }).onChange((value: string) => this.updateAiDraftValue(value));
-          Text('只保存上面的事实，不保存诊断、建议或原图。').fontSize(11).fontColor('#806E68');
-          Row({ space: 7 }) { Button('丢弃').layoutWeight(1).height(38).onClick(() => this.discardAiDraft()); Button('确认并保存事实').layoutWeight(2).height(38).enabled(!this.busy && this.resource?.permissions.readOnly !== true).backgroundColor('#7A9A80').fontColor(Color.White).onClick(() => this.confirmAiDraft()); }.width('100%');
-        }.width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(15);
-      }
       TextArea({ text: this.aiInput, placeholder: '自由提问，或描述刚刚发生的事…' }).height(92).onChange((value: string) => this.setAiInput(value)).enabled(!this.busy);
       Row({ space: 7 }) {
         Button('图片').layoutWeight(1).height(40).onClick(() => this.chooseAiPhoto()).enabled(!this.busy);
@@ -2484,11 +2509,69 @@ struct Index {
   }
 
   @Builder
+  private aiDetailSurface(): void {
+    Column({ space: 16 }) {
+      Row() {
+        Button('返回对话').onClick(() => { this.navigation.back('ai'); this.syncNavigation(); });
+        Text('奶爸 AI 详细结果').fontSize(this.largeText ? 24 : 20).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center);
+        Blank().width(72);
+      }.width('100%');
+      if (this.aiResultMessage !== null) {
+        Column({ space: 10 }) {
+          Text('系统解释').fontSize(11).fontColor('#A65E51').width('100%');
+          Text(this.aiResultMessage.activity.length > 0 ? this.aiResultMessage.activity : '共享 Agent').fontSize(16).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(this.aiResultMessage.text).fontSize(this.largeText ? 17 : 14).lineHeight(this.largeText ? 26 : 22).fontColor('#4E3B35').width('100%');
+        }.width('100%').padding(16).backgroundColor('#FFFCF8').borderRadius(20);
+        Column({ space: 8 }) {
+          Text('事实与缺失信息').fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text('仅使用服务端授权事实；未记录内容保持未知，不会按零处理。').fontSize(12).fontColor('#806E68').width('100%');
+        }.width('100%').padding(14).backgroundColor('#EDF6EC').borderRadius(16);
+        if (this.aiResultMessage.sources.length > 0) {
+          Column({ space: 7 }) {
+            Text('本轮来源').fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+            ForEach(this.aiResultMessage.sources, (source: NativeAgentSource) => {
+              Button(source.title.length > 0 ? source.title : '权威来源').width('100%').height(36).fontSize(11).onClick(() => this.openAuthority(source.url));
+            }, (source: NativeAgentSource) => source.id);
+          }.width('100%').padding(14).backgroundColor('#F5F0FB').borderRadius(16);
+        }
+      } else {
+        Text('详细结果暂不可用，请返回对话重试。').fontSize(14).fontColor('#806E68').padding(20);
+      }
+    }.width('100%');
+  }
+
+  @Builder
+  private aiResultSheet(): void {
+    Column({ space: 10 }) {
+      Row() { Text(this.aiDraft !== null ? '确认事实草稿' : '奶爸 AI 解释').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Button('关闭').height(32).onClick(() => this.showAiResultSheet = false); }.width('100%');
+      if (this.aiDraft === null && this.aiResultMessage !== null) {
+        Text(this.aiResultMessage.text).fontSize(this.largeText ? 16 : 14).lineHeight(this.largeText ? 24 : 21).fontColor('#4E3B35').maxLines(8).width('100%');
+      }
+      if (this.aiDraft !== null) {
+        Text(this.aiDraftCategory() === 'medical_report_observation' ? '报告字段事实' : '照护事实草稿').fontSize(15).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+        ForEach(this.aiDraftFields(), (field: Object, index: number) => {
+          Column({ space: 5 }) {
+            TextInput({ text: String((field as Record<string, Object>)['name'] || ''), placeholder: '项目' }).onChange((value: string) => this.updateAiDraftField(index, 'name', value));
+            Row({ space: 6 }) {
+              TextInput({ text: String((field as Record<string, Object>)['value'] || ''), placeholder: '数值' }).layoutWeight(1).onChange((value: string) => this.updateAiDraftField(index, 'value', value));
+              TextInput({ text: String((field as Record<string, Object>)['unit'] || ''), placeholder: '单位' }).layoutWeight(1).onChange((value: string) => this.updateAiDraftField(index, 'unit', value));
+            }.width('100%');
+          }.width('100%').padding(8).backgroundColor('#FFF9F4').borderRadius(10);
+        }, (_field: Object, index: number) => String(index));
+        if (this.aiDraftFields().length === 0) TextInput({ text: this.aiDraftValue(), placeholder: '核对事实值' }).onChange((value: string) => this.updateAiDraftValue(value));
+        Text('只保存核对后的事实，不保存诊断、建议或原图。').fontSize(11).fontColor('#806E68').width('100%');
+        Row({ space: 7 }) { Button('丢弃').layoutWeight(1).height(38).onClick(() => this.discardAiDraft()); Button('确认并保存事实').layoutWeight(2).height(38).enabled(!this.busy && this.resource?.permissions.readOnly !== true).backgroundColor('#7A9A80').fontColor(Color.White).onClick(() => this.confirmAiDraft()); }.width('100%');
+      }
+    }.width('100%').padding({ left: 20, right: 20, top: 18, bottom: 18 }).backgroundColor('#FFFCF8').borderRadius({ topLeft: 26, topRight: 26 }).accessibilityGroup(true);
+  }
+
+  @Builder
   private nativeSurface(): void {
     if (this.selectedRoute === 'settings.secondary') this.settingsSurface();
     else if (this.activeTab === 'today') this.todaySurface();
     else if (this.activeTab === 'record' && this.selectedRoute === 'record.root') this.recordSurface();
     else if (this.activeTab === 'record') this.recordDetailSurface();
+    else if (this.activeTab === 'ai' && this.selectedRoute === 'ai.detail') this.aiDetailSurface();
     else if (this.activeTab === 'ai') this.aiSurface();
     else if (this.activeTab === 'growth') this.growthSurface();
     else if (this.activeTab === 'explore') this.exploreSurface();
@@ -2582,11 +2665,12 @@ struct Index {
   private readyView(): void {
     Stack() {
       Column() {
-        Scroll() {
+        Scroll(this.surfaceScroller) {
           this.nativeSurface();
         }
         .layoutWeight(1)
         .scrollBar(BarState.Off)
+        .onScroll((_xOffset: number, yOffset: number) => this.navigation.setScrollPosition(this.activeTab, yOffset))
         .padding({ left: 18, right: 18 });
         this.bottomNavigation();
       }
@@ -2605,6 +2689,12 @@ struct Index {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.closeRecord());
           this.recordSheet();
+        }.width('100%').height('100%').backgroundColor('#4E3B3540');
+      }
+      if (this.showAiResultSheet) {
+        Column() {
+          Blank().layoutWeight(1).onClick(() => this.showAiResultSheet = false);
+          this.aiResultSheet();
         }.width('100%').height('100%').backgroundColor('#4E3B3540');
       }
       if (this.showPhotoViewer) this.photoViewer();

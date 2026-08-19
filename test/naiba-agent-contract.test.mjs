@@ -66,7 +66,22 @@ test('Harmony renders every skill from the shared registry projection', async ()
   assert.match(indexPage, /adapter\.aiChat\([^\n]+this\.aiHealthEpisodeId\)/)
   assert.doesNotMatch(indexPage, /aiContextExcluded|页面上下文[^\n]+移除/)
   assert.match(indexPage, /this\.currentDisease\(\)/)
+  assert.match(indexPage, /source === 'record'[\s\S]+?'detailed_care_analysis'/)
+  assert.match(indexPage, /context\.contentType === 'disease'[\s\S]+?'disease_explainer'/)
+  assert.match(indexPage, /aiDetailSurface/)
+  assert.match(indexPage, /aiResultSheet/)
+  assert.match(indexPage, /setScrollPosition\(this\.activeTab, yOffset\)/)
   assert.equal(manifest.runtime.chatTimeoutMs, 60000)
   assert.equal(manifest.runtime.reportTimeoutMs, 90000)
   assert.equal(manifest.runtime.healthEpisodePersistence, 'allowlisted-facts-only')
+})
+
+test('Harmony central AI entry uses the approved watercolor baby master', async () => {
+  const [startIcon, approvedMaster, appIcon] = await Promise.all([
+    readFile(new URL('../harmony/entry/src/main/resources/base/media/start_icon.png', import.meta.url)),
+    readFile(new URL('../docs/design-assets/harmony/illustration-style-benchmarks/v1/ai-baby-anchor-v1.png', import.meta.url)),
+    readFile(new URL('../harmony/AppScope/resources/base/media/app_icon.png', import.meta.url)),
+  ])
+  assert.deepEqual(startIcon, approvedMaster)
+  assert.notDeepEqual(startIcon, appIcon)
 })

@@ -129,13 +129,13 @@ export function authorizedPageContext(requested, context, now = new Date()) {
     explore: new Set(['current-topic']),
   }
   const timezone = validTimezone(requested.timezone)
-  const selectedDay = /^\d{4}-\d{2}-\d{2}$/.test(String(requested.selectedDay || ''))
-    ? String(requested.selectedDay)
-    : localDayForTimezone(now.toISOString(), timezone)
+  const currentDay = localDayForTimezone(now.toISOString(), timezone)
+  const requestedDay = /^\d{4}-\d{2}-\d{2}$/.test(String(requested.selectedDay || '')) ? String(requested.selectedDay) : ''
+  if ((requested.source === 'today' || requested.source === 'record') && requestedDay && requestedDay !== currentDay) return null
+  const selectedDay = requested.source === 'today' || requested.source === 'record' ? currentDay : (requestedDay || currentDay)
   const resourceIds = new Set(uniqueStrings(requested.resourceIds))
-  const matchesRequestedPage = (event) => resourceIds.size > 0
-    ? resourceIds.has(String(event.id))
-    : localDayForTimezone(event.occurredAt || event.recordedAt, timezone) === selectedDay
+  const matchesRequestedPage = (event) => localDayForTimezone(event.occurredAt || event.recordedAt, timezone) === selectedDay
+    && (resourceIds.size === 0 || resourceIds.has(String(event.id)))
   const pageContext = {
     source: requested.source,
     focus: allowedFocus[requested.source]?.has(requested.focus) ? requested.focus : '',
@@ -307,10 +307,10 @@ const DECISION_SOURCE_KNOWLEDGE = Object.freeze({
   'cdc-safe-sleep-2024': 'infant-safe-sleep',
 })
 
-export function provenanceSources({ knowledge = [], recommendation, decision }) {
+export function provenanceSources({ knowledge = [], recommendation, decision, includeRecommendation = false }) {
   const items = [
     ...knowledge.map((unit) => ({ id: unit.id, version: unit.packVersion, url: unit.source.url, title: unit.source.title, authority: unit.source.publisher, kind: unit.provisional ? 'external_knowledge' : 'knowledge', ...(unit.retrievedAt ? { retrievedAt: unit.retrievedAt } : {}) })),
-    ...(recommendation?.sources || []).map((source) => ({ id: source.id, version: recommendation.knowledgeVersion, url: source.url, title: source.title, authority: source.authority, kind: 'feeding_rule' })),
+    ...(includeRecommendation ? recommendation?.sources || [] : []).map((source) => ({ id: source.id, version: recommendation.knowledgeVersion, url: source.url, title: source.title, authority: source.authority, kind: 'feeding_rule' })),
   ]
   const decisionKnowledgeId = DECISION_SOURCE_KNOWLEDGE[decision?.source]
   const decisionUnit = decisionKnowledgeId ? knowledge.find((unit) => unit.id === decisionKnowledgeId) : null
@@ -355,7 +355,8 @@ export async function onRequestPost({ request, env }) {
   let healthEpisode = await loadHealthEpisode(env, session.accountId, context.baby.id, requestedEpisodeId)
   const contextualFollowUp = isNaibaContextualFollowUp(message) && (Boolean(pageContext) || historyHasTopic || Boolean(healthEpisode))
   const routingMessage = contextualFollowUp ? transcript : message
-  const currentSkillId = selectSkillId(message, requestedSkillId)
+  const explicitSkill = getSkillContract(requestedSkillId)
+  const currentSkillId = explicitSkill?.id || selectSkillId(message)
   const skillId = contextualFollowUp && currentSkillId === 'stage_parenting_qa' ? selectSkillId(routingMessage) : currentSkillId
   const skill = getSkillContract(skillId)
   const agentContext = resolveNaibaSkillContext({ skill, authorizedContext: context, pageContext: injectedPageContext })
@@ -386,14 +387,18 @@ export async function onRequestPost({ request, env }) {
   if (requestAborted(request)) return abortedResponse()
   await persistDecision(env, session.accountId, context.baby.id, decision)
   const savedEpisode = await saveHealthEpisode(env, session.accountId, context.baby.id, healthEpisode, decisionUnitId, decisionFacts, decision)
+  if (decision?.status === 'needs_information' && !savedEpisode) {
+    return json({ error: { code: 'HEALTH_EPISODE_UNAVAILABLE', message: '预评估状态暂不可用，请重试。', retryable: true } }, 503)
+  }
   const clientDecision = decision ? { ...decision, healthEpisodeId: savedEpisode?.id || null, healthEpisodeState: savedEpisode?.state || 'closed' } : null
-  const fallback = localAnswer(message, scopedRecommendation, decision)
+  const usesFeedingReference = skillId === 'daily_feeding_recommender'
+  const fallback = localAnswer(message, usesFeedingReference ? scopedRecommendation : {}, decision)
   const ageDays = getAgeDays(context.baby.birthDate)
   const ageMonths = Number.isFinite(ageDays) ? Math.floor(ageDays / 30.4375) : null
   // Retrieval is performed once. This exact result feeds the Agent prompt,
   // displayed sources, and persisted evidence so provenance cannot drift.
   let retrievedKnowledge = searchApprovedKnowledge(transcript, { ageDays, ageMonths })
-  let sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision })
+  let sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision, includeRecommendation: usesFeedingReference })
   let sourcesEvent = sources.length ? { type: 'sources', items: sources } : null
   let llmConfig
   let configUnavailable = false
@@ -417,7 +422,7 @@ export async function onRequestPost({ request, env }) {
     })
     return respond([activity, { type: 'message', delta: draftText(draft, context.baby.locale || 'zh-CN') }, ...(draft.status === 'draft_ready' ? [{ type: 'draft', draft }] : []), { type: 'done' }])
   }
-  if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: clientDecision }, ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+  if (decision && decision.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: clientDecision }, ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
   if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
   if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
 
@@ -428,7 +433,7 @@ export async function onRequestPost({ request, env }) {
   const externalKnowledgeSkills = new Set(['authority_knowledge_retriever', 'stage_parenting_qa', 'disease_explainer'])
   if (!retrievedKnowledge.length && externalKnowledgeSkills.has(skillId)) {
     retrievedKnowledge = await searchAuthorityKnowledge(message, { apiKey: env.TAVILY_API_KEY, signal: request.signal })
-    sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision })
+    sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision, includeRecommendation: usesFeedingReference })
     sourcesEvent = sources.length ? { type: 'sources', items: sources } : null
   }
 
@@ -443,7 +448,7 @@ export async function onRequestPost({ request, env }) {
       carePlanItems: agentCarePlanItems,
       concerns: agentContext.concerns,
       questions: [],
-      feedingReference: scopedRecommendation,
+      feedingReference: usesFeedingReference ? scopedRecommendation : null,
       decisionResult: decision,
       retrievedKnowledge,
       pageContext: agentContext.pageContext,
