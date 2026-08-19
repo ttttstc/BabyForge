@@ -8,7 +8,7 @@ import {
 } from './NativeResourceContract';
 import { NativeSessionStore } from './NativeSessionStore';
 import { NativeCareCommand, NativeCareEvent, NativeTodayModel, parseNativeToday } from './NativeTodayContract';
-import { NativeAgentAttachment, NativeAgentContext, NativeAgentHistoryMessage, NativeAgentReply, parseNativeAgentReply } from './NativeAgentContract';
+import { NAIBA_CHAT_TIMEOUT_MS, NAIBA_REPORT_TIMEOUT_MS, NativeAgentAttachment, NativeAgentContext, NativeAgentHistoryMessage, NativeAgentReply, parseNativeAgentReply } from './NativeAgentContract';
 import { NativeGrowthModel, parseNativeGrowth } from './NativeGrowthContract';
 import { NativeExploreModel, parseNativeExplore } from './NativeExploreContract';
 import { NativeSettingsModel, NativeSettingsPatch, parseNativeSettings } from './NativeSettingsContract';
@@ -57,11 +57,9 @@ interface NativeAgentRequest {
   babyId: string;
   history: Array<NativeAgentHistoryMessage>;
   context: NativeAgentContext | null;
-  contextMode: string;
   attachments: Array<NativeAgentAttachment>;
   skillId: string;
-  decisionUnitId: string;
-  decisionFacts: Object | null;
+  healthEpisodeId: string;
 }
 
 interface NativeReportRequest {
@@ -159,7 +157,7 @@ export class NativeResourceAdapter {
     this.opened = true;
   }
 
-  private async request(path: string, method: http.RequestMethod = http.RequestMethod.GET, body: Object | null = null, cancellable: boolean = false): Promise<Object> {
+  private async request(path: string, method: http.RequestMethod = http.RequestMethod.GET, body: Object | null = null, cancellable: boolean = false, readTimeout: number = 15000): Promise<Object> {
     await this.ensureOpened();
     const request = http.createHttp();
     if (cancellable) this.activeAgentRequest = request;
@@ -180,7 +178,7 @@ export class NativeResourceAdapter {
       header: headers,
       expectDataType: http.HttpDataType.STRING,
       connectTimeout: 10000,
-      readTimeout: 15000
+      readTimeout
     };
     if (body !== null) {
       options.extraData = JSON.stringify(body);
@@ -280,9 +278,9 @@ export class NativeResourceAdapter {
     return parseNativeToday(await this.request(`/api/native/today${query}`));
   }
 
-  async aiChat(message: string, babyId: string, history: Array<NativeAgentHistoryMessage>, context: NativeAgentContext | null, contextMode: string, attachments: Array<NativeAgentAttachment>, skillId: string = '', decisionUnitId: string = '', decisionFacts: Object | null = null): Promise<NativeAgentReply> {
-    const payload: NativeAgentRequest = { message, babyId, history, context, contextMode, attachments, skillId, decisionUnitId, decisionFacts };
-    return parseNativeAgentReply(await this.request('/api/ai/chat', http.RequestMethod.POST, payload as Object, true));
+  async aiChat(message: string, babyId: string, history: Array<NativeAgentHistoryMessage>, context: NativeAgentContext | null, attachments: Array<NativeAgentAttachment>, skillId: string = '', healthEpisodeId: string = ''): Promise<NativeAgentReply> {
+    const payload: NativeAgentRequest = { message, babyId, history, context, attachments, skillId, healthEpisodeId };
+    return parseNativeAgentReply(await this.request('/api/ai/chat', http.RequestMethod.POST, payload as Object, true, NAIBA_CHAT_TIMEOUT_MS));
   }
 
   cancelAiChat(): void {
@@ -291,7 +289,7 @@ export class NativeResourceAdapter {
 
   async aiReport(babyId: string, name: string, mimeType: string, text: string, dataUrl: string): Promise<Object> {
     const payload: NativeReportRequest = { babyId, name, mimeType, text, dataUrl, thirdPartyProcessingConsent: mimeType !== 'text/plain' };
-    return this.request('/api/ai/report', http.RequestMethod.POST, payload as Object, true);
+    return this.request('/api/ai/report', http.RequestMethod.POST, payload as Object, true, NAIBA_REPORT_TIMEOUT_MS);
   }
 
   async aiCreateDraft(event: Object, draftType: string): Promise<Object> {

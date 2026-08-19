@@ -18,6 +18,11 @@ test('shared Agent contract keeps multi-turn context bounded and ordered', () =>
   assert.equal(normalized.at(-1).text, 'turn-23')
 })
 
+test('every skill publishes one formal context policy', () => {
+  assert.equal(NAIBA_SKILLS.length, 14)
+  for (const skill of NAIBA_SKILLS) assert.equal(typeof skill.contextPolicy, 'object', skill.id)
+})
+
 test('page context is allowlisted and image send requires explicit confirmation', () => {
   assert.deepEqual(normalizeNaibaContext({ source: 'growth', focus: 'weight', label: '体重趋势', ignored: 'x' }), { source: 'growth', focus: 'weight', label: '体重趋势' })
   assert.equal(normalizeNaibaContext({ source: 'settings' }), null)
@@ -57,9 +62,11 @@ test('Harmony renders every skill from the shared registry projection', async ()
   assert.match(indexPage, /visibleAiSkills/)
   assert.match(indexPage, /this\.openAiFrom\('growth'\)/)
   assert.match(indexPage, /this\.openAiFrom\('explore'\)/)
-  assert.match(indexPage, /this\.aiDecisionUnitId/)
-  assert.match(indexPage, /adapter\.aiChat\([^\n]+this\.aiDecisionUnitId\)/)
-  assert.match(indexPage, /this\.aiContextExcluded/)
+  assert.match(indexPage, /this\.aiHealthEpisodeId/)
+  assert.match(indexPage, /adapter\.aiChat\([^\n]+this\.aiHealthEpisodeId\)/)
+  assert.doesNotMatch(indexPage, /aiContextExcluded|页面上下文[^\n]+移除/)
   assert.match(indexPage, /this\.currentDisease\(\)/)
-  assert.deepEqual(manifest.request.contextModes, ['auto', 'selected', 'excluded'])
+  assert.equal(manifest.runtime.chatTimeoutMs, 60000)
+  assert.equal(manifest.runtime.reportTimeoutMs, 90000)
+  assert.equal(manifest.runtime.healthEpisodePersistence, 'allowlisted-facts-only')
 })

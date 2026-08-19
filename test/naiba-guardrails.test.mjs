@@ -19,8 +19,8 @@ test('tool output uses the same medical and authority boundary', () => {
   assert.equal(toolOutputAllowed({ text: '已记录事实，不含行动建议' }), true)
 })
 
-test('hosted search tools remain constructible while local tools are wrapped', () => {
-  const tools = createNaibaTools('stage_parenting_qa', { allowExternalSearch: true })
-  assert.ok(tools.some((item) => item.name === 'web_search'))
-  assert.ok(tools.filter((item) => item.name !== 'web_search').every((item) => typeof item.invoke === 'function'))
+test('Agent exposes only observable wrapped local tools', () => {
+  const tools = createNaibaTools('stage_parenting_qa')
+  assert.ok(tools.every((item) => item.name !== 'web_search'))
+  assert.ok(tools.every((item) => typeof item.invoke === 'function'))
 })

@@ -237,13 +237,12 @@ struct Index {
   @State private aiStatus: string = 'idle';
   @State private aiError: string = '';
   @State private aiContext: NativeAgentContext | null = null;
-  @State private aiContextExcluded: boolean = false;
   @State private aiAttachment: NativeAgentAttachmentDraft | null = null;
   @State private aiDraft: Object | null = null;
   @State private aiDraftId: string = '';
   @State private aiSelectedSkillId: string = '';
   @State private aiSkillsExpanded: boolean = false;
-  @State private aiDecisionUnitId: string = '';
+  @State private aiHealthEpisodeId: string = '';
   private aiStopRequested: boolean = false;
   private aiGeneration: number = 0;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
@@ -348,9 +347,8 @@ struct Index {
     this.aiDraftId = '';
     this.aiSelectedSkillId = '';
     this.aiSkillsExpanded = false;
-    this.aiDecisionUnitId = '';
+    this.aiHealthEpisodeId = '';
     this.aiContext = null;
-    this.aiContextExcluded = false;
     this.aiStatus = 'idle';
     this.aiError = '';
     this.busy = false;
@@ -1284,7 +1282,6 @@ struct Index {
       }
     }
     this.aiContext = context;
-    this.aiContextExcluded = false;
     this.aiSelectedSkillId = source === 'today' ? 'daily_care_analysis' : source === 'growth' ? 'growth_and_development_interpreter' : '';
     if (this.aiInput.length === 0) this.setAiInput(prompt);
     this.selectTab('ai');
@@ -1533,12 +1530,12 @@ struct Index {
       const attachments = await this.aiAttachmentPayload();
       if (generation !== this.aiGeneration || this.aiStopRequested) return;
       this.aiMessages = this.aiMessages.concat([{ id: `user-${Date.now()}`, role: 'user', text: message, activity: '', sources: [], attachments }]);
-      const contextMode = this.aiContext !== null ? 'selected' : this.aiContextExcluded ? 'excluded' : 'auto';
-      const reply = await adapter.aiChat(message, String(baby.id), history, this.aiContext, contextMode, attachments, this.aiSelectedSkillId, this.aiDecisionUnitId);
+      const reply = await adapter.aiChat(message, String(baby.id), history, this.aiContext, attachments, this.aiSelectedSkillId, this.aiHealthEpisodeId);
       if (generation !== this.aiGeneration || this.aiStopRequested) return;
       if (reply.decision !== null) {
-        const unitId = String((reply.decision as Record<string, Object>)['unitId'] || '');
-        if (unitId.length > 0) this.aiDecisionUnitId = unitId;
+        const episodeId = String((reply.decision as Record<string, Object>)['healthEpisodeId'] || '');
+        const episodeState = String((reply.decision as Record<string, Object>)['healthEpisodeState'] || 'closed');
+        this.aiHealthEpisodeId = episodeState === 'open' ? episodeId : '';
       }
       const answer = reply.text.length > 0 ? reply.text : reply.fallback ? '模型暂时不可用，请检查配置或稍后重试。' : '没有收到可显示的回答，请重试。';
       this.aiMessages = this.aiMessages.concat([{ id: `assistant-${Date.now()}`, role: 'assistant', text: answer, activity: reply.activity, sources: reply.sources }]);
@@ -1824,7 +1821,7 @@ struct Index {
   private todaySurface(): void {
     Column({ space: 16 }) {
       this.nativeHeader(`早上好，${String(this.today?.baby['nickname'] || '宝宝')}`, `${this.selectedDay} · ${this.today?.dataTimezone || '当地自然日'}`);
-      Button('让奶爸 AI 分析今天').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('today'));
+      if (this.selectedDay === deviceDateKey()) Button('让奶爸 AI 分析今天').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('today'));
       if (this.staleCache) Text(this.statusMessage).width('100%').fontSize(12).fontColor('#8A6742').backgroundColor('#FFF3D8').borderRadius(12).padding(10);
       Row({ space: 8 }) {
         Button('前一天').layoutWeight(1).height(38).onClick(() => this.shiftDay(-1));
@@ -1911,7 +1908,7 @@ struct Index {
   private recordSurface(): void {
     Column({ space: 16 }) {
       this.nativeHeader('统一记录工作台', `${this.selectedDay} · ${String(this.today?.recorder['displayName'] || '家庭成员')}记录`);
-      Button('让奶爸 AI 整理这些事实').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('record'));
+      if (this.selectedDay === deviceDateKey()) Button('让奶爸 AI 整理这些事实').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('record'));
       Text('每张卡只有一个主要动作。已确认身体局部水彩插画仅帮助识别入口，不承载数值或医学状态。').fontSize(this.largeText ? 14 : 11).fontColor('#806E68').width('100%');
       Grid() {
         GridItem() { this.recordCard('feeding', '#FFF0E8'); }
@@ -2417,10 +2414,7 @@ struct Index {
         Text('权威事实每轮由服务端重新读取；缺失不会当成零。').fontSize(11).fontColor('#708575').width('100%');
       }.width('100%').padding(12).backgroundColor('#EDF6EC').borderRadius(15);
       if (this.aiContext !== null) {
-        Row({ space: 8 }) {
-          Column() { Text('页面上下文').fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5B97'); Text(this.aiContext.label).fontSize(13).fontColor('#735F98').margin({ top: 3 }); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-          Button('移除').height(32).fontSize(11).onClick(() => { this.aiContext = null; this.aiContextExcluded = true; });
-        }.width('100%').padding(12).backgroundColor('#F5F0FB').borderRadius(15);
+        Column() { Text('页面上下文（自动注入）').fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5B97'); Text(this.aiContext.label).fontSize(13).fontColor('#735F98').margin({ top: 3 }); }.alignItems(HorizontalAlign.Start).width('100%').padding(12).backgroundColor('#F5F0FB').borderRadius(15);
       }
       Column({ space: 10 }) {
         ForEach(this.aiMessages, (message: NativeAgentMessage) => {

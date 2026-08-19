@@ -15,11 +15,29 @@ const CONTRACTS = [
   ['caregiver_handoff_builder', '照护交接整理', 'handoff', ['babyContext', 'careEvents', 'professionalPlans'], ['build_caregiver_handoff'], 'CaregiverHandoff', '区分事实、安排和解释'],
 ]
 
+const CONTEXT_POLICIES = Object.freeze({
+  baby_context_injector: { careEvents: { windowHours: 72, limit: 40 }, concerns: true },
+  authority_knowledge_retriever: {},
+  care_event_quick_logger: {},
+  daily_care_analysis: { careEvents: { windowHours: 24, limit: 40 }, pageSources: ['today', 'record'] },
+  daily_feeding_recommender: { careEvents: { categories: ['breastfeeding', 'bottle_feeding'], windowHours: 72, limit: 40 }, plans: true, pageSources: ['today', 'record'] },
+  detailed_care_analysis: { careEvents: { windowHours: 72, limit: 60 }, concerns: true, plans: true, pageSources: ['today', 'record'] },
+  stage_parenting_qa: {},
+  disease_explainer: { pageSources: ['explore'] },
+  triage_and_preassessment: { careEvents: { categories: ['temperature', 'temperature_observation', 'symptom_observation', 'medication', 'health_visit'], windowHours: 72, limit: 30 }, concerns: true },
+  growth_and_development_interpreter: { growthEvents: { limit: 80 }, pageSources: ['growth'] },
+  daily_growth_plan_builder: { careEvents: { windowHours: 72, limit: 30 }, plans: true },
+  medical_report_interpreter: {},
+  visit_brief_generator: { careEvents: { windowHours: 168, limit: 60 }, concerns: true, plans: true },
+  caregiver_handoff_builder: { careEvents: { windowHours: 72, limit: 60 }, concerns: true, plans: true },
+})
+
 export const NAIBA_SKILLS = Object.freeze(CONTRACTS.map(([id, label, entry, requiredContext, tools, outputSchema, boundary]) => Object.freeze({
   id,
   label,
   entry,
   requiredContext,
+  contextPolicy: CONTEXT_POLICIES[id] || {},
   tools,
   outputSchema,
   safetyGate: id === 'triage_and_preassessment' ? 'deterministic_required' : 'preserve_global_floor',

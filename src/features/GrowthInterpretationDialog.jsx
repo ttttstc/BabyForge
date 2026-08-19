@@ -35,7 +35,6 @@ export function GrowthInterpretationDialog({ state, metric, summary, cloudMode =
             growthMetric: metric,
             babyId: state.baby.id,
             context: { source: 'growth', focus: metric, label: isEnglish ? 'Current growth measurements' : '当前成长测量趋势' },
-            decisionFacts: {},
           }),
         })
         if (!response.ok) throw new Error(`${isEnglish ? 'AI service unavailable' : 'AI 服务暂不可用'}（${response.status}）`)

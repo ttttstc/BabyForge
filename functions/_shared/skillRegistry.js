@@ -9,5 +9,5 @@ export function getSkillContract(skillId) {
 }
 
 export function listSkillContracts() {
-  return NAIBA_SKILLS.map((skill) => ({ ...skill, requiredContext: [...skill.requiredContext], tools: [...skill.tools] }))
+  return NAIBA_SKILLS.map((skill) => ({ ...skill, requiredContext: [...skill.requiredContext], contextPolicy: JSON.parse(JSON.stringify(skill.contextPolicy)), tools: [...skill.tools] }))
 }

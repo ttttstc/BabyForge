@@ -1,13 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { authorizedPageContext, onRequestPost, provenanceSources, SAFE_DECISION_FACT_KEYS, safeDecisionFacts, scopeAgentContext } from '../functions/api/ai/chat.js'
+import { authorizedPageContext, onRequestPost, provenanceSources, SAFE_DECISION_FACT_KEYS, safeDecisionFacts } from '../functions/api/ai/chat.js'
 import { DECISION_REQUIRED_FACT_KEYS } from '../src/domain/decisionKernel.js'
+import { getNaibaSkill } from '../src/domain/naibaSkills.js'
+import { resolveNaibaSkillContext } from '../src/domain/naibaContextResolver.js'
 
 function apiFixture({ failLlmConfig = false } = {}) {
   const session = { token: 'token', expires_at: '2099-01-01T00:00:00.000Z', id: 'account-admin', username: 'niwa', role: 'admin', display_name: '管理员' }
   const baby = { id: 'baby-1', householdId: 'household-1', nickname: '小舟', birthDate: new Date().toISOString().slice(0, 10), gestationalWeeks: 39, gestationalDays: 0, growthAgeBasis: 'chronological', birthMultiplicity: 'singleton', sex: 'male', feedingMode: 'formula', locale: 'zh-CN', status: 'active' }
   const event = { id: 'event-1', baby_id: 'baby-1', kind: 'caregiver_observation', category: 'bottle_feeding', type: 'bottle_feeding', occurred_at: new Date().toISOString(), recorded_at: new Date().toISOString(), actor_id: 'parent', actor_display_name: '爸爸', event_source: 'caregiver', payload_json: JSON.stringify({ amountMl: 30 }), status: 'active', version: 1 }
   const writes = []
+  const healthEpisodes = new Map()
   const DB = {
     prepare(sql) {
       return {
@@ -17,13 +20,29 @@ function apiFixture({ failLlmConfig = false } = {}) {
               if (sql.includes('FROM auth_sessions')) return session
               if (sql.includes('FROM baby_profiles')) return args[0] === baby.id ? baby : null
               if (sql.includes('FROM account_llm_configs') && failLlmConfig) throw new Error('D1 schema unavailable')
+              if (sql.includes('FROM health_episodes')) {
+                const row = healthEpisodes.get(String(args[0])) || null
+                if (!row || row.status !== 'open') return null
+                if (sql.includes('baby_id = ?') && (row.baby_id !== args[1] || row.account_id !== args[2])) return null
+                return sql.includes('SELECT summary_json') ? { summary_json: row.summary_json } : row
+              }
               return null
             },
             async all() {
               if (sql.includes('SELECT * FROM care_events')) return { results: [event] }
               return { results: [] }
             },
-            async run() { writes.push({ sql, args }); return { meta: { changes: 1 } } },
+            async run() {
+              writes.push({ sql, args })
+              if (sql.includes('INSERT INTO health_episodes')) healthEpisodes.set(String(args[0]), { id: args[0], baby_id: args[1], account_id: args[2], topic: args[3], status: args[4], summary_json: args[5], created_at: args[6], updated_at: args[7] })
+              if (sql.includes('UPDATE health_episodes SET topic')) {
+                const row = healthEpisodes.get(String(args[4])); if (row) healthEpisodes.set(String(args[4]), { ...row, topic: args[0], status: args[1], summary_json: args[2], updated_at: args[3] })
+              }
+              if (sql.includes("UPDATE health_episodes SET status = 'closed'")) {
+                const row = healthEpisodes.get(String(args[2])); if (row) healthEpisodes.set(String(args[2]), { ...row, status: 'closed', summary_json: args[0], updated_at: args[1] })
+              }
+              return { meta: { changes: 1 } }
+            },
           }
         },
       }
@@ -33,7 +52,7 @@ function apiFixture({ failLlmConfig = false } = {}) {
       return []
     },
   }
-  return { DB, baby, writes }
+  return { DB, baby, writes, healthEpisodes }
 }
 
 function request(body) {
@@ -105,27 +124,48 @@ test('AI chat returns provider error metadata without a fabricated answer', asyn
   assert.match(body, /type":"message"/)
 })
 
-test('AI chat replays bounded multi-turn safety facts on the server', async () => {
+test('AI chat carries allowlisted health facts through a server-owned episode', async () => {
   const fixture = apiFixture()
-  const response = await onRequestPost({ request: new Request('https://babyforge.test/api/ai/chat', {
+  const first = await onRequestPost({ request: new Request('https://babyforge.test/api/ai/chat', {
     method: 'POST',
     headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({
-      message: '容易叫醒',
+      message: '宝宝体温 37.8℃',
       babyId: fixture.baby.id,
-      history: [
-        { role: 'user', text: '宝宝体温 38.2℃' },
-        { role: 'assistant', text: '测量部位是什么？' },
-        { role: 'user', text: '腋下' },
-        { role: 'assistant', text: '现在精神状态怎样？' },
-      ],
-      decisionFacts: { temperatureC: 36.5, alertness: 'responsive' },
+      history: [],
+      decisionFacts: { temperatureC: 36.5 },
     }),
+  }), env: fixture })
+  const firstPayload = await first.json()
+  const episodeId = firstPayload.events.find((event) => event.type === 'decision')?.result.healthEpisodeId
+  assert.ok(episodeId)
+  const response = await onRequestPost({ request: new Request('https://babyforge.test/api/ai/chat', {
+    method: 'POST',
+    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ message: '腋下测的，容易叫醒', babyId: fixture.baby.id, history: [], healthEpisodeId: episodeId }),
   }), env: fixture })
   const payload = await response.json()
   const decision = payload.events.find((event) => event.type === 'decision')?.result
-  assert.equal(decision.status, 'safety_action_required')
-  assert.match(decision.minimumAction, /38℃|危险信号/)
+  assert.ok(['decision_ready', 'safety_action_required'].includes(decision.status))
+  assert.equal(decision.healthEpisodeState, 'closed')
+})
+
+test('an open health episode does not pollute an explicit care-record request', async () => {
+  const fixture = apiFixture()
+  const first = await onRequestPost({ request: new Request('https://babyforge.test/api/ai/chat', {
+    method: 'POST',
+    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ message: '宝宝体温 37.8℃', babyId: fixture.baby.id, history: [] }),
+  }), env: fixture })
+  const episodeId = (await first.json()).events.find((event) => event.type === 'decision')?.result.healthEpisodeId
+  const response = await onRequestPost({ request: new Request('https://babyforge.test/api/ai/chat', {
+    method: 'POST',
+    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ message: '帮我记录刚喝了60毫升配方奶', babyId: fixture.baby.id, history: [], healthEpisodeId: episodeId }),
+  }), env: fixture })
+  const payload = await response.json()
+  assert.equal(payload.events.find((event) => event.type === 'draft')?.draft.status, 'draft_ready')
+  assert.equal(payload.events.some((event) => event.type === 'decision'), false)
 })
 
 test('AI chat fails account configuration closed while preserving the local answer', async () => {
@@ -164,21 +204,21 @@ test('page context injects only server-authorized facts for the selected surface
   assert.deepEqual(authorizedPageContext({ source: 'growth', focus: 'weight', label: '成长', selectedDay: '2026-08-18', timezone: 'UTC' }, context).measurements.map((event) => event.id), ['growth'])
 })
 
-test('Agent context separates capability-scoped facts, selected page facts, and explicit removal', () => {
-  const careEvents = [{ id: 'care-1' }, { id: 'care-2' }]
-  const growthEvents = [{ id: 'growth-1' }]
+test('Agent context follows registry policy and auto-injected page facts', () => {
+  const careEvents = [{ id: 'care-1', occurredAt: '1970-01-01T00:00:00.000Z' }, { id: 'care-2', occurredAt: '1970-01-01T00:00:00.000Z' }]
+  const growthEvents = [{ id: 'growth-1', occurredAt: '1970-01-01T00:00:00.000Z' }]
   const carePlanItems = [{ id: 'plan-1' }]
   const concerns = [{ id: 'concern-1' }]
   const context = { careEvents, growthEvents, carePlanItems, concerns }
-  assert.deepEqual(scopeAgentContext(context, null, 'daily_care_analysis', 'auto'), { careEvents, growthEvents: [], carePlanItems: [], concerns: [], pageContext: null })
-  assert.deepEqual(scopeAgentContext(context, { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] }, 'daily_care_analysis', 'selected'), {
+  const skill = getNaibaSkill('daily_care_analysis')
+  assert.deepEqual(resolveNaibaSkillContext({ skill, authorizedContext: context, now: new Date(0) }), { careEvents, growthEvents: [], carePlanItems: [], concerns: [], pageContext: null })
+  assert.deepEqual(resolveNaibaSkillContext({ skill, authorizedContext: context, pageContext: { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] }, now: new Date(0) }), {
     careEvents: [careEvents[1]], growthEvents: [], carePlanItems: [], concerns: [],
     pageContext: { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] },
   })
-  assert.deepEqual(scopeAgentContext(context, null, 'daily_care_analysis', 'excluded'), { careEvents: [], growthEvents: [], carePlanItems: [], concerns: [], pageContext: null })
 })
 
-test('explicit health topic switches override a pinned previous decision unit', async () => {
+test('explicit health topic starts a new server-owned episode', async () => {
   const fixture = apiFixture()
   const response = await onRequestPost({ request: new Request('https://babyforge.test/api/ai/chat', {
     method: 'POST',
@@ -186,8 +226,7 @@ test('explicit health topic switches override a pinned previous decision unit', 
     body: JSON.stringify({
       message: '现在呼吸有点急促',
       babyId: fixture.baby.id,
-      history: [{ role: 'user', text: '宝宝体温 38.2℃' }, { role: 'assistant', text: '测量部位是什么？' }],
-      decisionUnitId: 'temperature_abnormal',
+      history: [],
     }),
   }), env: fixture })
   const payload = await response.json()

@@ -1,5 +1,7 @@
 export const NAIBA_AGENT_CONTRACT: string = 'babyforge.naiba.agent';
-export const NAIBA_AGENT_CONTRACT_VERSION: string = '1.1.0';
+export const NAIBA_AGENT_CONTRACT_VERSION: string = '1.2.0';
+export const NAIBA_CHAT_TIMEOUT_MS: number = 60000;
+export const NAIBA_REPORT_TIMEOUT_MS: number = 90000;
 
 export interface NativeAgentAttachmentSummary {
   kind: string;

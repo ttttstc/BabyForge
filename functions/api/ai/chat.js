@@ -4,7 +4,7 @@ import { describeNaibaAgentFailure, runNaibaAgent } from '../../_shared/naibaAge
 import { getSkillContract, selectSkillId } from '../../_shared/skillRegistry.js'
 import { getAgeDays } from '../../../src/domain/baby.js'
 import { calculateFeedingRecommendation } from '../../../src/domain/feedingRecommendation.js'
-import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, getDecisionUnit, runDecisionUnit, selectDecisionUnit, selectExplicitDecisionUnit } from '../../../src/domain/decisionKernel.js'
+import { DECISION_INPUT_FACT_KEYS, DECISION_REQUIRED_FACT_KEYS, extractDecisionFacts, parseDecisionAnswer, runDecisionUnit, selectDecisionUnit, selectExplicitDecisionUnit } from '../../../src/domain/decisionKernel.js'
 import { buildNaibaLocalAnswer } from '../../../src/domain/naibaLocalAnswer.js'
 import { isNaibaContextualFollowUp, isNaibaTopicInScope, NAIBA_OUT_OF_SCOPE_MESSAGE } from '../../../src/domain/naibaScope.js'
 import { searchApprovedKnowledge } from '../../../src/domain/knowledgePack.js'
@@ -13,6 +13,8 @@ import { localDayForTimezone } from '../../../src/domain/nativeToday.js'
 import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig.js'
 import { NAIBA_AGENT_CONTRACT, NAIBA_AGENT_CONTRACT_VERSION, normalizeNaibaAttachments, normalizeNaibaContext, normalizeNaibaHistory } from '../../../src/domain/naibaAgentContract.js'
 import { draftText, parseCareEventDraft } from '../../../src/domain/careEventDraft.js'
+import { resolveNaibaSkillContext } from '../../../src/domain/naibaContextResolver.js'
+import { searchAuthorityKnowledge } from '../../_shared/authoritySearch.js'
 
 function sse(events, status = 200) {
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
@@ -224,16 +226,59 @@ async function persistDecision(env, accountId, babyId, result) {
   }
 }
 
-async function persistHealthEpisode(env, accountId, babyId, unitId, facts, result) {
-  if (!result) return
-  const now = new Date().toISOString()
+function healthEpisodeSummary(row) {
   try {
-    const existing = await env.DB.prepare('SELECT id FROM health_episodes WHERE baby_id = ? AND account_id = ? AND topic = ? AND status = \'open\' ORDER BY updated_at DESC LIMIT 1').bind(babyId, accountId, unitId).first()
-    const summary = JSON.stringify({ facts, decision: result })
-    if (existing?.id) await env.DB.prepare('UPDATE health_episodes SET summary_json = ?, updated_at = ? WHERE id = ?').bind(summary, now, existing.id).run()
-    else await env.DB.prepare('INSERT INTO health_episodes (id, baby_id, account_id, topic, status, summary_json, created_at, updated_at) VALUES (?, ?, ?, ?, \'open\', ?, ?, ?)').bind(newRequestId(), babyId, accountId, unitId, summary, now, now).run()
+    const summary = JSON.parse(String(row?.summary_json || '{}'))
+    return summary && typeof summary === 'object' && !Array.isArray(summary) ? summary : {}
+  } catch {
+    return {}
+  }
+}
+
+async function closeHealthEpisode(env, id, reason, now = new Date()) {
+  if (!id) return
+  try {
+    const row = await env.DB.prepare('SELECT summary_json FROM health_episodes WHERE id = ? AND status = \'open\'').bind(id).first()
+    const summary = { ...healthEpisodeSummary(row), state: 'closed', closeReason: reason, closedAt: now.toISOString() }
+    await env.DB.prepare('UPDATE health_episodes SET status = \'closed\', summary_json = ?, updated_at = ? WHERE id = ? AND status = \'open\'').bind(JSON.stringify(summary), now.toISOString(), id).run()
+  } catch (error) {
+    console.error('Naiba AI health episode close unavailable', error)
+  }
+}
+
+async function loadHealthEpisode(env, accountId, babyId, episodeId, now = new Date()) {
+  if (!episodeId) return null
+  try {
+    const row = await env.DB.prepare('SELECT * FROM health_episodes WHERE id = ? AND baby_id = ? AND account_id = ? AND status = \'open\'').bind(episodeId, babyId, accountId).first()
+    if (!row?.id) return null
+    const updatedAt = Date.parse(row.updated_at)
+    if (!Number.isFinite(updatedAt) || now.getTime() - updatedAt > 86_400_000) {
+      await closeHealthEpisode(env, row.id, 'expired', now)
+      return null
+    }
+    const summary = healthEpisodeSummary(row)
+    return { id: row.id, topic: row.topic, facts: safeDecisionFacts(summary.facts), decision: summary.decision || null }
+  } catch (error) {
+    console.error('Naiba AI health episode load unavailable', error)
+    return null
+  }
+}
+
+async function saveHealthEpisode(env, accountId, babyId, episode, unitId, facts, result, now = new Date()) {
+  if (!result || !unitId) return null
+  const id = episode?.id || newRequestId()
+  const open = result.status === 'needs_information'
+  const summary = { topic: unitId, facts: safeDecisionFacts(facts), decision: result, state: open ? 'open' : 'closed', expiresAt: new Date(now.getTime() + 86_400_000).toISOString(), ...(!open ? { closeReason: result.status, closedAt: now.toISOString() } : {}) }
+  try {
+    if (episode?.id) {
+      await env.DB.prepare('UPDATE health_episodes SET topic = ?, status = ?, summary_json = ?, updated_at = ? WHERE id = ? AND baby_id = ? AND account_id = ?').bind(unitId, open ? 'open' : 'closed', JSON.stringify(summary), now.toISOString(), id, babyId, accountId).run()
+    } else {
+      await env.DB.prepare('INSERT INTO health_episodes (id, baby_id, account_id, topic, status, summary_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(id, babyId, accountId, unitId, open ? 'open' : 'closed', JSON.stringify(summary), now.toISOString(), now.toISOString()).run()
+    }
+    return { id, topic: unitId, state: open ? 'open' : 'closed', facts: summary.facts }
   } catch (error) {
     console.error('Naiba AI health episode persistence unavailable', error)
+    return null
   }
 }
 
@@ -255,11 +300,6 @@ function userTranscript(history, message) {
   return [...history.filter((item) => item.role === 'user').map((item) => item.text), message].join('\n')
 }
 
-function accumulatedDecisionFacts(history, message) {
-  const historicalFacts = history.filter((item) => item.role === 'user').reduce((facts, item) => ({ ...facts, ...extractDecisionFacts(item.text) }), {})
-  return { ...historicalFacts, ...extractDecisionFacts(message) }
-}
-
 const DECISION_SOURCE_KNOWLEDGE = Object.freeze({
   'who-essential-newborn-care-2024': 'newborn-temperature-breathing-danger',
   'who-newborn-jaundice-referral': 'newborn-jaundice-referral',
@@ -269,44 +309,13 @@ const DECISION_SOURCE_KNOWLEDGE = Object.freeze({
 
 export function provenanceSources({ knowledge = [], recommendation, decision }) {
   const items = [
-    ...knowledge.map((unit) => ({ id: unit.id, version: unit.packVersion, url: unit.source.url, title: unit.source.title, authority: unit.source.publisher, kind: 'knowledge' })),
+    ...knowledge.map((unit) => ({ id: unit.id, version: unit.packVersion, url: unit.source.url, title: unit.source.title, authority: unit.source.publisher, kind: unit.provisional ? 'external_knowledge' : 'knowledge', ...(unit.retrievedAt ? { retrievedAt: unit.retrievedAt } : {}) })),
     ...(recommendation?.sources || []).map((source) => ({ id: source.id, version: recommendation.knowledgeVersion, url: source.url, title: source.title, authority: source.authority, kind: 'feeding_rule' })),
   ]
   const decisionKnowledgeId = DECISION_SOURCE_KNOWLEDGE[decision?.source]
   const decisionUnit = decisionKnowledgeId ? knowledge.find((unit) => unit.id === decisionKnowledgeId) : null
   if (decisionUnit) items.push({ id: decisionUnit.id, version: decisionUnit.packVersion, url: decisionUnit.source.url, title: decisionUnit.source.title, authority: decisionUnit.source.publisher, kind: 'decision_rule' })
   return [...new Map(items.filter((item) => item.id && item.version && item.url).map((item) => [`${item.id}:${item.version}`, item])).values()]
-}
-
-const CARE_FACT_SKILLS = new Set(['daily_care_analysis', 'detailed_care_analysis', 'visit_brief_generator', 'caregiver_handoff_builder'])
-const HEALTH_FACT_CATEGORIES = new Set(['temperature', 'temperature_observation', 'symptom_observation', 'medication', 'health_visit'])
-
-export function scopeAgentContext(context, injectedPageContext, skillId = '', contextMode = 'auto') {
-  if (contextMode === 'excluded') return { careEvents: [], growthEvents: [], carePlanItems: [], concerns: [], pageContext: null }
-  if (contextMode === 'selected' && injectedPageContext) {
-    const usedEventIds = new Set(injectedPageContext.usedEventIds || [])
-    return {
-      careEvents: context.careEvents.filter((event) => usedEventIds.has(event.id)),
-      growthEvents: context.growthEvents.filter((event) => usedEventIds.has(event.id)),
-      carePlanItems: injectedPageContext.source === 'today' && injectedPageContext.focus === 'plan' ? context.carePlanItems : [],
-      concerns: [],
-      pageContext: injectedPageContext,
-    }
-  }
-  const careEvents = CARE_FACT_SKILLS.has(skillId)
-    ? context.careEvents
-    : skillId === 'daily_feeding_recommender'
-      ? context.careEvents.filter((event) => ['breastfeeding', 'bottle_feeding'].includes(event.category))
-      : skillId === 'triage_and_preassessment'
-        ? context.careEvents.filter((event) => HEALTH_FACT_CATEGORIES.has(event.category))
-        : []
-  return {
-    careEvents,
-    growthEvents: skillId === 'growth_and_development_interpreter' ? context.growthEvents : [],
-    carePlanItems: ['daily_growth_plan_builder', 'visit_brief_generator', 'caregiver_handoff_builder'].includes(skillId) ? context.carePlanItems : [],
-    concerns: ['triage_and_preassessment', 'visit_brief_generator', 'caregiver_handoff_builder'].includes(skillId) ? context.concerns : [],
-    pageContext: null,
-  }
 }
 
 export async function onRequestPost({ request, env }) {
@@ -327,7 +336,6 @@ export async function onRequestPost({ request, env }) {
   if (!babyId) return json({ error: '缺少宝宝档案编号' }, 422)
   const requestId = newRequestId()
   const pageContext = normalizeNaibaContext(body?.context)
-  const contextMode = body?.contextMode === 'excluded' ? 'excluded' : pageContext ? 'selected' : 'auto'
   let history
   try { history = normalizeNaibaHistory(body?.history) } catch { return json({ error: '当前对话上下文无效' }, 422) }
   let attachments
@@ -342,45 +350,51 @@ export async function onRequestPost({ request, env }) {
   const injectedPageContext = authorizedPageContext(pageContext, context)
   const transcript = userTranscript(history, message)
   const historyHasTopic = history.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text))
-  const historyHasHealthTopic = HEALTH_SENSITIVE_PATTERN.test(transcript)
   const extractedCurrentFacts = extractDecisionFacts(message)
-  const contextualFollowUp = isNaibaContextualFollowUp(message) && (Boolean(pageContext) || historyHasTopic || historyHasHealthTopic)
-  const routingMessage = contextualFollowUp || historyHasHealthTopic ? transcript : message
-  const skillId = selectSkillId(routingMessage, requestedSkillId)
-  const agentContext = scopeAgentContext(context, injectedPageContext, skillId, contextMode)
+  const requestedEpisodeId = String(body?.healthEpisodeId || '').trim().slice(0, 120)
+  let healthEpisode = await loadHealthEpisode(env, session.accountId, context.baby.id, requestedEpisodeId)
+  const contextualFollowUp = isNaibaContextualFollowUp(message) && (Boolean(pageContext) || historyHasTopic || Boolean(healthEpisode))
+  const routingMessage = contextualFollowUp ? transcript : message
+  const currentSkillId = selectSkillId(message, requestedSkillId)
+  const skillId = contextualFollowUp && currentSkillId === 'stage_parenting_qa' ? selectSkillId(routingMessage) : currentSkillId
+  const skill = getSkillContract(skillId)
+  const agentContext = resolveNaibaSkillContext({ skill, authorizedContext: context, pageContext: injectedPageContext })
   const agentCareEvents = agentContext.careEvents
   const agentGrowthEvents = agentContext.growthEvents
   const scopedRecommendation = calculateFeedingRecommendation({ baby: context.baby, events: agentCareEvents, locale: context.baby.locale || 'zh-CN' })
   const agentCarePlanItems = agentContext.carePlanItems
-  const requestedDecisionUnitId = String(body?.decisionUnitId || '').trim()
-  const explicitDecisionUnit = getDecisionUnit(requestedDecisionUnitId) ? requestedDecisionUnitId : ''
   const explicitTopicUnit = selectExplicitDecisionUnit(message)
   const healthSensitive = HEALTH_SENSITIVE_PATTERN.test(message)
-  // Replay every bounded user turn deterministically. The model transcript is
-  // not the state machine: the server owns the unit and the allowlisted facts.
-  const decisionUnitId = explicitTopicUnit || explicitDecisionUnit || ((skillId === 'triage_and_preassessment' || healthSensitive || historyHasHealthTopic) ? selectDecisionUnit(transcript) : '')
-  const accumulatedFacts = accumulatedDecisionFacts(history, message)
-  const hasDecisionContext = Object.keys(accumulatedFacts).length > 0
-  const decisionFollowUp = Boolean(decisionUnitId && historyHasHealthTopic && (isNaibaContextualFollowUp(message) || Object.keys(extractedCurrentFacts).length > 0))
-  if (!isNaibaTopicInScope(message) && !contextualFollowUp && !decisionFollowUp && !(hasDecisionContext && isNaibaContextualFollowUp(message))) {
+  const healthFollowUp = Boolean(healthEpisode && (isNaibaContextualFollowUp(message) || Object.keys(extractedCurrentFacts).length > 0))
+  if (healthEpisode && explicitTopicUnit && explicitTopicUnit !== healthEpisode.topic) {
+    await closeHealthEpisode(env, healthEpisode.id, 'superseded')
+    healthEpisode = null
+  }
+  const handlesHealth = skillId !== 'care_event_quick_logger' && (healthSensitive || healthFollowUp || skillId === 'triage_and_preassessment')
+  const decisionUnitId = handlesHealth ? (explicitTopicUnit || healthEpisode?.topic || selectDecisionUnit(message)) : ''
+  if (!isNaibaTopicInScope(message) && !contextualFollowUp && !healthFollowUp) {
     return agentResponse([{ type: 'meta', contract: NAIBA_AGENT_CONTRACT, contractVersion: NAIBA_AGENT_CONTRACT_VERSION, requestId }, { type: 'message', delta: NAIBA_OUT_OF_SCOPE_MESSAGE }, { type: 'done' }], jsonMode)
   }
-  // The browser may send a compatibility hint, but the safety state is
-  // replayed from the bounded user transcript and the server-owned baby age.
-  // Never let client-supplied facts override or add a decision fact.
-  const decisionFacts = { ...accumulatedFacts, ageDays: getAgeDays(context.baby.birthDate) }
+  // Health state is server-owned. Only allowlisted facts from the active
+  // episode and current user turn can influence the deterministic kernel.
+  const decisionFacts = { ...(healthEpisode?.facts || {}), ...extractedCurrentFacts, ageDays: getAgeDays(context.baby.birthDate) }
+  if (decisionUnitId && healthEpisode?.decision?.status === 'needs_information' && healthEpisode.decision.nextQuestion) {
+    const parsedAnswer = parseDecisionAnswer(healthEpisode.decision.nextQuestion.key, message)
+    if (parsedAnswer !== null && parsedAnswer !== undefined) decisionFacts[healthEpisode.decision.nextQuestion.key] = parsedAnswer
+  }
   const decision = decisionUnitId ? runDecisionUnit({ unitId: decisionUnitId, facts: decisionFacts }) : null
   if (requestAborted(request)) return abortedResponse()
   await persistDecision(env, session.accountId, context.baby.id, decision)
-  await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
+  const savedEpisode = await saveHealthEpisode(env, session.accountId, context.baby.id, healthEpisode, decisionUnitId, decisionFacts, decision)
+  const clientDecision = decision ? { ...decision, healthEpisodeId: savedEpisode?.id || null, healthEpisodeState: savedEpisode?.state || 'closed' } : null
   const fallback = localAnswer(message, scopedRecommendation, decision)
   const ageDays = getAgeDays(context.baby.birthDate)
   const ageMonths = Number.isFinite(ageDays) ? Math.floor(ageDays / 30.4375) : null
   // Retrieval is performed once. This exact result feeds the Agent prompt,
   // displayed sources, and persisted evidence so provenance cannot drift.
-  const retrievedKnowledge = searchApprovedKnowledge(transcript, { ageDays, ageMonths })
-  const sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision })
-  const sourcesEvent = sources.length ? { type: 'sources', items: sources } : null
+  let retrievedKnowledge = searchApprovedKnowledge(transcript, { ageDays, ageMonths })
+  let sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision })
+  let sourcesEvent = sources.length ? { type: 'sources', items: sources } : null
   let llmConfig
   let configUnavailable = false
   try {
@@ -403,13 +417,20 @@ export async function onRequestPost({ request, env }) {
     })
     return respond([activity, { type: 'message', delta: draftText(draft, context.baby.locale || 'zh-CN') }, ...(draft.status === 'draft_ready' ? [{ type: 'draft', draft }] : []), { type: 'done' }])
   }
-  if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: decision }, ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
-  if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
-  if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+  if (skillId === 'triage_and_preassessment' && decision?.status !== 'decision_ready') return respond([activity, { type: 'message', delta: fallback }, { type: 'decision', result: clientDecision }, ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+  if (configUnavailable) return respond([{ type: 'meta', fallback: true, reason: 'account_config_unavailable' }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+  if (!llmConfig.apiKey) return respond([{ type: 'meta', fallback: true, reason: 'model_not_configured' }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
 
   const quotaText = [...history.map((item) => item.text), message].join('\n')
   const quota = await consumeNaibaQuota(env, session.accountId, context.baby.id, quotaText, new Date(), attachments.length + history.reduce((count, item) => count + (item.attachmentSummary?.length || 0), 0))
-  if (!quota.allowed) return respond([{ type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+  if (!quota.allowed) return respond([{ type: 'meta', fallback: true, rateLimited: true, reason: quota.reason }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+
+  const externalKnowledgeSkills = new Set(['authority_knowledge_retriever', 'stage_parenting_qa', 'disease_explainer'])
+  if (!retrievedKnowledge.length && externalKnowledgeSkills.has(skillId)) {
+    retrievedKnowledge = await searchAuthorityKnowledge(message, { apiKey: env.TAVILY_API_KEY, signal: request.signal })
+    sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision })
+    sourcesEvent = sources.length ? { type: 'sources', items: sources } : null
+  }
 
   try {
     const output = await runNaibaAgent({
@@ -439,11 +460,11 @@ export async function onRequestPost({ request, env }) {
     })
     if (requestAborted(request)) return abortedResponse()
     await persistProvisionalEvidence(env, session.accountId, context.baby.id, sources)
-    return respond([activity, { type: 'message', delta: output }, ...(sourcesEvent ? [sourcesEvent] : []), ...(decision ? [{ type: 'decision', result: decision }] : []), { type: 'done' }])
+    return respond([activity, { type: 'message', delta: output }, ...(sourcesEvent ? [sourcesEvent] : []), ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), { type: 'done' }])
   } catch (error) {
     if (requestAborted(request)) return abortedResponse()
     const failure = describeNaibaAgentFailure(error)
     console.error('Naiba AI agent failed; returning provider error', { ...failure, error })
-    return respond([{ type: 'meta', fallback: true, reason: failure.reason }, activity, { type: 'message', delta: fallback }, ...(decision ? [{ type: 'decision', result: decision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
+    return respond([{ type: 'meta', fallback: true, reason: failure.reason }, activity, { type: 'message', delta: fallback }, ...(clientDecision ? [{ type: 'decision', result: clientDecision }] : []), ...(sourcesEvent ? [sourcesEvent] : []), { type: 'done' }])
   }
 }

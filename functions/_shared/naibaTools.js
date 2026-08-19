@@ -1,4 +1,4 @@
-import { tool, webSearchTool } from '@openai/agents'
+import { tool } from '@openai/agents'
 import { z } from 'zod'
 import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { buildCaregiverHandoff, buildDailyGrowthPlan, buildDetailedCareAnalysis, buildGrowthInterpretation, buildVisitBrief, calculateCareStatistics, parseMedicalReportText } from '../../src/domain/naibaCapabilities.js'
@@ -182,10 +182,7 @@ const SKILL_TOOLS = {
   caregiver_handoff_builder: [buildHandoff],
 }
 
-export function createNaibaTools(skillId, { allowExternalSearch = false } = {}) {
+export function createNaibaTools(skillId) {
   const selected = [...new Set([...COMMON, ...(SKILL_TOOLS[skillId] || [])])]
-  if (allowExternalSearch && ['authority_knowledge_retriever', 'stage_parenting_qa', 'disease_explainer'].includes(skillId)) {
-    selected.push(webSearchTool({ searchContextSize: 'low', externalWebAccess: true, filters: { allowedDomains: ['nhc.gov.cn', 'who.int', 'cdc.gov'] } }))
-  }
   return selected.map(guardToolResult)
 }

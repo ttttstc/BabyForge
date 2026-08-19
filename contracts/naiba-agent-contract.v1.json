@@ -1,11 +1,10 @@
 {
   "contract": "babyforge.naiba.agent",
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.2.0",
   "endpoint": "/api/ai/chat",
   "request": {
     "required": ["message", "babyId", "history"],
-    "optional": ["skillId", "context", "contextMode", "decisionUnitId", "decisionFacts", "attachments"],
-    "contextModes": ["auto", "selected", "excluded"],
+    "optional": ["skillId", "context", "healthEpisodeId", "attachments"],
     "maxHistoryTurns": 20,
     "maxHistoryCharacters": 16000,
     "contextSources": ["today", "record", "growth", "explore"],
@@ -13,6 +12,12 @@
     "maxAttachments": 3,
     "maxAttachmentBytes": 6000000,
     "explicitAttachmentSend": true
+  },
+  "runtime": {
+    "chatTimeoutMs": 60000,
+    "reportTimeoutMs": 90000,
+    "conversationPersistence": false,
+    "healthEpisodePersistence": "allowlisted-facts-only"
   },
   "events": ["meta", "activity", "message", "decision", "draft", "sources", "done"],
   "encodings": ["text/event-stream", "application/json"],
