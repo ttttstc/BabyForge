@@ -4,7 +4,6 @@ import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { buildCaregiverHandoff, buildDailyGrowthPlan, buildDetailedCareAnalysis, buildGrowthInterpretation, buildVisitBrief, calculateCareStatistics, parseMedicalReportText } from '../../src/domain/naibaCapabilities.js'
 import { parseCareEventDraft } from '../../src/domain/careEventDraft.js'
 import { calculateFeedingRecommendation } from '../../src/domain/feedingRecommendation.js'
-import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { runDecisionUnit, runUniversalSafetyGate } from '../../src/domain/decisionKernel.js'
 import { toolOutputAllowed } from '../../src/domain/naibaGuardrails.js'
 
@@ -75,13 +74,9 @@ const getActiveHealthConcerns = tool({
 
 const searchKnowledge = tool({
   name: 'search_approved_knowledge',
-  description: 'Search frozen approved knowledge units. Return claims, scope, limitations, and authority source.',
+  description: 'Return the frozen approved knowledge units retrieved for this request, including claims, scope, limitations, and authority source.',
   parameters: z.object({ query: z.string().min(1).max(300), domain: z.string().max(40) }),
-  execute: ({ query, domain }, runContext) => {
-    const value = runtime(runContext)
-    const context = buildBabyContextSummary(value)
-    return searchApprovedKnowledge(query, { ageDays: context.profile.ageDays, ageMonths: context.profile.ageMonths, domain: domain || undefined })
-  },
+  execute: (_input, runContext) => runtime(runContext).localKnowledge || [],
 })
 
 const calculateStatistics = tool({

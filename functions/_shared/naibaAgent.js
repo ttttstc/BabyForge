@@ -179,11 +179,13 @@ Rules:
 `
 }
 
-export async function runNaibaAgent({ message, history = [], skillId, baby, careEvents, growthEvents = null, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, growthMetric = null, pageContext = null, attachments = [], requestId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2, signal = null }) {
+export async function runNaibaAgent({ message, history = [], skillId, baby, careEvents, growthEvents = null, concerns = [], carePlanItems = [], questions = [], actor = null, feedingReference, decisionResult, retrievedKnowledge = null, growthMetric = null, pageContext = null, attachments = [], requestId, locale = 'zh-CN', model = 'gpt-4o-mini', apiKey, baseURL, protocol, useResponses, transportFetch, maxRetries = 2, signal = null }) {
   if (String(message || '').length > INPUT_LIMIT) throw new Error('naiba-input-boundary')
   const now = new Date()
   const babyContext = buildBabyContextSummary({ baby, events: careEvents, concerns, carePlanItems, now })
-  const localKnowledge = searchApprovedKnowledge(message, { ageDays: babyContext.profile.ageDays, ageMonths: babyContext.profile.ageMonths })
+  const localKnowledge = Array.isArray(retrievedKnowledge)
+    ? retrievedKnowledge
+    : searchApprovedKnowledge(message, { ageDays: babyContext.profile.ageDays, ageMonths: babyContext.profile.ageMonths })
   const growthInterpretation = skillId === 'growth_and_development_interpreter'
     ? buildGrowthInterpretation({ baby, events: Array.isArray(growthEvents) ? growthEvents : careEvents, metric: growthMetric, locale, now })
     : null

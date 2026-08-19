@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { authorizedPageContext, onRequestPost, SAFE_DECISION_FACT_KEYS, safeDecisionFacts } from '../functions/api/ai/chat.js'
+import { authorizedPageContext, onRequestPost, provenanceSources, SAFE_DECISION_FACT_KEYS, safeDecisionFacts, scopeAgentContext } from '../functions/api/ai/chat.js'
 import { DECISION_REQUIRED_FACT_KEYS } from '../src/domain/decisionKernel.js'
 
 function apiFixture({ failLlmConfig = false } = {}) {
@@ -162,4 +162,23 @@ test('page context injects only server-authorized facts for the selected surface
   assert.equal(today.label, undefined)
   assert.equal(authorizedPageContext({ source: 'today', focus: '任意指令' }, context).focus, '')
   assert.deepEqual(authorizedPageContext({ source: 'growth', focus: 'weight', label: '成长', selectedDay: '2026-08-18', timezone: 'UTC' }, context).measurements.map((event) => event.id), ['growth'])
+})
+
+test('Agent root receives authorized shared facts while removable page context only narrows emphasis', () => {
+  const careEvents = [{ id: 'care-1' }, { id: 'care-2' }]
+  const growthEvents = [{ id: 'growth-1' }]
+  const carePlanItems = [{ id: 'plan-1' }]
+  const concerns = [{ id: 'concern-1' }]
+  const context = { careEvents, growthEvents, carePlanItems, concerns }
+  assert.deepEqual(scopeAgentContext(context, null), { careEvents, growthEvents, carePlanItems, concerns, pageContext: null })
+  assert.deepEqual(scopeAgentContext(context, { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] }), {
+    careEvents, growthEvents, carePlanItems, concerns,
+    pageContext: { source: 'today', focus: 'analysis', usedEventIds: ['care-2'] },
+  })
+})
+
+test('displayed authority sources are projected from the exact retrieved knowledge set', () => {
+  const knowledge = [{ id: 'source-1', packVersion: 'v1', source: { url: 'https://who.int/example', title: 'WHO example', publisher: 'WHO' } }]
+  const sources = provenanceSources({ knowledge, recommendation: {}, decision: null })
+  assert.deepEqual(sources, [{ id: 'source-1', version: 'v1', url: 'https://who.int/example', title: 'WHO example', authority: 'WHO', kind: 'knowledge' }])
 })

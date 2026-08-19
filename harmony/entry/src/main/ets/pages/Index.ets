@@ -242,6 +242,7 @@ struct Index {
   @State private aiDraftId: string = '';
   @State private aiSelectedSkillId: string = '';
   @State private aiSkillsExpanded: boolean = false;
+  @State private aiDecisionUnitId: string = '';
   private aiStopRequested: boolean = false;
   private aiGeneration: number = 0;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
@@ -346,6 +347,7 @@ struct Index {
     this.aiDraftId = '';
     this.aiSelectedSkillId = '';
     this.aiSkillsExpanded = false;
+    this.aiDecisionUnitId = '';
     this.aiContext = null;
     this.aiStatus = 'idle';
     this.aiError = '';
@@ -1524,8 +1526,12 @@ struct Index {
       const attachments = await this.aiAttachmentPayload();
       if (generation !== this.aiGeneration || this.aiStopRequested) return;
       this.aiMessages = this.aiMessages.concat([{ id: `user-${Date.now()}`, role: 'user', text: message, activity: '', sources: [], attachments }]);
-      const reply = await adapter.aiChat(message, String(baby.id), history, this.aiContext, attachments, this.aiSelectedSkillId);
+      const reply = await adapter.aiChat(message, String(baby.id), history, this.aiContext, attachments, this.aiSelectedSkillId, this.aiDecisionUnitId);
       if (generation !== this.aiGeneration || this.aiStopRequested) return;
+      if (reply.decision !== null) {
+        const unitId = String((reply.decision as Record<string, Object>)['unitId'] || '');
+        if (unitId.length > 0) this.aiDecisionUnitId = unitId;
+      }
       const answer = reply.text.length > 0 ? reply.text : reply.fallback ? '模型暂时不可用，请检查配置或稍后重试。' : '没有收到可显示的回答，请重试。';
       this.aiMessages = this.aiMessages.concat([{ id: `assistant-${Date.now()}`, role: 'assistant', text: answer, activity: reply.activity, sources: reply.sources }]);
       if (reply.draft !== null && String((reply.draft as Record<string, Object>)['status'] || '') === 'draft_ready') {
@@ -2136,6 +2142,7 @@ struct Index {
       } else if (this.growthPhase === 'error' || this.growth === null) {
         Column({ space: 10 }) { Text('成长页面暂时无法读取').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.statusMessage).fontSize(13).fontColor('#806E68').textAlign(TextAlign.Center); Button('重试').onClick(() => this.loadGrowth()); }.width('100%').padding(24).backgroundColor('#FFFCF8').borderRadius(18);
       } else {
+        Button('让奶爸 AI 解释当前成长趋势').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('growth'));
         Row({ space: 8 }) {
           ForEach(this.growth.metrics, (metric: NativeGrowthMetric) => this.growthMetricCard(metric), (metric: NativeGrowthMetric) => metric.id);
         }.width('100%');
@@ -2172,7 +2179,7 @@ struct Index {
             Row({ space: 8 }) { Text(itemText(task, 'status') === 'done' ? '✓' : '○').fontSize(19).fontColor('#7A9A80'); Column() { Text(nestedText(task, 'title', itemText(task, 'id'))).fontSize(13).fontColor('#4E3B35'); Text(itemText(task, 'state', 'upcoming')).fontSize(11).fontColor('#806E68'); }.layoutWeight(1); Button(itemText(task, 'status') === 'done' ? '已完成' : '完成').height(31).fontSize(10).enabled(Boolean(this.resource?.permissions.canEdit)).onClick(() => this.markAdminTask(itemText(task, 'taskId'), itemText(task, 'status') === 'done' ? 'pending' : 'done')); }.width('100%').padding(9).backgroundColor('#FFF8F3').borderRadius(12);
           }, (task: NativeGrowthItem) => itemText(task, 'id'));
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
-        if (this.growth.interpretation !== null) Column({ space: 7 }) { Text('确定性成长洞察').fontSize(16).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%'); Text(itemText(this.growth.interpretation, 'summary', '当前只展示已确认成长事实。')).fontSize(13).fontColor('#806E68').width('100%'); Text(`状态：${itemText(this.growth.interpretation, 'status', 'limited')} · 受限于事实与标准字段`).fontSize(11).fontColor('#A65E51').width('100%'); Button('进入受限 AI 洞察入口').height(38).onClick(() => this.selectTab('ai')); }.width('100%').padding(15).backgroundColor('#F2EEE7').borderRadius(18);
+        if (this.growth.interpretation !== null) Column({ space: 7 }) { Text('确定性成长洞察').fontSize(16).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%'); Text(itemText(this.growth.interpretation, 'summary', '当前只展示已确认成长事实。')).fontSize(13).fontColor('#806E68').width('100%'); Text(`状态：${itemText(this.growth.interpretation, 'status', 'limited')} · 受限于事实与标准字段`).fontSize(11).fontColor('#A65E51').width('100%'); Button('带着当前趋势问奶爸 AI').height(38).onClick(() => this.openAiFrom('growth')); }.width('100%').padding(15).backgroundColor('#F2EEE7').borderRadius(18);
         if (this.growth.limitations.length > 0) Text(`限制：${this.growth.limitations.join('；')}`).fontSize(11).fontColor('#806E68').width('100%');
         Text('模型来源、年龄口径和权限来自共享页面模型；本页不保存原生专属成长状态。').fontSize(11).fontColor('#806E68').width('100%');
       }
@@ -2321,6 +2328,7 @@ struct Index {
       else if (this.selectedRoute === 'explore.disease') this.diseaseSurface();
       else if (this.selectedRoute === 'explore.organ') this.organSurface();
       else this.experienceSurface();
+      if (this.explorePhase === 'ready' && this.explore !== null) Button('带着当前内容问奶爸 AI').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('explore'));
     }.width('100%');
   }
 

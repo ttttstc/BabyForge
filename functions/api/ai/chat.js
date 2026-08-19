@@ -267,10 +267,7 @@ const DECISION_SOURCE_KNOWLEDGE = Object.freeze({
   'cdc-safe-sleep-2024': 'infant-safe-sleep',
 })
 
-function provenanceSources({ message, recommendation, decision, baby }) {
-  const ageDays = getAgeDays(baby.birthDate)
-  const ageMonths = Number.isFinite(ageDays) ? Math.floor(ageDays / 30.4375) : null
-  const knowledge = searchApprovedKnowledge(message, { ageDays, ageMonths })
+export function provenanceSources({ knowledge = [], recommendation, decision }) {
   const items = [
     ...knowledge.map((unit) => ({ id: unit.id, version: unit.packVersion, url: unit.source.url, title: unit.source.title, authority: unit.source.publisher, kind: 'knowledge' })),
     ...(recommendation?.sources || []).map((source) => ({ id: source.id, version: recommendation.knowledgeVersion, url: source.url, title: source.title, authority: source.authority, kind: 'feeding_rule' })),
@@ -279,6 +276,16 @@ function provenanceSources({ message, recommendation, decision, baby }) {
   const decisionUnit = decisionKnowledgeId ? knowledge.find((unit) => unit.id === decisionKnowledgeId) : null
   if (decisionUnit) items.push({ id: decisionUnit.id, version: decisionUnit.packVersion, url: decisionUnit.source.url, title: decisionUnit.source.title, authority: decisionUnit.source.publisher, kind: 'decision_rule' })
   return [...new Map(items.filter((item) => item.id && item.version && item.url).map((item) => [`${item.id}:${item.version}`, item])).values()]
+}
+
+export function scopeAgentContext(context, injectedPageContext) {
+  return {
+    careEvents: context.careEvents,
+    growthEvents: context.growthEvents,
+    carePlanItems: context.carePlanItems,
+    concerns: context.concerns,
+    pageContext: injectedPageContext,
+  }
 }
 
 export async function onRequestPost({ request, env }) {
@@ -311,11 +318,11 @@ export async function onRequestPost({ request, env }) {
     : ['weight', 'length', 'headCircumference'].includes(String(pageContext?.focus || '')) ? String(pageContext.focus) : null
   const requestedSkillId = String(body?.skillId || '').slice(0, 120)
   const injectedPageContext = authorizedPageContext(pageContext, context)
-  const usedEventIds = new Set(injectedPageContext?.usedEventIds || [])
-  const agentCareEvents = usedEventIds.size ? context.careEvents.filter((event) => usedEventIds.has(event.id)) : []
-  const agentGrowthEvents = usedEventIds.size ? context.growthEvents.filter((event) => usedEventIds.has(event.id)) : []
+  const agentContext = scopeAgentContext(context, injectedPageContext)
+  const agentCareEvents = agentContext.careEvents
+  const agentGrowthEvents = agentContext.growthEvents
   const scopedRecommendation = calculateFeedingRecommendation({ baby: context.baby, events: agentCareEvents, locale: context.baby.locale || 'zh-CN' })
-  const agentCarePlanItems = injectedPageContext?.source === 'today' && injectedPageContext.focus === 'plan' ? context.carePlanItems : []
+  const agentCarePlanItems = agentContext.carePlanItems
   const transcript = userTranscript(history, message)
   const historyHasTopic = history.some((item) => item.role === 'user' && isNaibaTopicInScope(item.text))
   const historyHasHealthTopic = HEALTH_SENSITIVE_PATTERN.test(transcript)
@@ -344,7 +351,12 @@ export async function onRequestPost({ request, env }) {
   await persistDecision(env, session.accountId, context.baby.id, decision)
   await persistHealthEpisode(env, session.accountId, context.baby.id, decisionUnitId, decisionFacts, decision)
   const fallback = localAnswer(message, scopedRecommendation, decision)
-  const sources = provenanceSources({ message: transcript, recommendation: scopedRecommendation, decision, baby: context.baby })
+  const ageDays = getAgeDays(context.baby.birthDate)
+  const ageMonths = Number.isFinite(ageDays) ? Math.floor(ageDays / 30.4375) : null
+  // Retrieval is performed once. This exact result feeds the Agent prompt,
+  // displayed sources, and persisted evidence so provenance cannot drift.
+  const retrievedKnowledge = searchApprovedKnowledge(transcript, { ageDays, ageMonths })
+  const sources = provenanceSources({ knowledge: retrievedKnowledge, recommendation: scopedRecommendation, decision })
   const sourcesEvent = sources.length ? { type: 'sources', items: sources } : null
   let llmConfig
   let configUnavailable = false
@@ -385,11 +397,12 @@ export async function onRequestPost({ request, env }) {
       careEvents: agentCareEvents,
       growthEvents: agentGrowthEvents,
       carePlanItems: agentCarePlanItems,
-      concerns: [],
+      concerns: agentContext.concerns,
       questions: [],
       feedingReference: scopedRecommendation,
       decisionResult: decision,
-      pageContext: injectedPageContext,
+      retrievedKnowledge,
+      pageContext: agentContext.pageContext,
       attachments,
       requestId,
       locale: context.baby.locale || 'zh-CN',
