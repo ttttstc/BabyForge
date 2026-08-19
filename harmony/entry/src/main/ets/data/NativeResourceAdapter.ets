@@ -8,6 +8,7 @@ import {
 } from './NativeResourceContract';
 import { NativeSessionStore } from './NativeSessionStore';
 import { NativeCareCommand, NativeCareEvent, NativeTodayModel, parseNativeToday } from './NativeTodayContract';
+import { NAIBA_CHAT_TIMEOUT_MS, NAIBA_REPORT_TIMEOUT_MS, NativeAgentAttachment, NativeAgentContext, NativeAgentHistoryMessage, NativeAgentReply, parseNativeAgentReply } from './NativeAgentContract';
 import { NativeGrowthModel, parseNativeGrowth } from './NativeGrowthContract';
 import { NativeExploreModel, parseNativeExplore } from './NativeExploreContract';
 import { NativeSettingsModel, NativeSettingsPatch, parseNativeSettings } from './NativeSettingsContract';
@@ -39,6 +40,41 @@ interface NativeHeaders {
   'content-type'?: string;
 }
 
+interface NativeRequestBody {
+  email?: string;
+  password?: string;
+  rememberMe?: boolean;
+  name?: string;
+  provider?: string;
+  callbackURL?: string;
+  baby?: NativeBabyInput | null;
+  event?: NativeCareEvent;
+  enabled?: boolean;
+}
+
+interface NativeAgentRequest {
+  message: string;
+  babyId: string;
+  history: Array<NativeAgentHistoryMessage>;
+  context: NativeAgentContext | null;
+  attachments: Array<NativeAgentAttachment>;
+  skillId: string;
+  healthEpisodeId: string;
+}
+
+interface NativeReportRequest {
+  babyId: string;
+  name: string;
+  mimeType: string;
+  text: string;
+  dataUrl: string;
+  thirdPartyProcessingConsent: boolean;
+}
+
+interface NativeDraftRequest { event: Object; draftType: string; }
+interface NativeConfirmDraftRequest { confirmed: boolean; draftId: string; event: Object; }
+interface NativeDiscardDraftRequest { draftId: string; status: string; }
+const PATCH_METHOD: http.RequestMethod = 'PATCH' as http.RequestMethod;
 export interface NativePhotoDownload {
   data: ArrayBuffer;
   contentType: string;
@@ -92,8 +128,8 @@ function emptyRecord(): Record<string, Object> {
   return JSON.parse('{}') as Record<string, Object>;
 }
 
-function requestBody(value: Object): Object {
-  return value;
+function requestBody(value: NativeRequestBody): Object {
+  return value as Object;
 }
 
 function deviceTimezone(): string {
@@ -109,6 +145,7 @@ export class NativeResourceAdapter {
   private readonly session: NativeSessionStore;
   private readonly timezone: string = deviceTimezone();
   private opened: boolean = false;
+  private activeAgentRequest: http.HttpRequest | null = null;
 
   constructor(context: common.UIAbilityContext) {
     this.session = new NativeSessionStore(context);
@@ -120,9 +157,10 @@ export class NativeResourceAdapter {
     this.opened = true;
   }
 
-  private async request(path: string, method: http.RequestMethod = http.RequestMethod.GET, body: Object | null = null): Promise<Object> {
+  private async request(path: string, method: http.RequestMethod = http.RequestMethod.GET, body: Object | null = null, cancellable: boolean = false, readTimeout: number = 15000): Promise<Object> {
     await this.ensureOpened();
     const request = http.createHttp();
+    if (cancellable) this.activeAgentRequest = request;
     const headers: NativeHeaders = body !== null
       ? {
         accept: 'application/json',
@@ -140,7 +178,7 @@ export class NativeResourceAdapter {
       header: headers,
       expectDataType: http.HttpDataType.STRING,
       connectTimeout: 10000,
-      readTimeout: 15000
+      readTimeout
     };
     if (body !== null) {
       options.extraData = JSON.stringify(body);
@@ -174,6 +212,7 @@ export class NativeResourceAdapter {
       if (error instanceof NativeTransportError || error instanceof NativeContractError) throw error as Error;
       throw new NativeTransportError('NETWORK_UNAVAILABLE', '无法连接共享业务服务，请检查网络后重试。', 0, true);
     } finally {
+      if (this.activeAgentRequest === request) this.activeAgentRequest = null;
       request.destroy();
     }
   }
@@ -210,8 +249,13 @@ export class NativeResourceAdapter {
       : emptyRecord();
     cache[cacheKey] = model as Object;
     const keys = Object.keys(cache);
-    if (keys.length > 12) delete cache[keys[0]];
-    await this.session.saveSurfaceCache('exploreCache', cache as Object);
+    if (keys.length <= 12) {
+      await this.session.saveSurfaceCache('exploreCache', cache as Object);
+      return;
+    }
+    const compact = emptyRecord();
+    keys.slice(keys.length - 12).forEach((key: string) => compact[key] = cache[key]);
+    await this.session.saveSurfaceCache('exploreCache', compact as Object);
   }
 
   async bootstrap(): Promise<NativeBootstrapResult> {
@@ -232,6 +276,35 @@ export class NativeResourceAdapter {
   async today(day: string = ''): Promise<NativeTodayModel> {
     const query = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `?day=${encodeURIComponent(day)}` : '';
     return parseNativeToday(await this.request(`/api/native/today${query}`));
+  }
+
+  async aiChat(message: string, babyId: string, history: Array<NativeAgentHistoryMessage>, context: NativeAgentContext | null, attachments: Array<NativeAgentAttachment>, skillId: string = '', healthEpisodeId: string = ''): Promise<NativeAgentReply> {
+    const payload: NativeAgentRequest = { message, babyId, history, context, attachments, skillId, healthEpisodeId };
+    return parseNativeAgentReply(await this.request('/api/ai/chat', http.RequestMethod.POST, payload as Object, true, NAIBA_CHAT_TIMEOUT_MS));
+  }
+
+  cancelAiChat(): void {
+    if (this.activeAgentRequest !== null) this.activeAgentRequest.destroy();
+  }
+
+  async aiReport(babyId: string, name: string, mimeType: string, text: string, dataUrl: string): Promise<Object> {
+    const payload: NativeReportRequest = { babyId, name, mimeType, text, dataUrl, thirdPartyProcessingConsent: mimeType !== 'text/plain' };
+    return this.request('/api/ai/report', http.RequestMethod.POST, payload as Object, true, NAIBA_REPORT_TIMEOUT_MS);
+  }
+
+  async aiCreateDraft(event: Object, draftType: string): Promise<Object> {
+    const payload: NativeDraftRequest = { event, draftType };
+    return this.request('/api/ai/drafts', http.RequestMethod.POST, payload as Object);
+  }
+
+  async aiConfirmDraft(draftId: string, event: Object): Promise<Object> {
+    const payload: NativeConfirmDraftRequest = { confirmed: true, draftId, event };
+    return this.request('/api/ai/confirm-draft', http.RequestMethod.POST, payload as Object);
+  }
+
+  async aiDiscardDraft(draftId: string): Promise<Object> {
+    const payload: NativeDiscardDraftRequest = { draftId, status: 'discarded' };
+    return this.request('/api/ai/drafts', PATCH_METHOD, payload as Object);
   }
 
   async growth(): Promise<NativeSurfaceResult<NativeGrowthModel>> {
@@ -280,7 +353,7 @@ export class NativeResourceAdapter {
   }
 
   async updateSettings(patch: NativeSettingsPatch): Promise<NativeSettingsModel> {
-    const model = parseNativeSettings(await this.request('/api/native/settings', http.RequestMethod.PATCH, requestBody(patch as Object)));
+    const model = parseNativeSettings(await this.request('/api/native/settings', PATCH_METHOD, patch as Object));
     await this.session.saveSurfaceCache('settingsCache', model as Object);
     return model;
   }
@@ -318,7 +391,7 @@ export class NativeResourceAdapter {
   }
 
   async updateLlmConfig(input: Record<string, Object>): Promise<Object> {
-    return this.request('/api/ai/config', http.RequestMethod.PUT, requestBody(input as Object));
+    return this.request('/api/ai/config', http.RequestMethod.PUT, input as Object);
   }
 
   async clearLlmConfig(): Promise<Object> {

@@ -3,6 +3,8 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import { camera, cameraPicker } from '@kit.CameraKit';
+import { util } from '@kit.ArkTS';
+import { inputMethod } from '@kit.IMEKit';
 import { i18n } from '@kit.LocalizationKit';
 import vibrator from '@ohos.vibrator';
 import {
@@ -29,6 +31,16 @@ import {
   NativeTodayTask,
   createNativeCareCommand
 } from '../data/NativeTodayContract';
+import {
+  NativeAgentAttachment,
+  NativeAgentAttachmentSummary,
+  NativeAgentContext,
+  NativeAgentHistoryMessage,
+  NativeAgentMessage,
+  NativeAgentSource,
+  NativeNaibaSkill,
+  NAIBA_SKILLS
+} from '../data/NativeAgentContract';
 import { NativeGrowthItem, NativeGrowthMetric, NativeGrowthModel } from '../data/NativeGrowthContract';
 import { NativeExploreItem, NativeExploreModel } from '../data/NativeExploreContract';
 import { NativeSettingsItem, NativeSettingsModel, NativeSettingsPatch } from '../data/NativeSettingsContract';
@@ -49,6 +61,13 @@ interface NativeRecordDraft {
 interface NativePhotoTimestamp {
   takenAt: string;
   timeSource: string;
+}
+
+interface NativeAgentAttachmentDraft {
+  kind: string;
+  name: string;
+  uri: string;
+  mimeType: string;
 }
 
 function jsonRecord(value: string): Record<string, Object | null> {
@@ -87,8 +106,8 @@ function recordArt(type: NativeRecordType): Resource {
   return $r('app.media.record_growth_feet');
 }
 
-function itemRecord(value: Object | null): Record<string, Object> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return JSON.parse('{}') as Record<string, Object>;
+function itemRecord(value: Object | null | undefined): Record<string, Object> {
+  if (value === null || value === undefined || typeof value !== 'object' || Array.isArray(value)) return JSON.parse('{}') as Record<string, Object>;
   return value as Record<string, Object>;
 }
 
@@ -101,7 +120,7 @@ function readableValue(value: Object | null, fallback: string = ''): string {
   return Object.keys(record).map((key: string) => readableValue(record[key], '')).filter((entry: string) => entry.length > 0).join('；') || fallback;
 }
 
-function itemText(value: Object | null, field: string, fallback: string = ''): string {
+function itemText(value: Object | null | undefined, field: string, fallback: string = ''): string {
   const item = itemRecord(value);
   const candidate = item[field];
   return candidate === undefined || candidate === null ? fallback : readableValue(candidate, fallback);
@@ -114,11 +133,11 @@ function localizedText(value: Object | null, fallback: string = ''): string {
   return String(item['zh'] || item['en'] || fallback);
 }
 
-function itemList(value: Object | null): Array<Object> {
+function itemList(value: Object | null | undefined): Array<Object> {
   return Array.isArray(value) ? value as Array<Object> : [];
 }
 
-function nestedText(item: Object | null, field: string, fallback: string = ''): string {
+function nestedText(item: Object | null | undefined, field: string, fallback: string = ''): string {
   const record = itemRecord(item);
   return localizedText(record[field], fallback);
 }
@@ -146,6 +165,7 @@ function deviceDateKey(value: Date = new Date()): string {
 struct Index {
   private adapter: NativeResourceAdapter | null = null;
   private readonly navigation: NativeNavigationStore = new NativeNavigationStore();
+  private readonly surfaceScroller: Scroller = new Scroller();
   @State private phase: NativePhase = 'loading';
   @State private loginMode: LoginMode = 'login';
   @State private resource: NativeResourceEnvelope | null = null;
@@ -213,6 +233,21 @@ struct Index {
   @State private photoPixel: image.PixelMap | null = null;
   @State private photoLoading: boolean = false;
   @State private photoLoadFailed: boolean = false;
+  @State private aiMessages: Array<NativeAgentMessage> = [{ id: 'welcome', role: 'assistant', text: '嗨，我在这儿。可以直接说宝宝吃、睡、排便、成长或哪里和平时不一样。', activity: '', sources: [] }];
+  @State private aiInput: string = '';
+  @State private aiStatus: string = 'idle';
+  @State private aiError: string = '';
+  @State private aiContext: NativeAgentContext | null = null;
+  @State private aiAttachment: NativeAgentAttachmentDraft | null = null;
+  @State private aiDraft: Object | null = null;
+  @State private aiDraftId: string = '';
+  @State private aiSelectedSkillId: string = '';
+  @State private aiSkillsExpanded: boolean = false;
+  @State private aiHealthEpisodeId: string = '';
+  @State private aiResultMessage: NativeAgentMessage | null = null;
+  @State private showAiResultSheet: boolean = false;
+  private aiStopRequested: boolean = false;
+  private aiGeneration: number = 0;
   @StorageProp('topAvoidHeight') private topAvoidHeight: number = 0;
   @StorageProp('bottomAvoidHeight') private bottomAvoidHeight: number = 0;
   @StorageProp('nativeAuthCallback') private nativeAuthCallback: string = '';
@@ -253,6 +288,10 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.showAiResultSheet) {
+      this.showAiResultSheet = false;
+      return true;
+    }
     if (this.showFamilyPanel) {
       this.showFamilyPanel = false;
       return true;
@@ -296,7 +335,39 @@ struct Index {
     this.chartContexts.clear();
   }
 
+  private resourceIdentity(resource: NativeResourceEnvelope | null): string {
+    if (resource === null) return '';
+    const household = resource.household;
+    return [resource.user.id, household?.id || '', household?.baby?.id || '', resource.permissions.role].join(':');
+  }
+
+  private resetAiState(): void {
+    const draftId = this.aiDraftId;
+    this.aiGeneration += 1;
+    this.aiStopRequested = true;
+    if (this.busy && this.adapter !== null) this.adapter.cancelAiChat();
+    if (draftId.length > 0 && this.adapter !== null) void this.adapter.aiDiscardDraft(draftId).catch(() => { /* identity transition is already local-safe */ });
+    this.aiMessages = [{ id: 'welcome', role: 'assistant', text: '当前账号或宝宝已切换。对话只保存在本机内存，不会形成历史记录。', activity: '', sources: [] }];
+    this.setAiInput('');
+    this.aiAttachment = null;
+    this.aiDraft = null;
+    this.aiDraftId = '';
+    this.aiSelectedSkillId = '';
+    this.aiSkillsExpanded = false;
+    this.aiHealthEpisodeId = '';
+    this.aiResultMessage = null;
+    this.showAiResultSheet = false;
+    this.navigation.repeat('ai');
+    if (this.activeTab === 'ai') this.syncNavigation();
+    this.aiContext = null;
+    this.aiStatus = 'idle';
+    this.aiError = '';
+    this.busy = false;
+    this.aiStopRequested = false;
+  }
+
   private async applyResource(result: NativeBootstrapResult): Promise<void> {
+    if (this.resource !== null && this.resourceIdentity(this.resource) !== this.resourceIdentity(result.resource)) this.resetAiState();
     this.resetSurfaceModels();
     this.resource = result.resource;
     this.staleCache = result.stale;
@@ -334,6 +405,7 @@ struct Index {
     } catch (error) {
       const transport = error instanceof NativeTransportError ? error : null;
       if (transport !== null && (transport.status === 401 || transport.status === 403)) {
+        this.resetAiState();
         this.phase = 'login';
         this.statusMessage = transport.message;
       }
@@ -949,6 +1021,7 @@ struct Index {
 
   private async logout(): Promise<void> {
     if (this.adapter === null) return;
+    this.resetAiState();
     this.busy = true;
     try {
       await this.adapter.logout();
@@ -968,14 +1041,17 @@ struct Index {
   }
 
   private async saveSharedAction(category: string, payload: Record<string, Object | null>): Promise<void> {
-    if (this.adapter === null || this.resource?.household?.baby === null || !this.resource.permissions.canEdit || this.busy) return;
+    const adapter = this.adapter;
+    const resource = this.resource;
+    const baby = resource?.household?.baby || null;
+    if (adapter === null || resource === null || baby === null || !resource.permissions.canEdit || this.busy) return;
     this.busy = true;
     try {
-      const recorderId = String(this.today?.recorder['id'] || this.resource.user.id);
-      const recorderName = String(this.today?.recorder['displayName'] || this.resource.user.displayName || '家庭成员');
+      const recorderId = String(this.today?.recorder['id'] || resource.user.id);
+      const recorderName = String(this.today?.recorder['displayName'] || resource.user.displayName || '家庭成员');
       const event: NativeCareEvent = {
         id: `native-action-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
-        babyId: this.resource.household.baby.id,
+        babyId: baby.id,
         kind: 'caregiver_observation',
         category,
         occurredAt: new Date().toISOString(),
@@ -986,7 +1062,7 @@ struct Index {
         status: 'active',
         version: 1
       };
-      await this.adapter.createNativeEvent(event);
+      await adapter.createNativeEvent(event);
       this.feedbackMessage = '已提交共享记录，正在读取最新页面模型…';
       await this.refreshAfterMutation(category === 'milestone' || category === 'admin_task', category === 'vaccine');
     } catch (error) {
@@ -997,15 +1073,24 @@ struct Index {
   }
 
   private async markVaccine(vaccineId: string): Promise<void> {
-    await this.saveSharedAction('vaccine', { vaccineId, status: 'completed' });
+    const payload = jsonRecord('{}');
+    payload['vaccineId'] = vaccineId;
+    payload['status'] = 'completed';
+    await this.saveSharedAction('vaccine', payload);
   }
 
   private async markGrowthMilestone(milestoneId: string, status: string): Promise<void> {
-    await this.saveSharedAction('milestone', { milestoneId, status });
+    const payload = jsonRecord('{}');
+    payload['milestoneId'] = milestoneId;
+    payload['status'] = status;
+    await this.saveSharedAction('milestone', payload);
   }
 
   private async markAdminTask(taskId: string, status: string): Promise<void> {
-    await this.saveSharedAction('admin_task', { taskId, status });
+    const payload = jsonRecord('{}');
+    payload['taskId'] = taskId;
+    payload['status'] = status;
+    await this.saveSharedAction('admin_task', payload);
   }
 
   private async saveSettings(): Promise<void> {
@@ -1175,6 +1260,367 @@ struct Index {
     if (tab === 'growth') this.loadGrowth();
     if (tab === 'explore') this.loadExplore();
     this.syncNavigation();
+    setTimeout((): void => this.surfaceScroller.scrollTo({ xOffset: 0, yOffset: this.navigation.state(tab).scrollPosition }), 0);
+  }
+
+  private openAiFrom(source: NativeTab): void {
+    const displayedDisease: NativeExploreItem | null = source === 'explore' && this.selectedRoute === 'explore.disease' ? this.currentDisease() : null;
+    if (source === 'explore' && displayedDisease === null) return;
+    const label = source === 'today' ? '今天的已确认照护事实' : source === 'record' ? '照护事实时间线' : source === 'growth' ? '当前成长测量趋势' : '当前疾病内容';
+    const prompt = source === 'today' ? '请分析今天的照护记录。' : source === 'record' ? '请帮我整理最近的照护事实。' : source === 'growth' ? '请解释当前成长趋势。' : '请解释当前疾病内容和适用边界。';
+    const timezone = this.deviceTimezone();
+    const context: NativeAgentContext = {
+      source,
+      focus: source === 'today' ? 'analysis' : source === 'record' ? 'timeline' : source === 'growth' ? 'trend' : 'current-topic',
+      label,
+      timezone
+    };
+    if (source === 'today' || source === 'record') {
+      const ids = this.today?.recentFacts.map((fact: NativeTodayFact) => fact.id).filter((id: string) => id.length > 0) || [];
+      if (ids.length > 0) context.resourceIds = ids.slice(-40);
+    } else if (source === 'growth') {
+      const ids = this.growth?.measurements.map((item: NativeGrowthItem) => itemText(item, 'id')).filter((id: string) => id.length > 0) || [];
+      if (ids.length > 0) context.resourceIds = ids.slice(-40);
+    } else if (displayedDisease !== null) {
+      context.contentType = 'disease';
+      context.contentId = itemText(displayedDisease, 'id');
+    }
+    this.aiContext = context;
+    this.aiSelectedSkillId = source === 'today'
+      ? 'daily_care_analysis'
+      : source === 'record'
+        ? 'detailed_care_analysis'
+        : source === 'growth'
+          ? 'growth_and_development_interpreter'
+          : 'disease_explainer';
+    if (this.aiInput.length === 0) this.setAiInput(prompt);
+    this.selectTab('ai');
+  }
+
+  private deviceTimezone(): string {
+    try {
+      const timezone = i18n.getTimeZone().getID();
+      return timezone.trim().length > 0 ? timezone : 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  }
+
+  private selectAiSkill(skill: NativeNaibaSkill): void {
+    this.aiSelectedSkillId = skill.id;
+    this.setAiInput(skill.prompt);
+  }
+
+  private visibleAiSkills(): Array<NativeNaibaSkill> {
+    return this.aiSkillsExpanded ? NAIBA_SKILLS : NAIBA_SKILLS.slice(0, 6);
+  }
+
+  private aiUsesDetailPage(skillId: string): boolean {
+    return ['detailed_care_analysis', 'medical_report_interpreter', 'visit_brief_generator', 'caregiver_handoff_builder'].includes(skillId);
+  }
+
+  private presentAiResult(message: NativeAgentMessage, skillId: string): void {
+    this.aiResultMessage = message;
+    if (this.aiUsesDetailPage(skillId)) {
+      this.navigation.push('ai', 'ai.detail');
+      this.syncNavigation();
+      setTimeout((): void => this.surfaceScroller.scrollTo({ xOffset: 0, yOffset: 0 }), 0);
+    } else {
+      this.showAiResultSheet = true;
+    }
+  }
+
+  private setAiInput(value: string): void {
+    this.aiInput = value;
+    this.navigation.setTemporaryInput('ai', value);
+  }
+
+  private newAiConversation(): void {
+    this.resetAiState();
+    this.aiMessages = [{ id: 'welcome', role: 'assistant', text: '新对话已开始。当前对话只保存在本机内存，不会形成历史记录。', activity: '', sources: [] }];
+  }
+
+  private aiHistory(): Array<NativeAgentHistoryMessage> {
+    return this.aiMessages.filter((item: NativeAgentMessage) => item.id !== 'welcome' && item.text.length > 0).slice(-20).map((item: NativeAgentMessage) => {
+      const summaries: Array<NativeAgentAttachmentSummary> = item.role === 'user' && item.attachments !== undefined
+        ? item.attachments.map((attachment: NativeAgentAttachment): NativeAgentAttachmentSummary => ({ kind: attachment.kind, name: attachment.name, mimeType: attachment.mimeType, size: attachment.size }))
+        : [];
+      const value: NativeAgentHistoryMessage = { role: item.role, text: item.text };
+      if (summaries.length > 0) value.attachmentSummary = summaries;
+      return value;
+    });
+  }
+
+  private attachmentMime(uri: string): string {
+    const lower = uri.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  private async chooseAiPhoto(): Promise<void> {
+    if (this.busy) return;
+    try {
+      const result = await new photoAccessHelper.PhotoViewPicker().select({ MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE, maxSelectNumber: 1 });
+      if (result.photoUris.length === 0) return;
+      const uri = result.photoUris[0];
+      this.aiAttachment = { kind: 'image', name: '宝宝照片', uri, mimeType: this.attachmentMime(uri) };
+      this.aiError = '图片已就绪；只有点击发送后才会临时传给 AI，不会写入相册、事实或历史对话。';
+    } catch {
+      this.aiError = '图片选择未完成，未发送任何内容。';
+    }
+  }
+
+  private async chooseAiReport(): Promise<void> {
+    if (this.busy) return;
+    try {
+      const result = await new picker.DocumentViewPicker(getContext(this)).select({ fileSuffixFilters: ['.txt', '.pdf', '.jpg', '.jpeg', '.png', '.webp'], maxSelectNumber: 1 });
+      if (result.length === 0) return;
+      const uri = result[0];
+      const lower = uri.toLowerCase();
+      const mimeType = lower.endsWith('.txt') ? 'text/plain' : lower.endsWith('.pdf') ? 'application/pdf' : this.attachmentMime(uri);
+      this.aiAttachment = { kind: 'report', name: uri.split('/').pop() || '报告文件', uri, mimeType };
+      this.aiError = '报告已就绪；确认识别后才会临时发送，原始文件不会保存或进入分享。';
+    } catch {
+      this.aiError = '报告选择未完成，未发送任何内容。';
+    }
+  }
+
+  private async readAiFile(uri: string): Promise<ArrayBuffer> {
+    const stat = await fileIo.stat(uri);
+    const size = Number(stat.size || 0);
+    if (!Number.isFinite(size) || size <= 0 || size > 6000000) throw new Error('附件需小于或等于 6 MB。');
+    const opened = await fileIo.open(uri, fileIo.OpenMode.READ_ONLY);
+    const buffer = new ArrayBuffer(size);
+    try {
+      const count = await fileIo.read(opened.fd, buffer);
+      return buffer.slice(0, Number(count));
+    } finally {
+      await fileIo.close(opened);
+    }
+  }
+
+  private async sendAiReport(): Promise<void> {
+    const attachment = this.aiAttachment;
+    const baby = this.resource?.household?.baby || null;
+    if (attachment === null || attachment.kind !== 'report' || baby === null || this.adapter === null || this.busy) return;
+    const generation = ++this.aiGeneration;
+    this.busy = true;
+    this.aiStatus = 'generating';
+    this.aiError = '';
+    this.aiStopRequested = false;
+    try {
+      const buffer = await this.readAiFile(attachment.uri);
+      if (generation !== this.aiGeneration || this.aiStopRequested) return;
+      const text = attachment.mimeType === 'text/plain' ? util.TextDecoder.create('utf-8').decodeToString(new Uint8Array(buffer)) : '';
+      const dataUrl = attachment.mimeType === 'text/plain' ? '' : `data:${attachment.mimeType};base64,${new util.Base64Helper().encodeToStringSync(new Uint8Array(buffer))}`;
+      const payload = await this.adapter.aiReport(String(baby.id), attachment.name, attachment.mimeType, text, dataUrl) as Record<string, Object>;
+      if (generation !== this.aiGeneration || this.aiStopRequested) return;
+      const report = payload['report'] as Record<string, Object>;
+      const draft = payload['draft'];
+      const fields = Array.isArray(report?.['fields']) ? report['fields'] as Array<Object> : [];
+      const reportMessage: NativeAgentMessage = { id: `assistant-report-${Date.now()}`, role: 'assistant', text: fields.length > 0 ? `已提取 ${fields.length} 个可核对字段。请逐项核对后确认保存。` : '没有识别出可核对字段。', activity: '医疗报告解读', sources: [] };
+      this.aiMessages = this.aiMessages.concat([reportMessage]);
+      if (draft !== null && typeof draft === 'object' && String((draft as Record<string, Object>)['status'] || '') === 'draft_ready') {
+        const event = (draft as Record<string, Object>)['event'];
+        if (event !== null && typeof event === 'object') {
+          if (generation !== this.aiGeneration) return;
+          const saved = await this.adapter.aiCreateDraft(event as Object, 'medical_report_observation') as Record<string, Object>;
+          const savedDraftId = String(saved['draftId'] || '');
+          if (generation !== this.aiGeneration) {
+            if (savedDraftId.length > 0) void this.adapter.aiDiscardDraft(savedDraftId).catch(() => { /* stale draft cleanup is best effort */ });
+            return;
+          }
+          this.aiDraft = draft as Object;
+          this.aiDraftId = savedDraftId;
+          this.showAiResultSheet = true;
+        }
+      }
+      this.presentAiResult(reportMessage, 'medical_report_interpreter');
+      this.aiAttachment = null;
+      this.aiStatus = 'success';
+    } catch (error) {
+      if (generation !== this.aiGeneration || this.aiStopRequested) return;
+      this.aiStatus = 'failed';
+      this.aiError = error instanceof Error ? error.message : '报告识别失败；原始文件未保存。';
+    } finally {
+      if (generation === this.aiGeneration) this.busy = false;
+    }
+  }
+
+  private aiDraftFields(): Array<Object> {
+    if (this.aiDraft === null) return [];
+    const event = (this.aiDraft as Record<string, Object>)['event'];
+    if (event === null || typeof event !== 'object') return [];
+    const payload = (event as Record<string, Object>)['payload'];
+    if (payload === null || typeof payload !== 'object') return [];
+    const fields = (payload as Record<string, Object>)['fields'];
+    return Array.isArray(fields) ? fields as Array<Object> : [];
+  }
+
+  private aiDraftCategory(): string {
+    if (this.aiDraft === null) return '';
+    const event = (this.aiDraft as Record<string, Object>)['event'];
+    return event !== null && typeof event === 'object' ? String((event as Record<string, Object>)['category'] || '') : '';
+  }
+
+  private aiDraftValue(): string {
+    if (this.aiDraft === null) return '';
+    const event = (this.aiDraft as Record<string, Object>)['event'];
+    if (event === null || typeof event !== 'object') return '';
+    const payload = (event as Record<string, Object>)['payload'];
+    if (payload === null || typeof payload !== 'object') return '';
+    const values = payload as Record<string, Object>;
+    if (values['amountMl'] !== undefined && values['amountMl'] !== null) return String(values['amountMl']);
+    if (values['value'] !== undefined && values['value'] !== null) return String(values['value']);
+    if (values['kind'] !== undefined && values['kind'] !== null) return String(values['kind']);
+    return String(values['symptomNotes'] || values['note'] || '');
+  }
+
+  private updateAiDraftValue(value: string): void {
+    if (this.aiDraft === null) return;
+    const event = (this.aiDraft as Record<string, Object>)['event'];
+    if (event === null || typeof event !== 'object') return;
+    const payload = (event as Record<string, Object>)['payload'];
+    if (payload === null || typeof payload !== 'object') return;
+    const values = payload as Record<string, Object | null>;
+    const category = this.aiDraftCategory();
+    if (category === 'bottle_feeding') values['amountMl'] = value.length > 0 ? Number(value) : null;
+    else if (category === 'temperature' || category === 'growth_measurement') values['value'] = value.length > 0 ? Number(value) : null;
+    else if (category === 'diaper') values['kind'] = value;
+    else values['note'] = value;
+    this.aiDraft = JSON.parse(JSON.stringify(this.aiDraft)) as Object;
+  }
+
+  private updateAiDraftField(index: number, key: string, value: string): void {
+    const fields = this.aiDraftFields();
+    if (index < 0 || index >= fields.length) return;
+    (fields[index] as Record<string, Object>)[key] = value;
+    this.aiDraft = JSON.parse(JSON.stringify(this.aiDraft)) as Object;
+  }
+
+  private async confirmAiDraft(): Promise<void> {
+    if (this.adapter === null || this.aiDraft === null || this.aiDraftId.length === 0 || this.busy) return;
+    if (this.resource?.permissions.readOnly === true) { this.aiError = '当前账号只读，不能写入事实。'; return; }
+    const event = (this.aiDraft as Record<string, Object>)['event'];
+    if (event === null || typeof event !== 'object') return;
+    this.busy = true;
+    try {
+      await this.adapter.aiConfirmDraft(this.aiDraftId, event as Object);
+      this.aiDraft = null;
+      this.aiDraftId = '';
+      this.aiError = '事实已确认写入时间线；它仍是观察事实，不是诊断。';
+      this.showAiResultSheet = false;
+      await this.loadToday();
+    } catch (error) {
+      this.aiError = error instanceof Error ? error.message : '事实写入失败，请重试。';
+    } finally { this.busy = false; }
+  }
+
+  private async discardAiDraft(): Promise<void> {
+    if (this.adapter !== null && this.aiDraftId.length > 0) {
+      try { await this.adapter.aiDiscardDraft(this.aiDraftId); } catch { /* 草稿会自动过期 */ }
+    }
+    this.aiDraft = null;
+    this.aiDraftId = '';
+    this.showAiResultSheet = false;
+    this.aiError = '草稿已丢弃，未写入正式事实。';
+  }
+
+  private async aiAttachmentPayload(): Promise<Array<NativeAgentAttachment>> {
+    if (this.aiAttachment === null || this.aiAttachment.kind !== 'image') return [];
+    const stat = await fileIo.stat(this.aiAttachment.uri);
+    const size = Number(stat.size || 0);
+    if (!Number.isFinite(size) || size <= 0 || size > 6000000) throw new Error('图片需小于或等于 6 MB。');
+    const opened = await fileIo.open(this.aiAttachment.uri, fileIo.OpenMode.READ_ONLY);
+    const buffer = new ArrayBuffer(size);
+    try {
+      const count = await fileIo.read(opened.fd, buffer);
+      const encoded = new util.Base64Helper().encodeToStringSync(new Uint8Array(buffer.slice(0, Number(count))));
+      return [{ kind: 'image', name: this.aiAttachment.name, mimeType: this.aiAttachment.mimeType, size: Number(count), dataUrl: `data:${this.aiAttachment.mimeType};base64,${encoded}`, confirmed: true }];
+    } finally {
+      await fileIo.close(opened);
+    }
+  }
+
+  private async sendAiMessage(): Promise<void> {
+    const adapter = this.adapter;
+    const baby = this.resource?.household?.baby || null;
+    const history = this.aiHistory();
+    const attachment = this.aiAttachment;
+    const message = this.aiInput.trim().length > 0 ? this.aiInput.trim() : attachment !== null && attachment.kind === 'image' ? '请分析这张图片中与宝宝照护有关的可见信息。' : '';
+    if (adapter === null || baby === null || message.length === 0 || this.busy) return;
+    const generation = ++this.aiGeneration;
+    this.setAiInput('');
+    this.aiStatus = 'generating';
+    this.aiError = '';
+    this.aiStopRequested = false;
+    this.busy = true;
+    try {
+      const attachments = await this.aiAttachmentPayload();
+      if (generation !== this.aiGeneration || this.aiStopRequested) return;
+      this.aiMessages = this.aiMessages.concat([{ id: `user-${Date.now()}`, role: 'user', text: message, activity: '', sources: [], attachments }]);
+      const reply = await adapter.aiChat(message, String(baby.id), history, this.aiContext, attachments, this.aiSelectedSkillId, this.aiHealthEpisodeId);
+      if (generation !== this.aiGeneration || this.aiStopRequested) return;
+      if (reply.decision !== null) {
+        const episodeId = String((reply.decision as Record<string, Object>)['healthEpisodeId'] || '');
+        const episodeState = String((reply.decision as Record<string, Object>)['healthEpisodeState'] || 'closed');
+        this.aiHealthEpisodeId = episodeState === 'open' ? episodeId : '';
+      }
+      const answer = reply.text.length > 0 ? reply.text : reply.fallback ? '模型暂时不可用，请检查配置或稍后重试。' : '没有收到可显示的回答，请重试。';
+      const assistantMessage: NativeAgentMessage = { id: `assistant-${Date.now()}`, role: 'assistant', text: answer, activity: reply.activity, sources: reply.sources };
+      this.aiMessages = this.aiMessages.concat([assistantMessage]);
+      if (reply.draft !== null && String((reply.draft as Record<string, Object>)['status'] || '') === 'draft_ready') {
+        const event = (reply.draft as Record<string, Object>)['event'];
+        if (event !== null && typeof event === 'object') {
+          if (generation !== this.aiGeneration) return;
+          const saved = await adapter.aiCreateDraft(event as Object, String((event as Record<string, Object>)['category'] || 'care_event')) as Record<string, Object>;
+          const savedDraftId = String(saved['draftId'] || '');
+          if (generation !== this.aiGeneration) {
+            if (savedDraftId.length > 0) void adapter.aiDiscardDraft(savedDraftId).catch(() => { /* stale draft cleanup is best effort */ });
+            return;
+          }
+          this.aiDraft = reply.draft;
+          this.aiDraftId = savedDraftId;
+          this.showAiResultSheet = true;
+        }
+      }
+      this.presentAiResult(assistantMessage, this.aiSelectedSkillId);
+      this.aiAttachment = null;
+      this.aiStatus = reply.fallback ? 'fallback' : 'success';
+      if (reply.reason.length > 0) this.aiError = `服务状态：${reply.reason}`;
+    } catch (error) {
+      if (generation !== this.aiGeneration || this.aiStopRequested) return;
+      this.aiStatus = error instanceof NativeTransportError && error.code === 'NETWORK_UNAVAILABLE' ? 'offline' : 'failed';
+      this.aiError = error instanceof Error ? error.message : 'AI 请求失败，请重试。';
+      this.setAiInput(message);
+    } finally {
+      if (generation === this.aiGeneration) this.busy = false;
+    }
+  }
+
+  private stopAi(): void {
+    if (!this.busy || this.adapter === null) return;
+    this.aiGeneration += 1;
+    this.aiStopRequested = true;
+    this.adapter.cancelAiChat();
+    this.busy = false;
+    this.aiStatus = 'stopped';
+    this.aiError = '已停止生成；没有部分事实被写入。';
+  }
+
+  private async openSystemVoiceInput(): Promise<void> {
+    try {
+      await inputMethod.getController().showTextInput();
+      this.aiError = '系统键盘已打开，可使用系统语音输入；内容确认后才会发送。';
+    } catch {
+      this.aiError = '系统语音入口暂不可用，请使用文字输入。';
+    }
+  }
+
+  private async openAuthority(url: string): Promise<void> {
+    if (!url.startsWith('https://')) return;
+    try { await (getContext(this) as common.UIAbilityContext).openLink(url); } catch { this.aiError = '权威来源暂时无法打开。'; }
   }
 
   private openSurfaceDetail(route: string): void {
@@ -1408,6 +1854,7 @@ struct Index {
   private todaySurface(): void {
     Column({ space: 16 }) {
       this.nativeHeader(`早上好，${String(this.today?.baby['nickname'] || '宝宝')}`, `${this.selectedDay} · ${this.today?.dataTimezone || '当地自然日'}`);
+      if (this.selectedDay === deviceDateKey()) Button('让奶爸 AI 分析今天').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('today'));
       if (this.staleCache) Text(this.statusMessage).width('100%').fontSize(12).fontColor('#8A6742').backgroundColor('#FFF3D8').borderRadius(12).padding(10);
       Row({ space: 8 }) {
         Button('前一天').layoutWeight(1).height(38).onClick(() => this.shiftDay(-1));
@@ -1494,6 +1941,7 @@ struct Index {
   private recordSurface(): void {
     Column({ space: 16 }) {
       this.nativeHeader('统一记录工作台', `${this.selectedDay} · ${String(this.today?.recorder['displayName'] || '家庭成员')}记录`);
+      if (this.selectedDay === deviceDateKey()) Button('让奶爸 AI 整理这些事实').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('record'));
       Text('每张卡只有一个主要动作。已确认身体局部水彩插画仅帮助识别入口，不承载数值或医学状态。').fontSize(this.largeText ? 14 : 11).fontColor('#806E68').width('100%');
       Grid() {
         GridItem() { this.recordCard('feeding', '#FFF0E8'); }
@@ -1539,16 +1987,15 @@ struct Index {
 
   @Builder
   private growthMetricCard(metric: NativeGrowthMetric): void {
-    const latest = metric.latest;
     Column({ space: 6 }) {
       Text(localizedText(metric.label, metric.id)).fontSize(this.largeText ? 15 : 12).fontColor('#806E68');
-      if (latest === null) {
+      if (metric.latest === null) {
         Text('未记录').fontSize(this.largeText ? 21 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
         Text('暂无有效事实').fontSize(11).fontColor('#A28B81');
       } else {
-        Text(`${itemText(latest, 'value', '未记录')} ${metric.unit}`).fontSize(this.largeText ? 21 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
-        Text(itemText(latest, 'measuredAt', '日期未知')).fontSize(11).fontColor('#806E68');
-        if (Boolean(itemRecord(latest)['conflict'])) Text('同日冲突，需核对').fontSize(11).fontColor('#B85F53');
+        Text(`${itemText(metric.latest, 'value', '未记录')} ${metric.unit}`).fontSize(this.largeText ? 21 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
+        Text(itemText(metric.latest, 'measuredAt', '日期未知')).fontSize(11).fontColor('#806E68');
+        if (Boolean(itemRecord(metric.latest)['conflict'])) Text('同日冲突，需核对').fontSize(11).fontColor('#B85F53');
       }
       Button('快速记录').height(32).fontSize(11).enabled(Boolean(this.resource?.permissions.canEdit)).backgroundColor(Color.Transparent).fontColor('#A65E51').onClick(() => this.openRecord('growth'));
     }.layoutWeight(1).padding({ top: 13, bottom: 10, left: 6, right: 6 }).backgroundColor('#FFF5EE').borderRadius(16).accessibilityText(`${localizedText(metric.label, metric.id)}成长事实`);
@@ -1566,6 +2013,22 @@ struct Index {
     if (value === null || value === undefined || String(value).trim().length === 0) return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private growthChartReference(chart: NativeGrowthItem): Array<Object> {
+    return itemList(itemRecord(chart)['reference']);
+  }
+
+  private growthChartPoints(chart: NativeGrowthItem): Array<Object> {
+    return itemList(itemRecord(chart)['points']);
+  }
+
+  private growthLinePoints(line: Object): Array<Object> {
+    return itemList(itemRecord(line)['points']);
+  }
+
+  private growthChartSourceUrl(chart: NativeGrowthItem): string {
+    return itemText(itemRecord(chart)['standard'], 'sourceUrl');
   }
 
   private drawGrowthChart(chart: NativeGrowthItem, context: CanvasRenderingContext2D): void {
@@ -1678,38 +2141,32 @@ struct Index {
 
   @Builder
   private growthChart(chart: NativeGrowthItem): void {
-    const reference = itemList(itemRecord(chart)['reference']);
-    const points = itemList(itemRecord(chart)['points']);
     Column({ space: 8 }) {
       Text(`${itemText(chart, 'metric', '指标')} · 国家标准参考曲线`).fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
-      if (reference.length === 0) {
+      if (this.growthChartReference(chart).length === 0) {
         Text('当前没有可用的国家标准参考线；不会用 0 或猜测值替代。').fontSize(12).fontColor('#806E68').width('100%');
       } else {
-        const context = this.chartContext(itemText(chart, 'metric'));
-        Canvas(context)
+        Canvas(this.chartContext(itemText(chart, 'metric')))
           .width('100%')
           .height(this.largeText ? 230 : 210)
-          .onReady(() => this.drawGrowthChart(chart, context))
+          .onReady(() => this.drawGrowthChart(chart, this.chartContext(itemText(chart, 'metric'))))
           .accessibilityText(`${itemText(chart, 'metric', '成长')}国家标准参考曲线与宝宝测量轨迹`);
-        ForEach(reference, (line: Object) => {
-          const linePoints = itemList(itemRecord(line)['points']);
+        ForEach(this.growthChartReference(chart), (line: Object) => {
           Row({ space: 8 }) {
             Text(`P${itemText(line, 'percentile')}`).width(42).fontSize(12).fontColor('#806E68');
-            Text(`参考点 ${linePoints.length} 个`).fontSize(12).fontColor('#4E3B35').layoutWeight(1);
-            Text(linePoints.length > 0 ? `${itemText(linePoints[0], 'value')} → ${itemText(linePoints[linePoints.length - 1], 'value')}` : '暂无数据').fontSize(11).fontColor('#A28B81');
+            Text(`参考点 ${this.growthLinePoints(line).length} 个`).fontSize(12).fontColor('#4E3B35').layoutWeight(1);
+            Text(this.growthLinePoints(line).length > 0 ? `${itemText(this.growthLinePoints(line)[0], 'value')} → ${itemText(this.growthLinePoints(line)[this.growthLinePoints(line).length - 1], 'value')}` : '暂无数据').fontSize(11).fontColor('#A28B81');
           }.width('100%').padding(7).backgroundColor('#FFF8F3').borderRadius(10);
         }, (line: Object) => itemText(line, 'id'));
       }
-      if (points.length === 0) Text('暂无可与曲线比较的有效测量点；历史事实仍会保留。').fontSize(12).fontColor('#806E68').width('100%');
+      if (this.growthChartPoints(chart).length === 0) Text('暂无可与曲线比较的有效测量点；历史事实仍会保留。').fontSize(12).fontColor('#806E68').width('100%');
       else {
-        Text(`实际测量点 ${points.length} 个`).fontSize(12).fontColor('#7A9A80').width('100%');
-        ForEach(points.slice(0, 8), (point: Object) => {
+        Text(`实际测量点 ${this.growthChartPoints(chart).length} 个`).fontSize(12).fontColor('#7A9A80').width('100%');
+        ForEach(this.growthChartPoints(chart).slice(0, 8), (point: Object) => {
           Text(`${itemText(point, 'measuredAt')} · ${itemText(point, 'value')} ${itemText(chart, 'unit')} · ${itemText(point, 'quality', '事实')}`).fontSize(11).fontColor('#806E68').width('100%');
         }, (point: Object) => itemText(point, 'id'));
       }
-      const standard = itemRecord(chart)['standard'];
-      const sourceUrl = itemText(standard, 'sourceUrl');
-      if (sourceUrl.length > 0) Button('打开标准来源').height(34).fontSize(11).onClick(() => this.openExternal(sourceUrl));
+      if (this.growthChartSourceUrl(chart).length > 0) Button('打开标准来源').height(34).fontSize(11).onClick(() => this.openExternal(this.growthChartSourceUrl(chart)));
     }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
   }
 
@@ -1723,6 +2180,7 @@ struct Index {
       } else if (this.growthPhase === 'error' || this.growth === null) {
         Column({ space: 10 }) { Text('成长页面暂时无法读取').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.statusMessage).fontSize(13).fontColor('#806E68').textAlign(TextAlign.Center); Button('重试').onClick(() => this.loadGrowth()); }.width('100%').padding(24).backgroundColor('#FFFCF8').borderRadius(18);
       } else {
+        Button('让奶爸 AI 解释当前成长趋势').width('100%').height(42).backgroundColor('#F2EAF8').fontColor('#6F5B97').borderRadius(18).onClick(() => this.openAiFrom('growth'));
         Row({ space: 8 }) {
           ForEach(this.growth.metrics, (metric: NativeGrowthMetric) => this.growthMetricCard(metric), (metric: NativeGrowthMetric) => metric.id);
         }.width('100%');
@@ -1759,7 +2217,7 @@ struct Index {
             Row({ space: 8 }) { Text(itemText(task, 'status') === 'done' ? '✓' : '○').fontSize(19).fontColor('#7A9A80'); Column() { Text(nestedText(task, 'title', itemText(task, 'id'))).fontSize(13).fontColor('#4E3B35'); Text(itemText(task, 'state', 'upcoming')).fontSize(11).fontColor('#806E68'); }.layoutWeight(1); Button(itemText(task, 'status') === 'done' ? '已完成' : '完成').height(31).fontSize(10).enabled(Boolean(this.resource?.permissions.canEdit)).onClick(() => this.markAdminTask(itemText(task, 'taskId'), itemText(task, 'status') === 'done' ? 'pending' : 'done')); }.width('100%').padding(9).backgroundColor('#FFF8F3').borderRadius(12);
           }, (task: NativeGrowthItem) => itemText(task, 'id'));
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
-        if (this.growth.interpretation !== null) Column({ space: 7 }) { Text('确定性成长洞察').fontSize(16).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%'); Text(itemText(this.growth.interpretation, 'summary', '当前只展示已确认成长事实。')).fontSize(13).fontColor('#806E68').width('100%'); Text(`状态：${itemText(this.growth.interpretation, 'status', 'limited')} · 受限于事实与标准字段`).fontSize(11).fontColor('#A65E51').width('100%'); Button('进入受限 AI 洞察入口').height(38).onClick(() => this.selectTab('ai')); }.width('100%').padding(15).backgroundColor('#F2EEE7').borderRadius(18);
+        if (this.growth.interpretation !== null) Column({ space: 7 }) { Text('确定性成长洞察').fontSize(16).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%'); Text(itemText(this.growth.interpretation, 'summary', '当前只展示已确认成长事实。')).fontSize(13).fontColor('#806E68').width('100%'); Text(`状态：${itemText(this.growth.interpretation, 'status', 'limited')} · 受限于事实与标准字段`).fontSize(11).fontColor('#A65E51').width('100%'); Button('带着当前趋势问奶爸 AI').height(38).onClick(() => this.openAiFrom('growth')); }.width('100%').padding(15).backgroundColor('#F2EEE7').borderRadius(18);
         if (this.growth.limitations.length > 0) Text(`限制：${this.growth.limitations.join('；')}`).fontSize(11).fontColor('#806E68').width('100%');
         Text('模型来源、年龄口径和权限来自共享页面模型；本页不保存原生专属成长状态。').fontSize(11).fontColor('#806E68').width('100%');
       }
@@ -1769,7 +2227,35 @@ struct Index {
   private currentDisease(): NativeExploreItem | null {
     if (this.explore === null) return null;
     const found = this.explore.diseases.find((disease: NativeExploreItem) => itemText(disease, 'id') === this.selectedDiseaseId);
-    return found || (this.explore.diseases.length > 0 ? this.explore.diseases[0] : null);
+    return found || (this.explore.diseases.length > 0 ? this.explore.diseases[0] || null : null);
+  }
+
+  private organControlled(organ: NativeExploreItem): Object {
+    return itemRecord(organ)['controlled3d'] || JSON.parse('{}') as Object;
+  }
+
+  private organRelatedCount(organ: NativeExploreItem): number {
+    return itemList(itemRecord(organ)['relatedDiseaseIds']).length;
+  }
+
+  private currentExperience(): Object | null {
+    return this.explore?.experience || null;
+  }
+
+  private experienceArticles(): Array<Object> {
+    return itemList(itemRecord(this.currentExperience())['articles']);
+  }
+
+  private articleSource(article: Object): Object {
+    return itemRecord(itemRecord(article)['source']);
+  }
+
+  private settingsReadOnly(): boolean {
+    return this.settings?.permissions.readOnly !== false;
+  }
+
+  private emailSubscriptionEnabled(): boolean {
+    return itemText(this.settings?.subscription, 'enabled') === 'true';
   }
 
   @Builder
@@ -1782,7 +2268,7 @@ struct Index {
         Button() { Row({ space: 12 }) { Text('💉').fontSize(28); Column() { Text('疫苗计划').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('节点、状态、时间和国家程序来源').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(`${this.explore?.vaccines.length || 0} 项`).fontSize(12).fontColor('#A65E51'); }.width('100%').padding(15); }.width('100%').backgroundColor('#FFF0E8').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.vaccine')).accessibilityText('打开疫苗计划');
         Button() { Row({ space: 12 }) { Text('🩺').fontSize(28); Column() { Text('疾病词典').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('完整定义、观察、照护和就医准备').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(`${this.explore?.diseases.length || 0} 项`).fontSize(12).fontColor('#A65E51'); }.width('100%').padding(15); }.width('100%').backgroundColor('#F7EFEA').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.disease')).accessibilityText('打开疾病词典');
         Button() { Row({ space: 12 }) { Text('🫀').fontSize(28); Column() { Text('器官学习').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('儿童结构、相关疾病和受控三维入口').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(`${this.explore?.organs.length || 0} 个`).fontSize(12).fontColor('#A65E51'); }.width('100%').padding(15); }.width('100%').backgroundColor('#EEF5EC').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.organ')).accessibilityText('打开器官学习');
-        Button() { Row({ space: 12 }) { Text('📚').fontSize(28); Column() { Text('第三方育儿经验').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('按年龄与主题筛选，保留来源身份和缓存时间').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(itemText(this.explore?.experience, 'cacheState', 'empty')).fontSize(11).fontColor('#A65E51'); }.width('100%').padding(15); }.backgroundColor('#F2EEFA').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.experience')).accessibilityText('打开第三方育儿经验');
+        Button() { Row({ space: 12 }) { Text('📚').fontSize(28); Column() { Text('第三方育儿经验').fontSize(this.largeText ? 18 : 15).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('按年龄与主题筛选，保留来源身份和缓存时间').fontSize(11).fontColor('#806E68'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Text(itemText(this.currentExperience(), 'cacheState', 'empty')).fontSize(11).fontColor('#A65E51'); }.width('100%').padding(15); }.backgroundColor('#F2EEFA').borderRadius(18).onClick(() => this.openSurfaceDetail('explore.experience')).accessibilityText('打开第三方育儿经验');
       }.width('100%');
       Text('已审阅知识与第三方经验分开呈现；第三方文章不会伪装成 BabyForge 已审阅结论。').fontSize(12).fontColor('#806E68').width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(14);
     }.width('100%');
@@ -1794,10 +2280,9 @@ struct Index {
       Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('疫苗计划').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
       Text('程序、适用性和接种医生现场评估以共享疫苗内容为准；本页不替代接种门诊决定。').fontSize(12).fontColor('#806E68').width('100%');
       ForEach(this.explore?.vaccines || [], (vaccine: NativeExploreItem) => {
-        const source = itemRecord(vaccine['source']);
         Row({ space: 8 }) {
           Text(itemText(vaccine, 'completed') === 'true' || itemText(vaccine, 'status') === 'completed' ? '✓' : '○').fontSize(21).fontColor('#7A9A80');
-          Column() { Text(`${itemText(vaccine, 'ageLabel')} · ${itemText(vaccine, 'vaccine')}`).fontSize(this.largeText ? 15 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(`${itemText(vaccine, 'doseLabel')} · ${itemText(vaccine, 'dueAt', '出生资料不足')}`).fontSize(11).fontColor('#806E68'); Text(itemText(vaccine, 'purpose')).fontSize(11).fontColor('#806E68').maxLines(3); Text(`来源：${itemText(source, 'title', '国家免疫规划')} · ${itemText(source, 'version')}`).fontSize(10).fontColor('#A65E51'); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+          Column() { Text(`${itemText(vaccine, 'ageLabel')} · ${itemText(vaccine, 'vaccine')}`).fontSize(this.largeText ? 15 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(`${itemText(vaccine, 'doseLabel')} · ${itemText(vaccine, 'dueAt', '出生资料不足')}`).fontSize(11).fontColor('#806E68'); Text(itemText(vaccine, 'purpose')).fontSize(11).fontColor('#806E68').maxLines(3); Text(`来源：${itemText(itemRecord(vaccine)['source'], 'title', '国家免疫规划')} · ${itemText(itemRecord(vaccine)['source'], 'version')}`).fontSize(10).fontColor('#A65E51'); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
           Button(itemText(vaccine, 'status') === 'completed' ? '已完成' : '标记完成').height(34).fontSize(10).enabled(Boolean(this.resource?.permissions.canEdit) && itemText(vaccine, 'status') !== 'completed').onClick(() => this.markVaccine(itemText(vaccine, 'id')));
         }.width('100%').padding(11).backgroundColor('#FFFCF8').borderRadius(14).accessibilityText(`${itemText(vaccine, 'vaccine')} ${itemText(vaccine, 'doseLabel')}`);
       }, (vaccine: NativeExploreItem) => itemText(vaccine, 'id'));
@@ -1807,26 +2292,25 @@ struct Index {
 
   @Builder
   private diseaseSurface(): void {
-    const disease = this.currentDisease();
     Column({ space: 12 }) {
       Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('疾病词典').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
       Row({ space: 8 }) { TextInput({ text: this.diseaseQuery, placeholder: '搜索疾病、别名或主题' }).layoutWeight(1).height(44).onChange((value: string) => this.diseaseQuery = value); Button('搜索').height(44).onClick(() => { this.selectedDiseaseId = ''; this.loadExplore(this.exploreCategory, this.diseaseQuery, ''); }); }.width('100%');
       if (this.explore !== null && this.explore.diseases.length === 0) Text('没有匹配的疾病条目；可清空搜索后查看完整词典。').fontSize(13).fontColor('#806E68').width('100%').padding(14);
       ForEach(this.explore?.diseases || [], (entry: NativeExploreItem) => Button() { Row() { Text(nestedText(entry, 'name', itemText(entry, 'id'))).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Text(itemText(entry, 'category')).fontSize(10).fontColor('#A65E51'); }.width('100%').padding(11); }.width('100%').backgroundColor(itemText(entry, 'id') === this.selectedDiseaseId ? '#FFE8DE' : '#FFFCF8').borderRadius(12).onClick(() => this.selectedDiseaseId = itemText(entry, 'id')), (entry: NativeExploreItem) => itemText(entry, 'id'));
-      if (disease !== null) {
+      if (this.currentDisease() !== null) {
         Column({ space: 8 }) {
-          Text(nestedText(disease, 'name', itemText(disease, 'id'))).fontSize(this.largeText ? 22 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
-          Text(nestedText(disease, 'shortDefinition')).fontSize(13).fontColor('#806E68').width('100%');
-          Text(nestedText(disease, 'quickTake')).fontSize(13).fontColor('#4E3B35').width('100%').padding(10).backgroundColor('#FFF3D8').borderRadius(10);
-          Text(`机制：${itemText(disease, 'mechanismSteps') || '以完整条目为准'}`).fontSize(12).fontColor('#806E68').width('100%');
-          Text(`常见表现：${itemText(disease, 'commonSymptoms') || '以完整条目为准'}`).fontSize(12).fontColor('#806E68').width('100%');
-          Text(`观察：${itemText(disease, 'observationGuidance') || '记录实际表现、时间和变化趋势。'}`).fontSize(12).fontColor('#806E68').width('100%');
-          Text(`照护：${itemText(disease, 'homeCareGuidance') || '按共享条目和专业建议执行。'}`).fontSize(12).fontColor('#806E68').width('100%');
-          Text(`就医准备：${itemText(disease, 'carePreparation') || '整理已确认事实、时间和用药信息。'}`).fontSize(12).fontColor('#806E68').width('100%');
-          Text(`预防：${itemText(disease, 'prevention') || '以条目来源和当地专业建议为准。'}`).fontSize(12).fontColor('#806E68').width('100%');
-          Text(`来源：${itemText(disease, 'sourceRefs') || '共享疾病注册表'}`).fontSize(11).fontColor('#A65E51').width('100%');
-          Text(`升级规则：${itemText(disease, 'escalationRuleRef') || '出现明显担忧时及时寻求专业帮助。'}`).fontSize(12).fontColor('#B85F53').width('100%');
-          Row({ space: 8 }) { Button('记录已确认症状').layoutWeight(1).onClick(() => { this.selectTab('record'); this.openSurfaceDetail('record.secondary.症状 / 生病'); }); Button('进入受限预评估').layoutWeight(1).onClick(() => this.selectTab('ai')); }.width('100%');
+          Text(nestedText(this.currentDisease(), 'name', itemText(this.currentDisease(), 'id'))).fontSize(this.largeText ? 22 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(nestedText(this.currentDisease(), 'shortDefinition')).fontSize(13).fontColor('#806E68').width('100%');
+          Text(nestedText(this.currentDisease(), 'quickTake')).fontSize(13).fontColor('#4E3B35').width('100%').padding(10).backgroundColor('#FFF3D8').borderRadius(10);
+          Text(`机制：${itemText(this.currentDisease(), 'mechanismSteps') || '以完整条目为准'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`常见表现：${itemText(this.currentDisease(), 'commonSymptoms') || '以完整条目为准'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`观察：${itemText(this.currentDisease(), 'observationGuidance') || '记录实际表现、时间和变化趋势。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`照护：${itemText(this.currentDisease(), 'homeCareGuidance') || '按共享条目和专业建议执行。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`就医准备：${itemText(this.currentDisease(), 'carePreparation') || '整理已确认事实、时间和用药信息。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`预防：${itemText(this.currentDisease(), 'prevention') || '以条目来源和当地专业建议为准。'}`).fontSize(12).fontColor('#806E68').width('100%');
+          Text(`来源：${itemText(this.currentDisease(), 'sourceRefs') || '共享疾病注册表'}`).fontSize(11).fontColor('#A65E51').width('100%');
+          Text(`升级规则：${itemText(this.currentDisease(), 'escalationRuleRef') || '出现明显担忧时及时寻求专业帮助。'}`).fontSize(12).fontColor('#B85F53').width('100%');
+          Row({ space: 8 }) { Button('记录已确认症状').layoutWeight(1).onClick(() => { this.selectTab('record'); this.openSurfaceDetail('record.secondary.症状 / 生病'); }); Button('让奶爸 AI 解释').layoutWeight(1).onClick(() => this.openAiFrom('explore')); }.width('100%');
           Text('预评估只整理已确认输入，不作自动诊断；来源和治理状态保留在共享疾病注册表。').fontSize(11).fontColor('#806E68').width('100%');
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
       }
@@ -1839,11 +2323,9 @@ struct Index {
       Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('器官学习').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
       Text('结构学习与疾病关联来自共享内容；三维模型受设备资源控制，加载失败时保留完整文字。').fontSize(12).fontColor('#806E68').width('100%');
       ForEach(this.explore?.organs || [], (organ: NativeExploreItem) => {
-        const controlled = itemRecord(organ['controlled3d']);
-        const related = itemList(organ['relatedDiseaseIds']);
         Row({ space: 10 }) {
           Text(itemText(organ, 'icon', '◌')).fontSize(28).width(40);
-          Column() { Text(nestedText(organ, 'title', itemText(organ, 'id'))).fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(`儿童结构重点 · 相关疾病 ${related.length} 项`).fontSize(11).fontColor('#806E68'); Text(`三维：${itemText(controlled, 'status', 'text-fallback')}`).fontSize(11).fontColor('#A65E51'); Text(itemText(controlled, 'fallbackText', '当前保留完整结构文字与观察重点。')).fontSize(11).fontColor('#806E68').maxLines(2); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+          Column() { Text(nestedText(organ, 'title', itemText(organ, 'id'))).fontSize(this.largeText ? 17 : 14).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(`儿童结构重点 · 相关疾病 ${this.organRelatedCount(organ)} 项`).fontSize(11).fontColor('#806E68'); Text(`三维：${itemText(this.organControlled(organ), 'status', 'text-fallback')}`).fontSize(11).fontColor('#A65E51'); Text(itemText(this.organControlled(organ), 'fallbackText', '当前保留完整结构文字与观察重点。')).fontSize(11).fontColor('#806E68').maxLines(2); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
           Button('关联疾病').height(34).fontSize(10).onClick(() => { this.selectedOrganId = itemText(organ, 'id'); this.selectedDiseaseId = ''; this.openSurfaceDetail('explore.disease'); this.loadExplore(this.exploreCategory, '', this.selectedOrganId); });
         }.width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(14).accessibilityText(`${nestedText(organ, 'title')} 器官学习`);
       }, (organ: NativeExploreItem) => itemText(organ, 'id'));
@@ -1856,18 +2338,15 @@ struct Index {
 
   @Builder
   private experienceSurface(): void {
-    const experience = this.explore?.experience;
-    const articles = itemList(experience === undefined || experience === null ? null : itemRecord(experience)['articles']);
     Column({ space: 12 }) {
       Row() { Button('返回').onClick(() => { this.navigation.back(this.activeTab); this.syncNavigation(); }); Text('第三方育儿经验').fontSize(this.largeText ? 23 : 19).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center); Blank().width(52); }.width('100%');
-      Row({ space: 6 }) { Text(`年龄：${itemText(experience, 'ageText', '年龄信息不足')}`).fontSize(12).fontColor('#806E68').layoutWeight(1); Text(`缓存：${itemText(experience, 'cacheState', 'empty')}`).fontSize(12).fontColor('#A65E51'); }.width('100%');
+      Row({ space: 6 }) { Text(`年龄：${itemText(this.currentExperience(), 'ageText', '年龄信息不足')}`).fontSize(12).fontColor('#806E68').layoutWeight(1); Text(`缓存：${itemText(this.currentExperience(), 'cacheState', 'empty')}`).fontSize(12).fontColor('#A65E51'); }.width('100%');
       Row({ space: 6 }) { ForEach(this.explore?.experienceCategories || [], (category: NativeExploreItem) => Button(nestedText(category, 'label', itemText(category, 'id'))).height(34).fontSize(10).backgroundColor(itemText(category, 'id') === this.exploreCategory ? '#FFE8DE' : '#F5EFEA').onClick(() => this.loadExplore(itemText(category, 'id'), this.diseaseQuery, this.selectedOrganId)), (category: NativeExploreItem) => itemText(category, 'id')); }.width('100%');
-      Text(itemText(experience, 'notice', '第三方内容请结合来源信息独立判断。')).fontSize(12).fontColor('#806E68').width('100%').padding(11).backgroundColor('#FFF3D8').borderRadius(12);
-      if (itemText(experience, 'cacheState') === 'error') Button('重试第三方经验源').width('100%').height(40).onClick(() => this.loadExplore(this.exploreCategory, this.diseaseQuery, this.selectedOrganId));
-      if (articles.length === 0) Text('当前没有可展示的经验文章；真实空状态不会伪造推荐。').fontSize(13).fontColor('#806E68').width('100%').padding(15);
-      ForEach(articles, (article: Object) => {
-        const source = itemRecord(article['source']);
-        Row({ space: 8 }) { Column() { Text(itemText(article, 'title', '未命名文章')).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(itemText(article, 'summary', '保留原文摘要，未转写为 BabyForge 审阅知识。')).fontSize(11).fontColor('#806E68').maxLines(3); Text(`来源：${itemText(article, 'sourceName', itemText(source, 'name', '第三方来源'))} · ${itemText(article, 'publishedAt', itemText(experience, 'generatedAt', '时间未知'))}`).fontSize(10).fontColor('#A65E51'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Button('打开原文').height(34).fontSize(10).onClick(() => this.openExternal(itemText(article, 'url'))); }.width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(14);
+      Text(itemText(this.currentExperience(), 'notice', '第三方内容请结合来源信息独立判断。')).fontSize(12).fontColor('#806E68').width('100%').padding(11).backgroundColor('#FFF3D8').borderRadius(12);
+      if (itemText(this.currentExperience(), 'cacheState') === 'error') Button('重试第三方经验源').width('100%').height(40).onClick(() => this.loadExplore(this.exploreCategory, this.diseaseQuery, this.selectedOrganId));
+      if (this.experienceArticles().length === 0) Text('当前没有可展示的经验文章；真实空状态不会伪造推荐。').fontSize(13).fontColor('#806E68').width('100%').padding(15);
+      ForEach(this.experienceArticles(), (article: Object) => {
+        Row({ space: 8 }) { Column() { Text(itemText(article, 'title', '未命名文章')).fontSize(this.largeText ? 16 : 13).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(itemText(article, 'summary', '保留原文摘要，未转写为 BabyForge 审阅知识。')).fontSize(11).fontColor('#806E68').maxLines(3); Text(`来源：${itemText(article, 'sourceName', itemText(this.articleSource(article), 'name', '第三方来源'))} · ${itemText(article, 'publishedAt', itemText(this.currentExperience(), 'generatedAt', '时间未知'))}`).fontSize(10).fontColor('#A65E51'); }.alignItems(HorizontalAlign.Start).layoutWeight(1); Button('打开原文').height(34).fontSize(10).onClick(() => this.openExternal(itemText(article, 'url'))); }.width('100%').padding(12).backgroundColor('#FFFCF8').borderRadius(14);
       }, (article: Object) => itemText(article, 'id', itemText(article, 'url')));
       Text('来源身份、生成时间、过期时间和原始链接均保留；第三方经验不冒充已审阅医学知识。').fontSize(11).fontColor('#806E68').width('100%');
     }.width('100%');
@@ -1900,24 +2379,22 @@ struct Index {
       } else if (this.settingsPhase === 'error' || this.settings === null) {
         Column({ space: 10 }) { Text('设置页面暂时无法读取').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.settingsMessage).fontSize(13).fontColor('#806E68').textAlign(TextAlign.Center); Button('重试').onClick(() => this.loadSettings()); }.width('100%').padding(24).backgroundColor('#FFFCF8').borderRadius(18);
       } else {
-        const readOnly = this.settings.permissions.readOnly;
         Column({ space: 8 }) {
           Text('账号与家庭').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
           Text(`${itemText(this.settings.user, 'email', '邮箱未知')} · ${itemText(this.settings.user, 'id', '账户未知')}`).fontSize(12).fontColor('#806E68').width('100%');
-          TextInput({ text: this.settingsNickname, placeholder: '账号昵称' }).enabled(!readOnly).height(44).onChange((value: string) => this.settingsNickname = value);
-          TextInput({ text: this.settingsBabyNickname, placeholder: '宝宝昵称' }).enabled(!readOnly).height(44).onChange((value: string) => this.settingsBabyNickname = value);
-          TextInput({ text: this.settingsBabyBirthDate, placeholder: '出生日期 YYYY-MM-DD' }).enabled(!readOnly).height(44).onChange((value: string) => this.settingsBabyBirthDate = value);
-          Row({ space: 8 }) { Button('简体中文').layoutWeight(1).backgroundColor(this.settingsLocale === 'zh-CN' ? '#FFE8DE' : '#F5EFEA').enabled(!readOnly).onClick(() => this.settingsLocale = 'zh-CN'); Button('English').layoutWeight(1).backgroundColor(this.settingsLocale === 'en-US' ? '#FFE8DE' : '#F5EFEA').enabled(!readOnly).onClick(() => this.settingsLocale = 'en-US'); }.width('100%');
-          Button(this.busy ? '等待共享确认…' : '保存账号与宝宝资料').width('100%').height(44).enabled(!readOnly && !this.busy).fontColor(Color.White).backgroundColor('#D98372').borderRadius(22).onClick(() => this.saveSettings());
+          TextInput({ text: this.settingsNickname, placeholder: '账号昵称' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsNickname = value);
+          TextInput({ text: this.settingsBabyNickname, placeholder: '宝宝昵称' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsBabyNickname = value);
+          TextInput({ text: this.settingsBabyBirthDate, placeholder: '出生日期 YYYY-MM-DD' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsBabyBirthDate = value);
+          Row({ space: 8 }) { Button('简体中文').layoutWeight(1).backgroundColor(this.settingsLocale === 'zh-CN' ? '#FFE8DE' : '#F5EFEA').enabled(!this.settingsReadOnly()).onClick(() => this.settingsLocale = 'zh-CN'); Button('English').layoutWeight(1).backgroundColor(this.settingsLocale === 'en-US' ? '#FFE8DE' : '#F5EFEA').enabled(!this.settingsReadOnly()).onClick(() => this.settingsLocale = 'en-US'); }.width('100%');
+          Button(this.busy ? '等待共享确认…' : '保存账号与宝宝资料').width('100%').height(44).enabled(!this.settingsReadOnly() && !this.busy).fontColor(Color.White).backgroundColor('#D98372').borderRadius(22).onClick(() => this.saveSettings());
           Text('更新出生资料后，年龄、阶段、疫苗与时间计划会从共享源重新计算。').fontSize(11).fontColor('#806E68').width('100%');
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
         Column({ space: 8 }) {
           Text('通知与家庭联系人').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
-          const enabled = itemText(this.settings.subscription, 'enabled') === 'true';
-          Button(enabled ? '关键更新邮件：已开启' : '关键更新邮件：已关闭').width('100%').height(40).enabled(!readOnly).onClick(() => this.toggleEmailSubscription(!enabled));
-          TextInput({ text: this.settingsContactEmail, placeholder: '新增家庭通知联系人邮箱' }).enabled(!readOnly && this.settings.permissions.canManageHousehold).height(44).onChange((value: string) => this.settingsContactEmail = value);
-          Button('添加联系人').width('100%').height(40).enabled(!readOnly && this.settings.permissions.canManageHousehold && !this.busy).onClick(() => this.addContact());
-          ForEach(this.settings.contacts, (contact: NativeSettingsItem) => Row() { Text(itemText(contact, 'email')).fontSize(13).fontColor('#4E3B35').layoutWeight(1); Button('移除').height(30).fontSize(10).enabled(!readOnly && this.settings?.permissions.canManageHousehold === true).onClick(() => this.removeContact(itemText(contact, 'id'))); }.width('100%').padding(8).backgroundColor('#F2F6EE').borderRadius(10), (contact: NativeSettingsItem) => itemText(contact, 'id'));
+          Button(this.emailSubscriptionEnabled() ? '关键更新邮件：已开启' : '关键更新邮件：已关闭').width('100%').height(40).enabled(!this.settingsReadOnly()).onClick(() => this.toggleEmailSubscription(!this.emailSubscriptionEnabled()));
+          TextInput({ text: this.settingsContactEmail, placeholder: '新增家庭通知联系人邮箱' }).enabled(!this.settingsReadOnly() && this.settings.permissions.canManageHousehold).height(44).onChange((value: string) => this.settingsContactEmail = value);
+          Button('添加联系人').width('100%').height(40).enabled(!this.settingsReadOnly() && this.settings.permissions.canManageHousehold && !this.busy).onClick(() => this.addContact());
+          ForEach(this.settings.contacts, (contact: NativeSettingsItem) => Row() { Text(itemText(contact, 'email')).fontSize(13).fontColor('#4E3B35').layoutWeight(1); Button('移除').height(30).fontSize(10).enabled(!this.settingsReadOnly() && this.settings?.permissions.canManageHousehold === true).onClick(() => this.removeContact(itemText(contact, 'id'))); }.width('100%').padding(8).backgroundColor('#F2F6EE').borderRadius(10), (contact: NativeSettingsItem) => itemText(contact, 'id'));
           if (this.settings.permissions.canManageHousehold) {
             Button('生成临时只读访客链接').width('100%').height(40).enabled(!this.busy).onClick(() => this.createVisitorLink());
             if (this.visitorShareUrl.length > 0) Column({ space: 4 }) { Text('本次生成的可复制链接').fontSize(11).fontColor('#A65E51').width('100%'); Text(this.visitorShareUrl).fontSize(11).fontColor('#4E3B35').width('100%').maxLines(3).accessibilityText('新生成的访客分享链接'); }.width('100%').padding(10).backgroundColor('#F2F6EE').borderRadius(10);
@@ -1927,10 +2404,10 @@ struct Index {
         Column({ space: 8 }) {
           Text('自定义模型').fontSize(this.largeText ? 20 : 17).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
           Text(`已保存 Key：${itemText(this.settings.llmConfig, 'apiKeyMasked', '未配置')}`).fontSize(12).fontColor('#806E68').width('100%');
-          TextInput({ text: this.settingsLlmBaseUrl, placeholder: 'Base URL' }).enabled(!readOnly).height(44).onChange((value: string) => this.settingsLlmBaseUrl = value);
-          TextInput({ text: this.settingsLlmModel, placeholder: '模型名称' }).enabled(!readOnly).height(44).onChange((value: string) => this.settingsLlmModel = value);
-          TextInput({ placeholder: 'API Key（只写入，不回显）' }).type(InputType.Password).enabled(!readOnly).height(44).onChange((value: string) => this.settingsLlmApiKey = value);
-          Row({ space: 8 }) { Button('保存模型配置').layoutWeight(1).enabled(!readOnly && !this.busy).onClick(() => this.saveLlmConfig()); Button('清除').layoutWeight(1).enabled(!readOnly && !this.busy).onClick(() => this.clearLlmConfig()); }.width('100%');
+          TextInput({ text: this.settingsLlmBaseUrl, placeholder: 'Base URL' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsLlmBaseUrl = value);
+          TextInput({ text: this.settingsLlmModel, placeholder: '模型名称' }).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsLlmModel = value);
+          TextInput({ placeholder: 'API Key（只写入，不回显）' }).type(InputType.Password).enabled(!this.settingsReadOnly()).height(44).onChange((value: string) => this.settingsLlmApiKey = value);
+          Row({ space: 8 }) { Button('保存模型配置').layoutWeight(1).enabled(!this.settingsReadOnly() && !this.busy).onClick(() => this.saveLlmConfig()); Button('清除').layoutWeight(1).enabled(!this.settingsReadOnly() && !this.busy).onClick(() => this.clearLlmConfig()); }.width('100%');
           Text('API Key 永不回显；页面只显示脱敏值。').fontSize(11).fontColor('#806E68').width('100%');
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
         Column({ space: 8 }) {
@@ -1941,7 +2418,7 @@ struct Index {
           Row({ space: 8 }) { Button(`大字号：${this.largeText ? '开' : '关'}`).layoutWeight(1).onClick(() => { this.largeText = !this.largeText; this.chartContexts.clear(); }); Button(`减少动态：${this.reducedMotion ? '开' : '关'}`).layoutWeight(1).onClick(() => this.reducedMotion = !this.reducedMotion); }.width('100%');
           Text('清除本机缓存不会删除云端事实、计划、媒体或家庭记录。').fontSize(11).fontColor('#806E68').width('100%');
         }.width('100%').padding(15).backgroundColor('#FFFCF8').borderRadius(20);
-        if (readOnly) Text('当前为只读 / 无写入权限：设置写入、联系人、模型配置和状态变更均已禁用。').fontSize(12).fontColor('#B85F53').width('100%').padding(11).backgroundColor('#FFF3D8').borderRadius(12);
+        if (this.settingsReadOnly()) Text('当前为只读 / 无写入权限：设置写入、联系人、模型配置和状态变更均已禁用。').fontSize(12).fontColor('#B85F53').width('100%').padding(11).backgroundColor('#FFF3D8').borderRadius(12);
         if (this.settingsMessage.length > 0) Text(this.settingsMessage).fontSize(12).fontColor('#A65E51').width('100%').accessibilityLevel('yes');
       }
     }.width('100%');
@@ -1952,7 +2429,129 @@ struct Index {
     Column({ space: 16 }) {
       this.nativeHeader(this.surfaceTitle(), this.resource?.household?.baby?.nickname || '当前宝宝');
       Column({ space: 12 }) { Text(this.activeTab === 'ai' ? '奶爸 AI 原生入口已就绪' : '原生业务表面已就绪').fontSize(this.largeText ? 22 : 18).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text(this.surfaceDetail()).fontSize(this.largeText ? 16 : 13).fontColor('#806E68').textAlign(TextAlign.Center); }.width('100%').padding(30).backgroundColor('#FFFCF8').borderRadius(22);
+      if (this.activeTab === 'growth') Button('让奶爸 AI 解释成长趋势').width('100%').height(44).onClick(() => this.openAiFrom('growth'));
     }.width('100%');
+  }
+
+  @Builder
+  private aiSurface(): void {
+    Column({ space: 14 }) {
+      Row() {
+        Image($r('app.media.start_icon')).width(52).height(52).objectFit(ImageFit.Contain).alt('2 至 4 月龄水彩宝宝奶爸 AI 入口');
+        Column() { Text('奶爸 AI').fontSize(this.largeText ? 29 : 24).fontWeight(FontWeight.Bold).fontColor('#4E3B35'); Text('当前对话仅保存在本机内存').fontSize(12).fontColor('#806E68').margin({ top: 3 }); }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+        Button('新对话').height(38).backgroundColor('#FFF1EB').fontColor('#9A665C').borderRadius(19).onClick(() => this.newAiConversation());
+      }.width('100%');
+      Column({ space: 5 }) {
+        Text(`已读取 ${this.resource?.household?.baby?.nickname || '当前宝宝'} 的共享档案`).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4A6E5A').width('100%');
+        Text('权威事实每轮由服务端重新读取；缺失不会当成零。').fontSize(11).fontColor('#708575').width('100%');
+      }.width('100%').padding(12).backgroundColor('#EDF6EC').borderRadius(15);
+      if (this.aiContext !== null) {
+        Column() { Text('页面上下文（自动注入）').fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5B97'); Text(this.aiContext.label).fontSize(13).fontColor('#735F98').margin({ top: 3 }); }.alignItems(HorizontalAlign.Start).width('100%').padding(12).backgroundColor('#F5F0FB').borderRadius(15);
+      }
+      Column({ space: 10 }) {
+        ForEach(this.aiMessages, (message: NativeAgentMessage) => {
+          Column({ space: 6 }) {
+            Text(message.role === 'assistant' ? '奶爸 AI' : '你').fontSize(10).fontWeight(FontWeight.Bold).fontColor(message.role === 'assistant' ? '#A65E51' : '#6F5B97').width('100%');
+            if (message.attachments !== undefined && message.attachments.length > 0) Image(message.attachments[0].dataUrl).width(76).height(76).objectFit(ImageFit.Cover).borderRadius(10).alt('本轮已发送图片');
+            Text(message.text).fontSize(this.largeText ? 16 : 14).fontColor('#4E3B35').lineHeight(this.largeText ? 24 : 21).width('100%');
+            if (message.activity.length > 0) Text(`已使用：${message.activity}`).fontSize(11).fontColor('#54715E').backgroundColor('#EDF6EC').borderRadius(8).padding(6);
+            if (message.sources.length > 0) ForEach(message.sources, (source: NativeAgentSource) => { Button(source.title.length > 0 ? `查看：${source.title}` : '查看权威来源').height(30).fontSize(10).onClick(() => this.openAuthority(source.url)); }, (source: NativeAgentSource) => source.id);
+          }.alignItems(HorizontalAlign.Start).width('100%').padding(12).backgroundColor(message.role === 'assistant' ? '#FFFCF8' : '#F2EAF8').borderRadius(15);
+        }, (message: NativeAgentMessage) => message.id);
+        if (this.busy) Row({ space: 8 }) { LoadingProgress().width(20).height(20); Text('正在核对事实、规则和依据…').fontSize(12).fontColor('#806E68'); }.width('100%').padding(12);
+      }.width('100%');
+      Column({ space: 7 }) {
+        Text('能力目录').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+        Text('同一份能力注册表驱动入口；选择后仍需点击发送。').fontSize(10).fontColor('#806E68').width('100%');
+        ForEach(this.visibleAiSkills(), (skill: NativeNaibaSkill) => {
+          Button() {
+            Row({ space: 7 }) {
+              Text(skill.label).fontSize(11).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
+              Text(skill.group).fontSize(9).fontColor('#8A776E').layoutWeight(1);
+            }.width('100%');
+          }.height(32).padding({ left: 10, right: 10 }).backgroundColor('#F7F1ED').borderRadius(10).onClick(() => this.selectAiSkill(skill)).accessibilityText(`选择能力：${skill.label}`);
+        }, (skill: NativeNaibaSkill) => skill.id);
+        Button(this.aiSkillsExpanded ? '收起能力' : `展开全部能力（${NAIBA_SKILLS.length}）`).height(30).fontSize(10).fontColor('#6F5B97').backgroundColor(Color.Transparent).onClick(() => this.aiSkillsExpanded = !this.aiSkillsExpanded).accessibilityText(this.aiSkillsExpanded ? '收起能力目录' : '展开全部能力目录');
+      }.width('100%').padding(10).backgroundColor('#FFFCF8').borderRadius(14);
+      if (this.aiAttachment !== null) {
+        Column({ space: 7 }) {
+          if (this.aiAttachment.kind === 'image') Image(this.aiAttachment.uri).width(86).height(86).objectFit(ImageFit.Cover).borderRadius(12).alt('待发送图片缩略图');
+          else Text(`待识别报告：${this.aiAttachment.name}`).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35');
+          Text(this.aiAttachment.kind === 'image' ? '仅用于本次回答；点击发送前不会上传。' : '仅提取可核对字段；原始文件不会保存或进入分享。').fontSize(11).fontColor('#806E68');
+          Row({ space: 7 }) {
+            Button('移除').height(30).fontSize(10).onClick(() => this.aiAttachment = null);
+            if (this.aiAttachment.kind === 'report') Button('确认识别').height(30).fontSize(10).onClick(() => this.sendAiReport());
+          }
+        }.alignItems(HorizontalAlign.Start).width('100%').padding(10).backgroundColor('#FFF5EE').borderRadius(14);
+      }
+      TextArea({ text: this.aiInput, placeholder: '自由提问，或描述刚刚发生的事…' }).height(92).onChange((value: string) => this.setAiInput(value)).enabled(!this.busy);
+      Row({ space: 7 }) {
+        Button('图片').layoutWeight(1).height(40).onClick(() => this.chooseAiPhoto()).enabled(!this.busy);
+        Button('报告').layoutWeight(1).height(40).onClick(() => this.chooseAiReport()).enabled(!this.busy);
+        Button('语音').layoutWeight(1).height(40).onClick(() => this.openSystemVoiceInput()).enabled(!this.busy);
+        if (this.busy) Button('停止').layoutWeight(1).height(40).backgroundColor('#A9554D').fontColor(Color.White).onClick(() => this.stopAi());
+        else Button('发送').layoutWeight(1).height(40).backgroundColor('#D98372').fontColor(Color.White).enabled(this.aiInput.trim().length > 0 || (this.aiAttachment !== null && this.aiAttachment.kind === 'image')).onClick(() => this.sendAiMessage());
+      }.width('100%');
+      if (this.aiError.length > 0) Text(this.aiError).fontSize(12).fontColor(this.aiStatus === 'success' ? '#54715E' : '#B85F53').width('100%').accessibilityLevel('yes');
+      Text('AI 只能解释和组织；安全下限、成长标准和事实写入仍由共享确定性规则控制。').fontSize(11).fontColor('#806E68').width('100%');
+    }.width('100%');
+  }
+
+  @Builder
+  private aiDetailSurface(): void {
+    Column({ space: 16 }) {
+      Row() {
+        Button('返回对话').onClick(() => { this.navigation.back('ai'); this.syncNavigation(); });
+        Text('奶爸 AI 详细结果').fontSize(this.largeText ? 24 : 20).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1).textAlign(TextAlign.Center);
+        Blank().width(72);
+      }.width('100%');
+      if (this.aiResultMessage !== null) {
+        Column({ space: 10 }) {
+          Text('系统解释').fontSize(11).fontColor('#A65E51').width('100%');
+          Text(this.aiResultMessage.activity.length > 0 ? this.aiResultMessage.activity : '共享 Agent').fontSize(16).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text(this.aiResultMessage.text).fontSize(this.largeText ? 17 : 14).lineHeight(this.largeText ? 26 : 22).fontColor('#4E3B35').width('100%');
+        }.width('100%').padding(16).backgroundColor('#FFFCF8').borderRadius(20);
+        Column({ space: 8 }) {
+          Text('事实与缺失信息').fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+          Text('仅使用服务端授权事实；未记录内容保持未知，不会按零处理。').fontSize(12).fontColor('#806E68').width('100%');
+        }.width('100%').padding(14).backgroundColor('#EDF6EC').borderRadius(16);
+        if (this.aiResultMessage.sources.length > 0) {
+          Column({ space: 7 }) {
+            Text('本轮来源').fontSize(13).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+            ForEach(this.aiResultMessage.sources, (source: NativeAgentSource) => {
+              Button(source.title.length > 0 ? source.title : '权威来源').width('100%').height(36).fontSize(11).onClick(() => this.openAuthority(source.url));
+            }, (source: NativeAgentSource) => source.id);
+          }.width('100%').padding(14).backgroundColor('#F5F0FB').borderRadius(16);
+        }
+      } else {
+        Text('详细结果暂不可用，请返回对话重试。').fontSize(14).fontColor('#806E68').padding(20);
+      }
+    }.width('100%');
+  }
+
+  @Builder
+  private aiResultSheet(): void {
+    Column({ space: 10 }) {
+      Row() { Text(this.aiDraft !== null ? '确认事实草稿' : '奶爸 AI 解释').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#4E3B35').layoutWeight(1); Button('关闭').height(32).onClick(() => this.showAiResultSheet = false); }.width('100%');
+      if (this.aiDraft === null && this.aiResultMessage !== null) {
+        Text(this.aiResultMessage.text).fontSize(this.largeText ? 16 : 14).lineHeight(this.largeText ? 24 : 21).fontColor('#4E3B35').maxLines(8).width('100%');
+      }
+      if (this.aiDraft !== null) {
+        Text(this.aiDraftCategory() === 'medical_report_observation' ? '报告字段事实' : '照护事实草稿').fontSize(15).fontWeight(FontWeight.Bold).fontColor('#4E3B35').width('100%');
+        ForEach(this.aiDraftFields(), (field: Object, index: number) => {
+          Column({ space: 5 }) {
+            TextInput({ text: String((field as Record<string, Object>)['name'] || ''), placeholder: '项目' }).onChange((value: string) => this.updateAiDraftField(index, 'name', value));
+            Row({ space: 6 }) {
+              TextInput({ text: String((field as Record<string, Object>)['value'] || ''), placeholder: '数值' }).layoutWeight(1).onChange((value: string) => this.updateAiDraftField(index, 'value', value));
+              TextInput({ text: String((field as Record<string, Object>)['unit'] || ''), placeholder: '单位' }).layoutWeight(1).onChange((value: string) => this.updateAiDraftField(index, 'unit', value));
+            }.width('100%');
+          }.width('100%').padding(8).backgroundColor('#FFF9F4').borderRadius(10);
+        }, (_field: Object, index: number) => String(index));
+        if (this.aiDraftFields().length === 0) TextInput({ text: this.aiDraftValue(), placeholder: '核对事实值' }).onChange((value: string) => this.updateAiDraftValue(value));
+        Text('只保存核对后的事实，不保存诊断、建议或原图。').fontSize(11).fontColor('#806E68').width('100%');
+        Row({ space: 7 }) { Button('丢弃').layoutWeight(1).height(38).onClick(() => this.discardAiDraft()); Button('确认并保存事实').layoutWeight(2).height(38).enabled(!this.busy && this.resource?.permissions.readOnly !== true).backgroundColor('#7A9A80').fontColor(Color.White).onClick(() => this.confirmAiDraft()); }.width('100%');
+      }
+    }.width('100%').padding({ left: 20, right: 20, top: 18, bottom: 18 }).backgroundColor('#FFFCF8').borderRadius({ topLeft: 26, topRight: 26 }).accessibilityGroup(true);
   }
 
   @Builder
@@ -1961,6 +2560,8 @@ struct Index {
     else if (this.activeTab === 'today') this.todaySurface();
     else if (this.activeTab === 'record' && this.selectedRoute === 'record.root') this.recordSurface();
     else if (this.activeTab === 'record') this.recordDetailSurface();
+    else if (this.activeTab === 'ai' && this.selectedRoute === 'ai.detail') this.aiDetailSurface();
+    else if (this.activeTab === 'ai') this.aiSurface();
     else if (this.activeTab === 'growth') this.growthSurface();
     else if (this.activeTab === 'explore') this.exploreSurface();
     else this.placeholderSurface();
@@ -2022,15 +2623,24 @@ struct Index {
   private bottomNavigation(): void {
     Row() {
       ForEach(NATIVE_TABS, (tab: NativeTab) => {
-        Button(tabLabel(tab))
-          .layoutWeight(1)
-          .height(this.largeText ? 58 : 52)
-          .fontSize(this.largeText ? 14 : 11)
-          .fontWeight(this.activeTab === tab ? FontWeight.Bold : FontWeight.Normal)
-          .fontColor(this.activeTab === tab ? '#4E3B35' : '#9A8C83')
-          .backgroundColor(this.activeTab === tab ? '#FFE8DE' : Color.Transparent)
-          .borderRadius(18)
-          .onClick(() => this.selectTab(tab));
+        if (tab === 'ai') {
+          Button() {
+            Column({ space: 2 }) {
+              Image($r('app.media.start_icon')).width(26).height(26).objectFit(ImageFit.Contain).alt('奶爸 AI');
+              Text(tabLabel(tab)).fontSize(this.largeText ? 14 : 11).fontWeight(this.activeTab === tab ? FontWeight.Bold : FontWeight.Normal).fontColor(this.activeTab === tab ? '#4E3B35' : '#9A8C83');
+            }
+          }.layoutWeight(1).height(this.largeText ? 62 : 58).backgroundColor(this.activeTab === tab ? '#FFE8DE' : Color.Transparent).borderRadius(18).onClick(() => this.selectTab(tab)).accessibilityText('打开奶爸 AI');
+        } else {
+          Button(tabLabel(tab))
+            .layoutWeight(1)
+            .height(this.largeText ? 58 : 52)
+            .fontSize(this.largeText ? 14 : 11)
+            .fontWeight(this.activeTab === tab ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.activeTab === tab ? '#4E3B35' : '#9A8C83')
+            .backgroundColor(this.activeTab === tab ? '#FFE8DE' : Color.Transparent)
+            .borderRadius(18)
+            .onClick(() => this.selectTab(tab));
+        }
       }, (tab: NativeTab) => tab);
     }
     .width('100%')
@@ -2044,11 +2654,12 @@ struct Index {
   private readyView(): void {
     Stack() {
       Column() {
-        Scroll() {
+        Scroll(this.surfaceScroller) {
           this.nativeSurface();
         }
         .layoutWeight(1)
         .scrollBar(BarState.Off)
+        .onScroll((_xOffset: number, yOffset: number) => this.navigation.setScrollPosition(this.activeTab, yOffset))
         .padding({ left: 18, right: 18 });
         this.bottomNavigation();
       }
@@ -2067,6 +2678,12 @@ struct Index {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.closeRecord());
           this.recordSheet();
+        }.width('100%').height('100%').backgroundColor('#4E3B3540');
+      }
+      if (this.showAiResultSheet) {
+        Column() {
+          Blank().layoutWeight(1).onClick(() => this.showAiResultSheet = false);
+          this.aiResultSheet();
         }.width('100%').height('100%').backgroundColor('#4E3B3540');
       }
       if (this.showPhotoViewer) this.photoViewer();

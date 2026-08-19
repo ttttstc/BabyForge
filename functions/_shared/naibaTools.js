@@ -1,10 +1,8 @@
-import { tool, webSearchTool } from '@openai/agents'
+import { tool } from '@openai/agents'
 import { z } from 'zod'
 import { buildBabyContextSummary } from '../../src/domain/naibaContext.js'
 import { buildCaregiverHandoff, buildDailyGrowthPlan, buildDetailedCareAnalysis, buildGrowthInterpretation, buildVisitBrief, calculateCareStatistics, parseMedicalReportText } from '../../src/domain/naibaCapabilities.js'
-import { parseCareEventDraft } from '../../src/domain/careEventDraft.js'
 import { calculateFeedingRecommendation } from '../../src/domain/feedingRecommendation.js'
-import { searchApprovedKnowledge } from '../../src/domain/knowledgePack.js'
 import { runDecisionUnit, runUniversalSafetyGate } from '../../src/domain/decisionKernel.js'
 import { toolOutputAllowed } from '../../src/domain/naibaGuardrails.js'
 
@@ -75,13 +73,9 @@ const getActiveHealthConcerns = tool({
 
 const searchKnowledge = tool({
   name: 'search_approved_knowledge',
-  description: 'Search frozen approved knowledge units. Return claims, scope, limitations, and authority source.',
+  description: 'Return the frozen approved knowledge units retrieved for this request, including claims, scope, limitations, and authority source.',
   parameters: z.object({ query: z.string().min(1).max(300), domain: z.string().max(40) }),
-  execute: ({ query, domain }, runContext) => {
-    const value = runtime(runContext)
-    const context = buildBabyContextSummary(value)
-    return searchApprovedKnowledge(query, { ageDays: context.profile.ageDays, ageMonths: context.profile.ageMonths, domain: domain || undefined })
-  },
+  execute: (_input, runContext) => runtime(runContext).localKnowledge || [],
 })
 
 const calculateStatistics = tool({
@@ -124,16 +118,6 @@ const decisionUnit = tool({
   },
 })
 
-const createDraft = tool({
-  name: 'create_care_event_draft',
-  description: 'Create an editable factual care-event draft. It does not save anything and always requires caregiver confirmation.',
-  parameters: z.object({ message: z.string().min(1).max(1_000) }),
-  execute: ({ message }, runContext) => {
-    const value = runtime(runContext)
-    return parseCareEventDraft({ message, baby: value.baby, actor: value.actor, now: new Date(value.now || Date.now()).toISOString(), locale: value.locale })
-  },
-})
-
 const parseReport = tool({
   name: 'parse_medical_report',
   description: 'Extract checkable fields from report text. Preserve uncertainty; do not diagnose.',
@@ -173,7 +157,6 @@ const COMMON = [getBabyContext, getRecentCareEvents]
 const SKILL_TOOLS = {
   baby_context_injector: [getBabyContext],
   authority_knowledge_retriever: [searchKnowledge],
-  care_event_quick_logger: [createDraft],
   daily_care_analysis: [calculateStatistics],
   daily_feeding_recommender: [getFeedingProfile, calculateFeedingReference, searchKnowledge],
   detailed_care_analysis: [calculateStatistics, buildDetailedAnalysis],
@@ -187,10 +170,7 @@ const SKILL_TOOLS = {
   caregiver_handoff_builder: [buildHandoff],
 }
 
-export function createNaibaTools(skillId, { allowExternalSearch = false } = {}) {
+export function createNaibaTools(skillId) {
   const selected = [...new Set([...COMMON, ...(SKILL_TOOLS[skillId] || [])])]
-  if (allowExternalSearch && ['authority_knowledge_retriever', 'stage_parenting_qa', 'disease_explainer'].includes(skillId)) {
-    selected.push(webSearchTool({ searchContextSize: 'low', externalWebAccess: true, filters: { allowedDomains: ['nhc.gov.cn', 'who.int', 'cdc.gov'] } }))
-  }
   return selected.map(guardToolResult)
 }

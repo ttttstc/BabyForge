@@ -160,6 +160,7 @@ function authorizedEventFixture(version = 1) {
       return {
         async first() {
           if (sql.includes('FROM auth_sessions')) return session
+          if (sql.includes('FROM baby_profiles')) return { id: 'baby-1', householdId: 'household-1', status: 'active', membershipRole: 'member' }
           if (sql.includes('SELECT e.* FROM care_events')) return current
           if (sql.includes('SELECT * FROM care_events WHERE id = ?')) return current
           return null

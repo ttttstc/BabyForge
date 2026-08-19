@@ -300,7 +300,7 @@ export function PediatricDiseasesView({ route = ROUTES.healthDiseases, state, se
         </section>
 
         <section className="disease-selected" ref={detailRef} tabIndex="-1">
-          <header className="disease-selected-header"><div><p className="eyebrow">{localized(disease.category, locale)} · {localized(disease.ageRange.label, locale)}</p><h2>{localized(disease.name, locale)}</h2><p>{localized(disease.shortDefinition, locale)}</p></div><button onClick={() => navigate(buildNaibaRoute({ skill: 'triage_and_preassessment', unit: disease.escalationRuleRef.split(':').pop(), returnTo: `${ROUTES.healthDiseases}?disease=${disease.id}` }))}><ShieldCheck size={16} /><span><b>{isEnglish ? 'Assess my child\'s current state' : '判断宝宝当前状态'}</b><small>{isEnglish ? 'Open the governed decision flow' : '进入统一健康预评估'}</small></span><ArrowRight size={16} /></button></header>
+          <header className="disease-selected-header"><div><p className="eyebrow">{localized(disease.category, locale)} · {localized(disease.ageRange.label, locale)}</p><h2>{localized(disease.name, locale)}</h2><p>{localized(disease.shortDefinition, locale)}</p></div><button onClick={() => navigate(buildNaibaRoute({ skill: 'disease_explainer', contentType: 'disease', contentId: disease.id, returnTo: `${ROUTES.healthDiseases}?disease=${disease.id}` }))}><ShieldCheck size={16} /><span><b>{isEnglish ? 'Ask Naiba AI to explain' : '让奶爸 AI 解释'}</b><small>{isEnglish ? 'Use this reviewed condition context' : '引用当前已审阅疾病内容'}</small></span><ArrowRight size={16} /></button></header>
 
           <div className="disease-quick-grid">
             <div><span>{isEnglish ? 'Main location' : '主要位置'}</span><b>{localized(disease.quickTake.location, locale)}</b></div>

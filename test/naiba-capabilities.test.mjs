@@ -86,7 +86,7 @@ test('visit brief and handoff keep facts, arrangements, and system notes separat
   assert.ok(Array.isArray(handoff.systemNotes))
 })
 
-test('all fourteen skills have executable deterministic paths', () => {
+test('all thirteen approved skills have executable deterministic paths', () => {
   for (const skill of NAIBA_SKILLS) {
     const result = executeNaibaSkill(skill.id, { message: '记录亲喂', query: '黄疸', text: '体温 37.2 ℃', unitId: 'general_health_preassessment', facts: {} }, { baby, events, actor, now, questions: [] })
     assert.notEqual(result?.reason, 'unknown_skill', skill.id)

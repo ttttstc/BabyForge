@@ -395,8 +395,8 @@ function localNaibaPlugin(mode) {
           const body = await readJson(request)
           const message = String(body.message || '')
           const locale = body.baby?.locale || 'zh-CN'
-          const hasDecisionContext = body.decisionFacts && typeof body.decisionFacts === 'object' && Object.keys(body.decisionFacts).length > 0
-          if (!isNaibaTopicInScope(message) && !hasDecisionContext) {
+          const hasConversationContext = Array.isArray(body.history) && body.history.some((item) => item?.role === 'user' && isNaibaTopicInScope(item?.text))
+          if (!isNaibaTopicInScope(message) && !hasConversationContext) {
             response.statusCode = 200
             response.setHeader('content-type', 'text/event-stream; charset=utf-8')
             response.setHeader('cache-control', 'no-cache')

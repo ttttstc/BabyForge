@@ -1,5 +1,5 @@
 import { json, requireSession } from '../../_shared/auth.js'
-import { accessibleBaby, safeEventInput } from '../../_shared/care.js'
+import { safeEventInput, writableBaby } from '../../_shared/care.js'
 import { onRequestPost as createCareEvent } from '../events.js'
 import { validateCareEventDraft } from '../../../src/domain/careEventDraft.js'
 
@@ -62,7 +62,7 @@ export async function onRequestPost({ request, env }) {
   const payload = parsePayload(row.payload_json)
   const storedEvent = payload?.event || payload
   if (!storedEvent || storedEvent.babyId !== row.baby_id) return json({ error: '记录草稿与宝宝档案不一致' }, 409)
-  const baby = await accessibleBaby(env, auth.session, row.baby_id)
+  const baby = await writableBaby(env, auth.session, row.baby_id)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
   const editedEvent = body?.event && typeof body.event === 'object' ? body.event : null
   const event = editedEvent || storedEvent

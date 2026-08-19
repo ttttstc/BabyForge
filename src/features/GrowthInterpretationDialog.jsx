@@ -30,10 +30,11 @@ export function GrowthInterpretationDialog({ state, metric, summary, cloudMode =
           signal: controller.signal,
           body: JSON.stringify({
             message: isEnglish ? `Please explain the ${metricLabel(metric, locale)} growth trend from the saved facts.` : `请基于已保存的${metricLabel(metric, locale)}事实，解释这段成长趋势。`,
+            history: [],
             skillId: 'growth_and_development_interpreter',
             growthMetric: metric,
-            baby: state.baby,
-            decisionFacts: {},
+            babyId: state.baby.id,
+            context: { source: 'growth', focus: metric, label: isEnglish ? 'Current growth measurements' : '当前成长测量趋势' },
           }),
         })
         if (!response.ok) throw new Error(`${isEnglish ? 'AI service unavailable' : 'AI 服务暂不可用'}（${response.status}）`)

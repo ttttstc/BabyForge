@@ -1,0 +1,95 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import {
+  NAIBA_AGENT_CONTRACT,
+  NAIBA_AGENT_CONTRACT_VERSION,
+  normalizeNaibaAttachments,
+  normalizeNaibaContext,
+  normalizeNaibaHistory,
+} from '../src/domain/naibaAgentContract.js'
+import { NAIBA_SKILLS } from '../src/domain/naibaSkills.js'
+
+test('shared Agent contract keeps multi-turn context bounded and ordered', () => {
+  const history = Array.from({ length: 24 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', text: `turn-${index}` }))
+  const normalized = normalizeNaibaHistory(history)
+  assert.equal(normalized.length, 20)
+  assert.equal(normalized[0].text, 'turn-4')
+  assert.equal(normalized.at(-1).text, 'turn-23')
+})
+
+test('every skill publishes one formal context policy', () => {
+  assert.equal(NAIBA_SKILLS.length, 13)
+  for (const skill of NAIBA_SKILLS) assert.equal(typeof skill.contextPolicy, 'object', skill.id)
+})
+
+test('page context is allowlisted and image send requires explicit confirmation', () => {
+  assert.deepEqual(normalizeNaibaContext({ source: 'growth', focus: 'weight', label: '体重趋势', ignored: 'x' }), { source: 'growth', focus: 'weight', label: '体重趋势' })
+  assert.equal(normalizeNaibaContext({ source: 'settings' }), null)
+  assert.equal(normalizeNaibaContext({ source: 'explore', focus: 'current-topic', contentType: 'organ', contentId: 'heart' }), null)
+  assert.deepEqual(normalizeNaibaContext({ source: 'explore', focus: 'current-topic', contentType: 'disease', contentId: 'jaundice' }), { source: 'explore', focus: 'current-topic', label: '', contentType: 'disease', contentId: 'jaundice' })
+  assert.throws(() => normalizeNaibaAttachments([{ kind: 'image', name: 'a.jpg', mimeType: 'image/jpeg', size: 1, dataUrl: 'data:image/jpeg;base64,AA==', confirmed: false }]), /consent/)
+  assert.throws(() => normalizeNaibaAttachments([{ kind: 'image', name: 'a.jpg', mimeType: 'image/jpeg', size: 10, dataUrl: 'data:image/jpeg;base64,AA==', confirmed: true }]), /size/)
+  assert.equal(normalizeNaibaAttachments([{ kind: 'image', name: 'a.jpg', mimeType: 'image/jpeg', size: 1, dataUrl: 'data:image/jpeg;base64,AA==', confirmed: true }]).length, 1)
+  const image = { kind: 'image', name: 'a.jpg', mimeType: 'image/jpeg', size: 1, dataUrl: 'data:image/jpeg;base64,AA==', confirmed: true }
+  const history = normalizeNaibaHistory([{ role: 'user', text: '第一张', attachments: [image] }, { role: 'assistant', text: '看到了' }, { role: 'user', text: '第二张', attachments: [image] }])
+  assert.equal(history[0].attachments, undefined)
+  assert.equal(history[0].attachmentSummary[0].dataUrl, undefined)
+  assert.equal(history[2].attachmentSummary.length, 1)
+  assert.equal(history[2].attachmentSummary[0].dataUrl, undefined)
+})
+
+test('Web and Harmony pin one Agent contract and endpoint without a native runtime fork', async () => {
+  const [manifest, arkts, adapter] = await Promise.all([
+    readFile(new URL('../contracts/naiba-agent-contract.v1.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../harmony/entry/src/main/ets/data/NativeAgentContract.ets', import.meta.url), 'utf8'),
+    readFile(new URL('../harmony/entry/src/main/ets/data/NativeResourceAdapter.ets', import.meta.url), 'utf8'),
+  ])
+  assert.equal(manifest.contract, NAIBA_AGENT_CONTRACT)
+  assert.equal(manifest.contractVersion, NAIBA_AGENT_CONTRACT_VERSION)
+  assert.equal(manifest.conversationPersistence, false)
+  assert.match(arkts, new RegExp(`NAIBA_AGENT_CONTRACT_VERSION: string = '${NAIBA_AGENT_CONTRACT_VERSION}'`))
+  assert.match(adapter, /'\/api\/ai\/chat'/)
+  assert.doesNotMatch(adapter, /\/api\/native\/ai\//)
+})
+
+test('Harmony renders every approved skill from the shared registry projection', async () => {
+  const [manifest, arkts, indexPage, webPage, server] = await Promise.all([
+    readFile(new URL('../contracts/naiba-agent-contract.v1.json', import.meta.url)).then(JSON.parse),
+    readFile(new URL('../harmony/entry/src/main/ets/data/NativeAgentContract.ets', import.meta.url), 'utf8'),
+    readFile(new URL('../harmony/entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8'),
+    readFile(new URL('../src/features/NaibaAiView.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../functions/api/ai/chat.js', import.meta.url), 'utf8'),
+  ])
+  assert.deepEqual(manifest.skillRegistry.ids, NAIBA_SKILLS.map((skill) => skill.id))
+  for (const skill of NAIBA_SKILLS) assert.match(arkts, new RegExp(`id: '${skill.id}'`))
+  assert.match(indexPage, /visibleAiSkills/)
+  assert.match(indexPage, /this\.openAiFrom\('growth'\)/)
+  assert.equal(indexPage.match(/this\.openAiFrom\('explore'\)/g)?.length, 1)
+  assert.doesNotMatch(indexPage, /带着当前内容问奶爸 AI/)
+  assert.match(indexPage, /this\.aiHealthEpisodeId/)
+  assert.match(indexPage, /adapter\.aiChat\([^\n]+this\.aiHealthEpisodeId\)/)
+  assert.doesNotMatch(indexPage, /aiContextExcluded|页面上下文[^\n]+移除/)
+  assert.match(indexPage, /this\.currentDisease\(\)/)
+  assert.doesNotMatch(arkts, /care_event_quick_logger/)
+  assert.doesNotMatch(webPage, /parseCareEventDraft|isCareEventDraftIntent|帮我记录刚才的喂养/)
+  assert.doesNotMatch(server, /care_event_quick_logger|parseCareEventDraft/)
+  assert.match(indexPage, /source === 'record'[\s\S]+?'detailed_care_analysis'/)
+  assert.match(indexPage, /displayedDisease[\s\S]+?'disease_explainer'/)
+  assert.match(indexPage, /aiDetailSurface/)
+  assert.match(indexPage, /aiResultSheet/)
+  assert.match(indexPage, /setScrollPosition\(this\.activeTab, yOffset\)/)
+  assert.equal(manifest.runtime.chatTimeoutMs, 60000)
+  assert.equal(manifest.runtime.reportTimeoutMs, 90000)
+  assert.equal(manifest.runtime.healthEpisodePersistence, 'allowlisted-facts-only')
+})
+
+test('Harmony central AI entry uses the approved watercolor baby master', async () => {
+  const [startIcon, approvedMaster, appIcon] = await Promise.all([
+    readFile(new URL('../harmony/entry/src/main/resources/base/media/start_icon.png', import.meta.url)),
+    readFile(new URL('../docs/design-assets/harmony/illustration-style-benchmarks/v1/ai-baby-anchor-v1.png', import.meta.url)),
+    readFile(new URL('../harmony/AppScope/resources/base/media/app_icon.png', import.meta.url)),
+  ])
+  assert.deepEqual(startIcon, approvedMaster)
+  assert.notDeepEqual(startIcon, appIcon)
+})

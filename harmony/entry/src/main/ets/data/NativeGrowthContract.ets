@@ -131,11 +131,13 @@ export function parseNativeGrowth(value: Object): NativeGrowthModel {
   const metadata = record(item.metadata, 'metadata');
   const generatedAt = text(metadata.generatedAt, 'metadata.generatedAt');
   const timezone = text(metadata.timezone, 'metadata.timezone');
+  metadata['generatedAt'] = generatedAt;
+  metadata['timezone'] = timezone;
   if (!Array.isArray(item.limitations)) throw new NativeContractError('MISSING_REQUIRED_FIELD', '成长模型缺少 limitations');
   return {
     contract: text(item.contract, 'contract'),
     contractVersion: text(item.contractVersion, 'contractVersion'),
-    metadata: { ...metadata, generatedAt, timezone },
+    metadata,
     permissions: parsePermissions(item.permissions),
     baby: parseBaby(item.baby),
     age: record(item.age, 'age'),

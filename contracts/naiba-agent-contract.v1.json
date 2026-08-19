@@ -1,0 +1,45 @@
+{
+  "contract": "babyforge.naiba.agent",
+  "contractVersion": "1.3.0",
+  "endpoint": "/api/ai/chat",
+  "request": {
+    "required": ["message", "babyId", "history"],
+    "optional": ["skillId", "context", "healthEpisodeId", "attachments"],
+    "maxHistoryTurns": 20,
+    "maxHistoryCharacters": 16000,
+    "contextSources": ["today", "record", "growth", "explore"],
+    "attachmentKinds": ["image"],
+    "maxAttachments": 3,
+    "maxAttachmentBytes": 6000000,
+    "explicitAttachmentSend": true
+  },
+  "runtime": {
+    "chatTimeoutMs": 60000,
+    "reportTimeoutMs": 90000,
+    "conversationPersistence": false,
+    "healthEpisodePersistence": "allowlisted-facts-only"
+  },
+  "events": ["meta", "activity", "message", "decision", "draft", "sources", "done"],
+  "encodings": ["text/event-stream", "application/json"],
+  "conversationPersistence": false,
+  "skillRegistry": {
+    "source": "src/domain/naibaSkills.js",
+    "ids": [
+      "baby_context_injector",
+      "authority_knowledge_retriever",
+      "daily_care_analysis",
+      "daily_feeding_recommender",
+      "detailed_care_analysis",
+      "stage_parenting_qa",
+      "disease_explainer",
+      "triage_and_preassessment",
+      "growth_and_development_interpreter",
+      "daily_growth_plan_builder",
+      "medical_report_interpreter",
+      "visit_brief_generator",
+      "caregiver_handoff_builder"
+    ]
+  },
+  "sharedRuntime": "functions/_shared/naibaAgent.js",
+  "platformAdapters": ["web", "harmony"]
+}

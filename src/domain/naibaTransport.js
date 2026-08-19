@@ -1,5 +1,6 @@
 export function parseNaibaSse(raw) {
   let meta = null
+  const events = []
   const text = String(raw || '').split(/\r?\n\r?\n+/).map((block) => {
     const data = block.split(/\r?\n/)
       .filter((line) => /^data:\s*/.test(line))
@@ -9,12 +10,23 @@ export function parseNaibaSse(raw) {
     let item
     try { item = JSON.parse(data) } catch { return '' }
     if (item.error) throw new Error(String(item.error))
+    events.push(item)
     if (item.type === 'meta' || item.meta) {
-      meta = item.meta && typeof item.meta === 'object' ? { ...item, ...item.meta } : item
+      const nextMeta = item.meta && typeof item.meta === 'object' ? { ...item, ...item.meta } : item
+      meta = { ...(meta || {}), ...nextMeta }
     }
     return item.delta || item.text || item.message || ''
   }).join('')
-  return { text, meta, fallback: Boolean(meta?.fallback) }
+  return {
+    text,
+    meta,
+    events,
+    activity: events.filter((item) => item.type === 'activity'),
+    decision: events.find((item) => item.type === 'decision')?.result || null,
+    draft: events.find((item) => item.type === 'draft')?.draft || null,
+    sources: events.find((item) => item.type === 'sources')?.items || [],
+    fallback: Boolean(meta?.fallback),
+  }
 }
 
 export function naibaFallbackMessage(reason, locale = 'zh-CN') {
