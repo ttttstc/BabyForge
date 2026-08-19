@@ -51,8 +51,33 @@ const INTENT_PATTERNS = [
   { skillId: 'daily_growth_plan_builder', pattern: /成长计划|今日计划|growth plan/i },
   { skillId: 'detailed_care_analysis', pattern: /详细分析|趋势分析|detailed analysis/i },
   { skillId: 'growth_and_development_interpreter', pattern: /体重|身长|头围|发育|成长|growth|weight|height/i },
-  { skillId: 'disease_explainer', pattern: /是什么病|疾病|医学概念|disease|condition/i },
+  { skillId: 'disease_explainer', pattern: /是什么病|疾病|医学概念|病因|病理|症状|表现|disease|condition|etiology|pathology|symptom/i },
 ]
+
+const BABY_SUBJECT_PATTERN = /宝宝|宝贝|婴儿|新生儿|孩子|小孩|我家(?:宝宝|孩子)?|娃|baby|infant|newborn|child|kid|my baby|my child/i
+const HEALTH_OBSERVATION_PATTERN = /呼吸|喘(?:得|鸣)?|发热|发烧|体温\s*(?:是|为|:|：)?\s*\d|呕吐|吐奶|腹泻|拉稀|黄疸|发黄|发青|发紫|叫不醒|唤醒困难|嗜睡|出血|拒奶|不吃奶|吃奶(?:少|很少|减少)|吃得少|不吃饭|进食(?:减少|变少|差)|精神(?:差|不好)|抽搐|皮疹|疹子|咳嗽|鼻塞|疼痛|疼|趴睡|趴着(?:睡)?|侧睡|侧着(?:睡)?|同床|枕头|被子|safe sleep|breath(?:ing)?|fever|temperature\s*\d|vomit|diarrhea|jaundice|blue|cannot wake|drowsy|bleed|refuse(?:s)? feed|poor intake/i
+const CONCRETE_HEALTH_OBSERVATION_PATTERN = /呼吸.{0,6}(?:急促|困难|费力|不顺|异常|很快)|喘(?:得|鸣)?|发热|发烧|体温\s*(?:是|为|:|：)?\s*\d|呕吐|吐奶|腹泻|拉稀|发青|发紫|叫不醒|唤醒困难|嗜睡|出血|拒奶|不吃奶|吃奶(?:少|很少|减少)|吃得少|不吃饭|进食(?:减少|变少|差)|精神(?:差|不好)|抽搐|皮疹|疹子|咳嗽|鼻塞|疼痛|疼|breath(?:ing)?\s*(?:fast|hard|difficult|labored)|fever|temperature\s*\d|vomit|diarrhea|blue|cannot wake|drowsy|bleed|refuse(?:s)? feed|poor intake/i
+const HEALTH_CONCERN_PATTERN = /现在|当前|今天|刚刚|刚才|最近|这两天|出现|有点|突然|变得|一直|总是|反复|持续|越来越|看起来|摸起来|测到|测得|观察到|不舒服|异常|担心|着急|不对|有问题|怎么办|怎么处理|要不要|需要(?:就医|去医院|看医生)|严重|危险|不好|can't wake|now|today|recently|suddenly|always|worse|uncomfortable|worried|urgent|serious|dangerous|what should we do/i
+const DIRECT_HEALTH_CONCERN_PATTERN = /不舒服|异常|担心|着急|不对|有问题|怎么办|怎么处理|要不要|需要(?:就医|去医院|看医生)|严重|危险|不好|can't wake|worried|urgent|serious|dangerous|what should we do/i
+const GENERAL_PARENTING_TOPIC_PATTERN = /睡眠|睡觉|作息|哄睡|夜醒|哭闹|喂养|喂奶|吃奶|辅食|吃饭|饮食|排便|尿布|洗澡|睡眠|sleep|feeding|night waking|crying/i
+const GENERAL_HEALTH_KNOWLEDGE_PATTERN = /什么是|是什么|病因|机制|原理|定义|概念|科普|知识|安全睡眠|睡眠安全|safe sleep|有哪些(?:表现|症状|原因|风险|方法)|(?:症状|表现)(?:有哪些|是什么)|如何|怎么|为什么|区别|what is|cause|etiology|mechanism|definition|symptom(?:s)?|how to/i
+const DISEASE_KNOWLEDGE_PATTERN = /(?:黄疸|发热|发烧|呼吸|呕吐|腹泻|咳嗽|皮疹|疾病|感染|炎症|症状|病因|病理|表现).*(?:是什么|什么是|原因|机制|原理|怎么回事)|(?:什么是|what is).*(?:黄疸|发热|发烧|呼吸|呕吐|腹泻|咳嗽|皮疹|疾病|感染|炎症|症状|病因|病理|表现)/i
+
+export function isCurrentBabyHealthComplaint(message = '') {
+  const text = String(message).trim()
+  if (!text) return false
+  const hasBabySubject = BABY_SUBJECT_PATTERN.test(text)
+  const hasHealthObservation = HEALTH_OBSERVATION_PATTERN.test(text)
+  const hasConcreteObservation = CONCRETE_HEALTH_OBSERVATION_PATTERN.test(text)
+  const hasCurrentConcern = HEALTH_CONCERN_PATTERN.test(text)
+  const isGeneralKnowledge = GENERAL_HEALTH_KNOWLEDGE_PATTERN.test(text)
+
+  // Conceptual questions must stay with knowledge skills unless the caregiver
+  // also gives a current observation or asks for an immediate action.
+  if (isGeneralKnowledge && !hasCurrentConcern && !(hasBabySubject && hasConcreteObservation)) return false
+  if (hasHealthObservation && (hasCurrentConcern || hasBabySubject || !isGeneralKnowledge)) return true
+  return hasBabySubject && DIRECT_HEALTH_CONCERN_PATTERN.test(text) && !GENERAL_PARENTING_TOPIC_PATTERN.test(text)
+}
 
 export function getNaibaSkill(skillId) {
   return NAIBA_SKILLS.find((skill) => skill.id === skillId) || null
@@ -60,9 +85,10 @@ export function getNaibaSkill(skillId) {
 
 export function selectNaibaSkill(message = '', explicitSkillId = '') {
   const text = String(message)
-  if (/呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed/i.test(text)) return getNaibaSkill('triage_and_preassessment')
+  if (isCurrentBabyHealthComplaint(text)) return getNaibaSkill('triage_and_preassessment')
   if (explicitSkillId && getNaibaSkill(explicitSkillId)) return getNaibaSkill(explicitSkillId)
   const match = INTENT_PATTERNS.find((item) => item.pattern.test(text))
-  if (!match && /不对|不舒服|担心|着急|问题|救命|help|worried|something is wrong|not right/i.test(text)) return getNaibaSkill('triage_and_preassessment')
+  if (!match && DISEASE_KNOWLEDGE_PATTERN.test(text)) return getNaibaSkill('disease_explainer')
+  if (!match && /不对|不舒服|担心|着急|救命|help|worried|something is wrong|not right/i.test(text)) return getNaibaSkill('triage_and_preassessment')
   return getNaibaSkill(match?.skillId || 'stage_parenting_qa')
 }

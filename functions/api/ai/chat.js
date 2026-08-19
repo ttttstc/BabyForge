@@ -14,6 +14,7 @@ import { loadAccountLlmConfig, resolvedLlmConfig } from '../../_shared/llmConfig
 import { NAIBA_AGENT_CONTRACT, NAIBA_AGENT_CONTRACT_VERSION, normalizeNaibaAttachments, normalizeNaibaContext, normalizeNaibaHistory } from '../../../src/domain/naibaAgentContract.js'
 import { resolveNaibaSkillContext } from '../../../src/domain/naibaContextResolver.js'
 import { searchAuthorityKnowledge } from '../../_shared/authoritySearch.js'
+import { isCurrentBabyHealthComplaint } from '../../../src/domain/naibaSkills.js'
 
 function sse(events, status = 200) {
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
@@ -287,8 +288,6 @@ async function persistProvisionalEvidence(env, accountId, babyId, output) {
   }
 }
 
-const HEALTH_SENSITIVE_PATTERN = /呼吸|发热|体温|呕吐|腹泻|黄疸|叫不醒|唤醒|嗜睡|发青|疼|出血|吃得少|拒奶|疾病|病因|是什么病|症状|健康|睡眠|睡觉|仰卧|趴睡|侧睡|同床|枕头|被子|safe sleep|breath|fever|temperature|vomit|diarrhea|jaundice|blue|wake|pain|bleed|disease|symptom|health/i
-
 function userTranscript(history, message) {
   return [...history.filter((item) => item.role === 'user').map((item) => item.text), message].join('\n')
 }
@@ -358,7 +357,7 @@ export async function onRequestPost({ request, env }) {
   const scopedRecommendation = calculateFeedingRecommendation({ baby: context.baby, events: agentCareEvents, locale: context.baby.locale || 'zh-CN' })
   const agentCarePlanItems = agentContext.carePlanItems
   const explicitTopicUnit = selectExplicitDecisionUnit(message)
-  const healthSensitive = HEALTH_SENSITIVE_PATTERN.test(message)
+  const healthSensitive = isCurrentBabyHealthComplaint(message)
   const healthFollowUp = Boolean(healthEpisode && (isNaibaContextualFollowUp(message) || Object.keys(extractedCurrentFacts).length > 0))
   if (healthEpisode && explicitTopicUnit && explicitTopicUnit !== healthEpisode.topic) {
     await closeHealthEpisode(env, healthEpisode.id, 'superseded')

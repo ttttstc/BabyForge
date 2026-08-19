@@ -56,10 +56,10 @@ function apiFixture({ failLlmConfig = false, failHealthEpisode = false } = {}) {
   return { DB, baby, writes, healthEpisodes }
 }
 
-function request(body) {
+function request(body, accept = '') {
   return new Request('https://babyforge.test/api/ai/chat', {
     method: 'POST',
-    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json' },
+    headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json', ...(accept ? { accept } : {}) },
     body: JSON.stringify(body),
   })
 }
@@ -218,6 +218,19 @@ test('explicit page skill cannot be rerouted by its prefilled wording', async ()
   const payload = await response.json()
   assert.equal(payload.events.find((event) => event.type === 'activity')?.skillId, 'daily_care_analysis')
   assert.equal(payload.events.some((event) => event.type === 'draft'), false)
+})
+
+test('generic health knowledge does not enter deterministic health preassessment', async () => {
+  for (const { message, skillId } of [
+    { message: '黄疸是什么病？', skillId: 'disease_explainer' },
+    { message: '婴儿睡眠安全怎么做？', skillId: 'stage_parenting_qa' },
+  ]) {
+    const fixture = apiFixture()
+    const response = await onRequestPost({ request: request({ message, baby: fixture.baby, skillId }, 'application/json'), env: fixture })
+    const payload = await response.json()
+    assert.equal(payload.events.find((event) => event.type === 'activity')?.skillId, skillId)
+    assert.equal(payload.events.some((event) => event.type === 'decision'), false, message)
+  }
 })
 
 test('health follow-up fails closed when episode persistence is unavailable', async () => {
