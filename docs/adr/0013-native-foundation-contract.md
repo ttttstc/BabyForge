@@ -17,5 +17,5 @@ HarmonyOS 内测版的默认 `pages/Index` 使用 ArkUI 原生入口，不把 Re
 ## 影响
 
 - 早期 ArkWeb 方案中的“默认加载生产 Web 页面”只适用于历史研究页面，不再是原生内测版入口。
-- 后续 #71–#73 页面必须消费同一合同/适配层，并按 `contracts/native-capability-manifest.v1.json` 声明桌面能力入口或延期边界。
-- 构建门禁包括 Harmony 静态检查、ArkTS HAP 构建、Web 契约测试和共享能力清单测试。
+- 后续 #71–#74 页面必须消费同一合同/适配层，并按 `contracts/desktop-capability-manifest.v1.json` 与 `contracts/native-capability-manifest.v1.json` 声明桌面能力入口或明确平台边界。
+- 构建门禁包括跨端能力映射、共享写入合同、Harmony 静态检查、候选 HAP 合同、ArkTS HAP 构建、Web 契约测试和共享能力夹具测试；签名/真机证据必须单独记录。

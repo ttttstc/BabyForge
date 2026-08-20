@@ -1,0 +1,45 @@
+{
+  "baby": {
+    "id": "baby-cross-end",
+    "nickname": "小满",
+    "birthDate": "2026-08-01"
+  },
+  "timezone": "Asia/Shanghai",
+  "selectedDay": "2026-08-18",
+  "now": "2026-08-18T04:00:00.000Z",
+  "permissions": {
+    "canEdit": true,
+    "canDeletePhotos": true
+  },
+  "recorder": {
+    "id": "user-cross-end",
+    "displayName": "家长"
+  },
+  "events": [
+    {
+      "id": "event-cross-end-feeding",
+      "babyId": "baby-cross-end",
+      "kind": "caregiver_observation",
+      "category": "bottle_feeding",
+      "occurredAt": "2026-08-18T02:30:00.000Z",
+      "recordedAt": "2026-08-18T02:35:00.000Z",
+      "actor": { "id": "user-cross-end", "displayName": "家长" },
+      "source": "caregiver",
+      "payload": { "milkType": "breast_milk", "amountMl": 120 },
+      "status": "active",
+      "version": 1
+    }
+  ],
+  "photos": [
+    {
+      "id": "photo-cross-end",
+      "takenAt": "2026-08-18T01:00:00.000Z",
+      "caption": "早晨",
+      "contentUrl": "/api/photos/photo-cross-end",
+      "contentType": "image/jpeg",
+      "sizeBytes": 1024
+    }
+  ],
+  "tasks": [],
+  "carePlanItems": []
+}

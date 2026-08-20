@@ -32,6 +32,8 @@ test('native capability manifest binds the five tabs, issue ownership, and share
   const manifest = await contractManifest()
   assert.deepEqual(manifest.nativePrimaryTabs, ['today', 'record', 'ai', 'growth', 'explore'])
   assert.deepEqual(manifest.surfaces.filter((surface) => surface.delivery === 'issue-70').map((surface) => surface.id), ['auth', 'household'])
+  assert.ok(manifest.surfaces.some((surface) => surface.id === 'album' && surface.delivery === 'issue-74' && surface.entry === 'today.album'))
+  assert.ok(manifest.surfaces.some((surface) => surface.id === 'visitor' && surface.platform === 'web-only' && surface.native?.status === 'not-applicable'))
   assert.ok(manifest.surfaces.some((surface) => surface.id === 'legacy-web' && surface.delivery === 'historical-only'))
   assert.ok(manifest.invariants.includes('business-data-is-shared'))
   assert.ok(manifest.invariants.includes('offline-does-not-queue-facts'))

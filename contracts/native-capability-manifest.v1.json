@@ -8,55 +8,95 @@
       "id": "auth",
       "delivery": "issue-70",
       "entry": "native:auth",
-      "desktopCapabilities": ["sign-in", "register", "email-verification", "password-reset", "social-login"]
+      "platform": "native",
+      "desktopCapabilities": ["sign-in", "register", "email-verification", "password-reset", "social-login"],
+      "nativeEvidence": ["signInEmail", "register", "requestPasswordReset", "startSocialLogin"]
     },
     {
       "id": "household",
       "delivery": "issue-70",
       "entry": "native:family",
-      "desktopCapabilities": ["create-household", "accept-invite", "create-invite", "member-permissions", "remove-member"]
+      "platform": "native",
+      "desktopCapabilities": ["create-household", "accept-invite", "create-invite", "member-permissions", "remove-member"],
+      "nativeEvidence": ["createHousehold", "acceptInvite", "createInvite", "removeMember"]
     },
     {
       "id": "today",
       "delivery": "issue-71",
       "entry": "today.root",
-      "desktopCapabilities": ["today-summary", "today-tasks", "album", "quick-record"]
+      "platform": "native",
+      "desktopCapabilities": ["today-summary", "today-tasks", "quick-record"],
+      "nativeEvidence": ["loadToday", "今日摘要", "今天要留意", "快速记录"]
+    },
+    {
+      "id": "album",
+      "delivery": "issue-74",
+      "entry": "today.album",
+      "platform": "native",
+      "desktopCapabilities": ["album", "photo-calendar", "photo-lightbox", "photo-picker", "photo-download", "photo-delete"],
+      "nativeEvidence": ["PhotoViewPicker", "今日相册", "上一张", "下一张", "downloadSelectedPhoto", "deleteSelectedPhoto"]
     },
     {
       "id": "record",
       "delivery": "issue-71",
       "entry": "record.root",
-      "desktopCapabilities": ["high-frequency-records", "low-frequency-records", "correction", "void", "doctor-summary"]
+      "platform": "native",
+      "desktopCapabilities": ["high-frequency-records", "low-frequency-records", "correction", "void", "doctor-summary"],
+      "nativeEvidence": ["recordCard('feeding'", "recordCard('growth'", "correctCareEvent", "voidCareEvent"]
     },
     {
       "id": "ai",
       "delivery": "issue-73",
       "entry": "ai.root",
-      "desktopCapabilities": ["capability-registry", "ephemeral-multi-turn", "context-injection", "sources", "draft-confirmation", "reports", "care-handoff"]
+      "platform": "native",
+      "desktopCapabilities": ["capability-registry", "ephemeral-multi-turn", "context-injection", "sources", "draft-confirmation", "reports", "care-handoff"],
+      "nativeEvidence": ["visibleAiSkills", "aiHistory()", "confirmAiDraft", "aiReport"]
     },
     {
       "id": "growth",
       "delivery": "issue-72",
       "entry": "growth.root",
-      "desktopCapabilities": ["measurements", "curves", "national-reference-lines", "age-basis", "conflicts", "stage-details", "history", "milestones", "care-plan", "admin-tasks", "ai-insight"]
+      "platform": "native",
+      "desktopCapabilities": ["measurements", "curves", "national-reference-lines", "age-basis", "conflicts", "stage-details", "history", "milestones", "care-plan", "admin-tasks", "ai-insight"],
+      "nativeEvidence": ["loadGrowth", "国家标准参考曲线", "成长历史与测量冲突", "里程碑、照护计划与管理事项"]
     },
     {
       "id": "explore",
       "delivery": "issue-72",
       "entry": "explore.root",
-      "desktopCapabilities": ["watercolor-theme", "vaccines", "vaccine-source", "disease-topics", "disease-full-text", "governed-preassessment", "organ-learning", "controlled-3d-fallback", "reviewed-knowledge", "third-party-filters", "third-party-sources"]
+      "platform": "native",
+      "desktopCapabilities": ["watercolor-theme", "vaccines", "vaccine-source", "disease-topics", "disease-full-text", "governed-preassessment", "organ-learning", "controlled-3d-fallback", "reviewed-knowledge", "third-party-filters", "third-party-sources"],
+      "nativeEvidence": ["loadExplore", "疫苗计划", "疾病词典", "受控解剖资源", "打开原文"]
     },
     {
       "id": "settings",
       "delivery": "issue-72",
       "entry": "settings.secondary",
-      "desktopCapabilities": ["account", "language", "baby-profile", "age-recompute", "notification-contacts", "visitor-links", "deidentified-share", "model-settings", "masked-api-key", "sync", "retry", "local-cache", "secure-logout"]
+      "platform": "native",
+      "desktopCapabilities": ["account", "language", "baby-profile", "age-recompute", "notification-contacts", "visitor-links", "deidentified-share", "model-settings", "masked-api-key", "sync", "retry", "local-cache", "secure-logout"],
+      "nativeEvidence": ["保存账号与宝宝资料", "当前为只读 / 无写入权限", "apiKeyMasked", "clearLocalCache", "云端记录不会删除", "createVisitorLink"]
+    },
+    {
+      "id": "visitor",
+      "delivery": "issue-74",
+      "entry": "web-only:/#/visit/:token",
+      "platform": "web-only",
+      "desktopCapabilities": ["visitor-view", "visitor-redaction", "visitor-expiry"],
+      "native": {
+        "status": "not-applicable",
+        "reason": "访客页是公开、未登录的 Web 分享入口；原生设置页只管理访客链接生命周期。"
+      }
     },
     {
       "id": "legacy-web",
       "delivery": "historical-only",
       "entry": "pages/LegacyWeb",
-      "desktopCapabilities": ["arkweb-compatibility-research"]
+      "platform": "historical-only",
+      "desktopCapabilities": ["arkweb-compatibility-research"],
+      "native": {
+        "status": "historical-only",
+        "reason": "仅用于 ArkWeb 兼容性研究，不是一级业务入口。"
+      }
     }
   ],
   "invariants": [

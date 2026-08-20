@@ -1,0 +1,42 @@
+{
+  "contract": "babyforge.native.writes",
+  "contractVersion": "1.0.0",
+  "sourceOfTruth": "functions/api/events.js",
+  "operations": [
+    {
+      "id": "create-care-event",
+      "method": "POST",
+      "path": "/api/events",
+      "request": "{event}",
+      "success": [201, 204],
+      "idempotency": "event.id + identical payload returns the existing result; same id with different payload is a conflict",
+      "ambiguousResponse": "query GET /api/events?babyId=:babyId&includeVoided=true and match event.id"
+    },
+    {
+      "id": "correct-care-event",
+      "method": "PATCH",
+      "path": "/api/events/:id",
+      "request": "{version,event}",
+      "success": [201],
+      "staleVersion": 409,
+      "permissionDenied": 403
+    },
+    {
+      "id": "void-care-event",
+      "method": "DELETE",
+      "path": "/api/events/:id",
+      "request": "{version}",
+      "success": [200],
+      "staleVersion": 409,
+      "permissionDenied": 403
+    }
+  ],
+  "errorSemantics": {
+    "unknownVersion": "UNKNOWN_VERSION",
+    "missingRequiredField": "MISSING_REQUIRED_FIELD",
+    "conflict": "EVENT_CONFLICT",
+    "retryableNetwork": "NETWORK_UNAVAILABLE",
+    "offlineFacts": "never queue or report a fact as saved without server confirmation"
+  },
+  "equivalentAudit": "every accepted write is represented by the same care_events revision/audit fields regardless of Web or Harmony caller"
+}

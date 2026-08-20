@@ -81,14 +81,8 @@ export interface NativePhotoDownload {
 }
 
 interface NativeCorrectionRequest {
-  id: string;
   version: number;
-  occurredAt: string;
-  kind: string;
-  category: string;
-  source: string;
-  actor: Object;
-  payload: Object;
+  event: NativeCareEvent;
 }
 
 interface NativeVersionRequest {
@@ -409,16 +403,10 @@ export class NativeResourceAdapter {
 
   async correctCareEvent(eventId: string, version: number, replacement: NativeCareEvent): Promise<Object> {
     const payload: NativeCorrectionRequest = {
-      id: replacement.id,
       version,
-      occurredAt: replacement.occurredAt,
-      kind: replacement.kind,
-      category: replacement.category,
-      source: replacement.source,
-      actor: replacement.actor,
-      payload: replacement.payload
+      event: replacement
     };
-    return this.request(`/api/events/${encodeURIComponent(eventId)}`, http.RequestMethod.POST, payload as Object);
+    return this.request(`/api/events/${encodeURIComponent(eventId)}`, PATCH_METHOD, payload as Object);
   }
 
   async findCareEvent(babyId: string, eventId: string): Promise<Object | null> {

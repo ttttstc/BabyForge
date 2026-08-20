@@ -106,6 +106,9 @@ export function createNativeResourceClient({ fetchImpl = globalThis.fetch, baseU
     async createCareEvent(event) {
       return request('/api/events', { method: 'POST', body: { event } })
     },
+    async correctCareEvent(eventId, version, event) {
+      return request(`/api/events/${encodeURIComponent(eventId)}`, { method: 'PATCH', body: { version, event } })
+    },
     async findCareEvent(babyId, eventId) {
       const payload = await request(`/api/events?babyId=${encodeURIComponent(babyId)}&includeVoided=true`)
       return (payload.events || []).find((event) => event.id === eventId) || null

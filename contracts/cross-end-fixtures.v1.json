@@ -1,0 +1,12 @@
+{
+  "contract": "babyforge.cross-end.fixtures",
+  "contractVersion": "1.0.0",
+  "fixtures": [
+    {
+      "id": "today",
+      "path": "test/fixtures/cross-end-today.json",
+      "consumers": ["web", "harmony"],
+      "requiredFields": ["baby", "events", "photos", "permissions", "recorder", "timezone", "selectedDay", "now"]
+    }
+  ]
+}
