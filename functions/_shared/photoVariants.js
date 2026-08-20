@@ -1,5 +1,7 @@
 export const PHOTO_VARIANTS = new Set(['thumb', 'display'])
 
+const pendingVariants = new Map()
+
 export function photoVariantUrls(contentUrl) {
   return {
     thumbnailUrl: `${contentUrl}?variant=thumb`,
@@ -20,6 +22,25 @@ export async function readPhotoAsset({ env, objectKey, contentType, variant = ''
   if (!PHOTO_VARIANTS.has(variant)) throw new Error('UNKNOWN_PHOTO_VARIANT')
 
   const derivedKey = photoVariantKey(objectKey, variant)
+  const cached = await env.BABY_PHOTOS.get(derivedKey)
+  if (cached) return cached
+
+  const pendingKey = `${derivedKey}:${contentType || ''}`
+  const pending = pendingVariants.get(pendingKey)
+  if (pending) return pending
+
+  const generation = generatePhotoAsset({ env, objectKey, derivedKey, contentType, variant })
+  pendingVariants.set(pendingKey, generation)
+  try {
+    return await generation
+  } finally {
+    pendingVariants.delete(pendingKey)
+  }
+}
+
+async function generatePhotoAsset({ env, objectKey, derivedKey, contentType, variant }) {
+  // Re-check after joining the in-flight map so a request that arrived while
+  // another isolate task was reading R2 does not transform the same object.
   const cached = await env.BABY_PHOTOS.get(derivedKey)
   if (cached) return cached
 

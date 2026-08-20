@@ -28,6 +28,8 @@ function strings(locale) {
     more: 'More',
     calendarTitle: 'Photo calendar',
     calendarEmpty: 'No photos on this day',
+    calendarLoading: 'Loading this month…',
+    calendarLoadError: 'Could not load this month. Try again later.',
     calendarClose: 'Close calendar',
     readonly: 'View only',
     shelf: 'Photo shelf',
@@ -71,6 +73,8 @@ function strings(locale) {
     more: '更多',
     calendarTitle: '按日期查看照片',
     calendarEmpty: '这一天还没有照片',
+    calendarLoading: '正在加载这个月的照片…',
+    calendarLoadError: '这个月的照片暂时加载失败，请稍后重试。',
     calendarClose: '关闭日历',
     readonly: '只读查看',
     shelf: '照片书架',
@@ -218,7 +222,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
 
   useEffect(() => {
     let active = true
-    listBabyPhotos(baby.id, { remote, showcase }).then((records) => {
+    listBabyPhotos(baby.id, { remote, showcase, limit: remote ? HOME_PHOTO_LIMIT : undefined }).then((records) => {
       if (!active) return
       const next = sortBabyPhotos(records)
       setPhotos(next)
@@ -382,15 +386,6 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
   }
 
   const selectedDate = useMemo(() => selected ? displayTime(selected.takenAt, locale) : '', [selected, locale])
-  const photosByDay = useMemo(() => photos.reduce((groups, photo) => {
-    const key = calendarDayKey(photo.takenAt)
-    if (!key) return groups
-    const current = groups.get(key) || []
-    current.push(photo)
-    groups.set(key, current)
-    return groups
-  }, new Map()), [photos])
-
   function openCalendar() {
     const anchor = selected ? new Date(selected.takenAt) : new Date()
     const safeAnchor = Number.isNaN(anchor.getTime()) ? new Date() : anchor
@@ -504,28 +499,68 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
           </form>
         </div>
       )}
-      {calendarOpen && <PhotoCalendarDialog locale={locale} copy={copy} babyId={baby.id} remote={remote} photos={photos} photosByDay={photosByDay} cursor={calendarCursor} selectedDay={calendarDay} onChangeCursor={setCalendarCursor} onSelectDay={setCalendarDay} onClose={() => setCalendarOpen(false)} />}
+      {calendarOpen && <PhotoCalendarDialog locale={locale} copy={copy} babyId={baby.id} remote={remote} showcase={showcase} photos={photos} cursor={calendarCursor} selectedDay={calendarDay} onChangeCursor={setCalendarCursor} onSelectDay={setCalendarDay} onClose={() => setCalendarOpen(false)} />}
     </section>
   )
 }
 
-function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, photosByDay, cursor, selectedDay, onChangeCursor, onSelectDay, onClose }) {
+function PhotoCalendarDialog({ locale, copy, babyId, remote = false, showcase = false, photos, cursor, selectedDay, onChangeCursor, onSelectDay, onClose }) {
   const isEnglish = locale === 'en-US'
   const [lightboxId, setLightboxId] = useState('')
   const [visiblePhotoCount, setVisiblePhotoCount] = useState(DAY_PHOTO_PAGE_SIZE)
-  const days = monthDays(cursor)
-  const selectedPhotos = photosByDay.get(selectedDay) || []
+  const [calendarPhotos, setCalendarPhotos] = useState(() => (remote ? [] : photos))
+  const [calendarLoading, setCalendarLoading] = useState(remote)
+  const [calendarError, setCalendarError] = useState('')
+  const days = useMemo(() => monthDays(cursor), [cursor])
+  const activePhotos = remote ? calendarPhotos : photos
+  const activePhotosByDay = useMemo(() => activePhotos.reduce((groups, photo) => {
+    const key = calendarDayKey(photo.takenAt)
+    if (!key) return groups
+    const current = groups.get(key) || []
+    current.push(photo)
+    groups.set(key, current)
+    return groups
+  }, new Map()), [activePhotos])
+  const selectedPhotos = activePhotosByDay.get(selectedDay) || []
   const visibleSelectedPhotos = selectedPhotos.slice(0, visiblePhotoCount)
   const weekdays = isEnglish ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['日', '一', '二', '三', '四', '五', '六']
   const monthLabel = cursor.toLocaleDateString(isEnglish ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'long' })
 
+  useEffect(() => {
+    if (!remote) return undefined
+    let active = true
+    const first = days[0]?.date || new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+    const last = days[days.length - 1]?.date || new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
+    const from = new Date(first.getFullYear(), first.getMonth(), first.getDate()).toISOString()
+    const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1).toISOString()
+    listBabyPhotos(babyId, { remote: true, showcase, limit: 500, from, to }).then((records) => {
+      if (!active) return
+      setCalendarPhotos(sortBabyPhotos(records))
+    }).catch(() => {
+      if (active) {
+        setCalendarPhotos([])
+        setCalendarError(copy.calendarLoadError)
+      }
+    }).finally(() => {
+      if (active) setCalendarLoading(false)
+    })
+    return () => { active = false }
+  }, [babyId, copy.calendarLoadError, cursor, days, remote, showcase])
+
+  useEffect(() => {
+    if (calendarLoading || !remote || activePhotosByDay.has(selectedDay)) return
+    const fallback = days.find((day) => day.inMonth && activePhotosByDay.has(day.key))?.key || calendarDayKey(cursor)
+    if (fallback !== selectedDay) onSelectDay(fallback)
+  }, [activePhotosByDay, calendarLoading, cursor, days, onSelectDay, remote, selectedDay])
+
   function shiftMonth(delta) {
     const next = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1)
+    setCalendarLoading(true)
+    setCalendarError('')
     onChangeCursor(next)
-    const nextKey = monthDays(next).find((day) => photosByDay.has(day.key))?.key || calendarDayKey(next)
     setLightboxId('')
     setVisiblePhotoCount(DAY_PHOTO_PAGE_SIZE)
-    onSelectDay(nextKey)
+    onSelectDay(calendarDayKey(next))
   }
 
   function selectDay(key) {
@@ -543,14 +578,14 @@ function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, pho
   return <div className="album-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <article className="album-calendar-dialog" role="dialog" aria-modal="true" aria-labelledby="album-calendar-title">
       <header className="album-calendar-header">
-        <div><p className="eyebrow"><CalendarClock size={13} />{copy.calendarTitle}</p><h2 id="album-calendar-title">{monthLabel}</h2><small>{photos.length} {isEnglish ? 'photos' : '张照片'}</small></div>
+        <div><p className="eyebrow"><CalendarClock size={13} />{copy.calendarTitle}</p><h2 id="album-calendar-title">{monthLabel}</h2><small>{activePhotos.length} {isEnglish ? 'photos' : '张照片'}</small></div>
         <button type="button" onClick={onClose} aria-label={copy.calendarClose}><X size={18} /></button>
       </header>
       <div className="album-calendar-toolbar"><button type="button" onClick={() => shiftMonth(-1)} aria-label={isEnglish ? 'Previous month' : '上个月'}><ChevronLeft size={17} /></button><strong>{monthLabel}</strong><button type="button" onClick={() => shiftMonth(1)} aria-label={isEnglish ? 'Next month' : '下个月'}><ChevronRight size={17} /></button></div>
       <div className="album-calendar-weekdays">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
       <div className="album-calendar-grid">
         {days.map((day) => {
-          const dayPhotos = photosByDay.get(day.key) || []
+          const dayPhotos = activePhotosByDay.get(day.key) || []
           const active = day.key === selectedDay
           return <button type="button" key={day.key} className={`album-calendar-day${day.inMonth ? '' : ' muted'}${active ? ' selected' : ''}${dayPhotos.length ? ' has-photos' : ''}`} onClick={() => selectDay(day.key)} aria-label={`${day.key}${dayPhotos.length ? ` · ${dayPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : ''}`}>
             {dayPhotos[0] && <LazyPhotoImage photo={dayPhotos[0]} babyId={babyId} remote={remote} alt="" />}
@@ -560,8 +595,8 @@ function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, pho
         })}
       </div>
       <section className="album-calendar-day-panel" aria-live="polite">
-        <header><strong>{selectedDay}</strong><span>{selectedPhotos.length ? `${selectedPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : copy.calendarEmpty}</span></header>
-        {selectedPhotos.length > 0 && <div className="album-calendar-photo-list">{visibleSelectedPhotos.map((photo) => <button type="button" key={photo.id} onClick={() => setLightboxId(photo.id)} aria-label={`${isEnglish ? 'View large photo' : '查看大图'} · ${displayTime(photo.takenAt, locale)}`}><LazyPhotoImage photo={photo} babyId={babyId} remote={remote} alt="" /><span>{displayTime(photo.takenAt, locale)}</span></button>)}{visiblePhotoCount < selectedPhotos.length && <button type="button" className="album-calendar-load-more" onClick={() => setVisiblePhotoCount((count) => count + DAY_PHOTO_PAGE_SIZE)}>{copy.loadMorePhotos}</button>}</div>}
+        <header><strong>{selectedDay}</strong><span>{calendarLoading ? copy.calendarLoading : calendarError || (selectedPhotos.length ? `${selectedPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : copy.calendarEmpty)}</span></header>
+        {!calendarLoading && !calendarError && selectedPhotos.length > 0 && <div className="album-calendar-photo-list">{visibleSelectedPhotos.map((photo) => <button type="button" key={photo.id} onClick={() => setLightboxId(photo.id)} aria-label={`${isEnglish ? 'View large photo' : '查看大图'} · ${displayTime(photo.takenAt, locale)}`}><LazyPhotoImage photo={photo} babyId={babyId} remote={remote} alt="" /><span>{displayTime(photo.takenAt, locale)}</span></button>)}{visiblePhotoCount < selectedPhotos.length && <button type="button" className="album-calendar-load-more" onClick={() => setVisiblePhotoCount((count) => count + DAY_PHOTO_PAGE_SIZE)}>{copy.loadMorePhotos}</button>}</div>}
       </section>
     </article>
     {lightboxId && <PhotoLightbox key={lightboxId} photos={selectedPhotos} photoId={lightboxId} babyId={babyId} remote={remote} locale={locale} copy={copy} onChange={setLightboxId} onClose={() => setLightboxId('')} />}

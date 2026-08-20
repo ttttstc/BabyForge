@@ -253,10 +253,17 @@ function localVisualTestPlugin() {
         const photoId = url.pathname.split('/').filter(Boolean).pop()
         if (request.method === 'GET') {
           const babyId = url.searchParams.get('babyId')
+          const from = Date.parse(url.searchParams.get('from') || '')
+          const to = Date.parse(url.searchParams.get('to') || '')
+          const requestedLimit = Number(url.searchParams.get('limit'))
+          const limit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(Math.floor(requestedLimit), 500) : 12
           const photos = [...visualPhotos.values()]
             .filter((photo) => !babyId || photo.babyId === babyId)
+            .filter((photo) => !Number.isFinite(from) || Date.parse(photo.takenAt) >= from)
+            .filter((photo) => !Number.isFinite(to) || Date.parse(photo.takenAt) < to)
             .sort((left, right) => Date.parse(right.takenAt) - Date.parse(left.takenAt) || Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.id.localeCompare(left.id))
-          sendJson(response, 200, { photos })
+            .slice(0, limit)
+          sendJson(response, 200, { photos, hasMore: photos.length === limit })
           return
         }
         if (request.method === 'DELETE') {

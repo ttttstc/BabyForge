@@ -5,6 +5,8 @@ import { photoVariantUrls } from '../_shared/photoVariants.js'
 
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024
 const MAX_MULTIPART_BYTES = MAX_PHOTO_BYTES + 1024 * 1024
+const DEFAULT_PHOTO_LIST_LIMIT = 12
+const MAX_PHOTO_LIST_LIMIT = 500
 const PHOTO_TYPES = new Set(['image/avif', 'image/gif', 'image/heic', 'image/heif', 'image/jpeg', 'image/png', 'image/webp'])
 const EXTENSION_TYPES = {
   avif: 'image/avif', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif', jpeg: 'image/jpeg', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
@@ -37,6 +39,19 @@ function validTimestamp(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString()
 }
 
+function photoListQuery(request) {
+  const search = new URL(request.url).searchParams
+  const requestedLimit = Number(search.get('limit'))
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(Math.floor(requestedLimit), MAX_PHOTO_LIST_LIMIT)
+    : DEFAULT_PHOTO_LIST_LIMIT
+  return {
+    limit,
+    from: validTimestamp(search.get('from')),
+    to: validTimestamp(search.get('to')),
+  }
+}
+
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ error: 'D1 未配置' }, 503)
   if (!env.BABY_PHOTOS) return json({ error: 'R2 相册存储未配置' }, 503)
@@ -46,8 +61,27 @@ export async function onRequestGet({ request, env }) {
   if (!babyId) return json({ photos: [] })
   const baby = await accessibleBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
-  const rows = await env.DB.prepare('SELECT * FROM baby_photos WHERE baby_id = ? ORDER BY taken_at DESC, created_at DESC, id DESC').bind(baby.id).all()
-  return json({ photos: (rows.results || []).map(photoFromRow) })
+  const { limit, from, to } = photoListQuery(request)
+  const clauses = ['baby_id = ?']
+  const bindings = [baby.id]
+  if (from) {
+    clauses.push('taken_at >= ?')
+    bindings.push(from)
+  }
+  if (to) {
+    clauses.push('taken_at < ?')
+    bindings.push(to)
+  }
+  bindings.push(limit)
+  const rows = await env.DB.prepare(`
+    SELECT *
+    FROM baby_photos
+    WHERE ${clauses.join(' AND ')}
+    ORDER BY taken_at DESC, created_at DESC, id DESC
+    LIMIT ?
+  `).bind(...bindings).all()
+  const photos = rows.results || []
+  return json({ photos: photos.map(photoFromRow), hasMore: photos.length === limit })
 }
 
 export async function onRequestPost({ request, env, waitUntil }) {

@@ -211,9 +211,14 @@ async function responsePayload(response) {
   return payload
 }
 
-export async function listBabyPhotos(babyId, { remote = false, showcase = false } = {}) {
+export async function listBabyPhotos(babyId, { remote = false, showcase = false, limit, from, to } = {}) {
   if (!remote) return listLocalPhotos(babyId)
-  const endpoint = showcase ? '/api/demo-showcase/photos' : `/api/photos?babyId=${encodeURIComponent(babyId)}`
+  const params = new URLSearchParams()
+  if (!showcase) params.set('babyId', babyId)
+  if (Number.isFinite(limit)) params.set('limit', String(limit))
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  const endpoint = `${showcase ? '/api/demo-showcase/photos' : '/api/photos'}?${params.toString()}`
   const response = await fetch(endpoint, { credentials: 'include' })
   return (await responsePayload(response)).photos || []
 }
