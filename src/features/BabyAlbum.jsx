@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Baby, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, Clock3, Download, ImagePlus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { Baby, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, Clock3, Download, ImagePlus, RefreshCw, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import {
   MAX_PHOTO_BYTES,
   dateTimeInputToIso,
@@ -9,9 +9,13 @@ import {
   getBabyPhotoBlob,
   isSupportedPhoto,
   listBabyPhotos,
+  sortBabyPhotos,
   uploadBabyPhoto,
 } from '../domain/babyAlbum.js'
 import { calendarDateKey } from '../domain/date.js'
+
+const HOME_PHOTO_LIMIT = 12
+const DAY_PHOTO_PAGE_SIZE = 60
 
 function strings(locale) {
   return locale === 'en-US' ? {
@@ -51,6 +55,12 @@ function strings(locale) {
     saving: 'Saving',
     invalid: `Choose JPG, PNG, WebP, GIF, AVIF, HEIC, or HEIF images up to ${MAX_PHOTO_BYTES / 1024 / 1024} MB each.`,
     loadError: 'Could not open the album. Try again later.',
+    imageLoadError: 'This photo could not be displayed.',
+    retry: 'Retry',
+    closeViewer: 'Close large photo',
+    previousPhoto: 'Previous photo',
+    nextPhoto: 'Next photo',
+    loadMorePhotos: 'Load more photos',
   } : {
     eyebrow: '宝宝相册',
     title: '把小小日常，珍藏成成长故事',
@@ -88,6 +98,12 @@ function strings(locale) {
     saving: '正在保存',
     invalid: `请选择 JPG、PNG、WebP、GIF、AVIF、HEIC 或 HEIF 图片，单张不超过 ${MAX_PHOTO_BYTES / 1024 / 1024} MB。`,
     loadError: '相册暂时没有打开，请稍后重试。',
+    imageLoadError: '这张照片暂时无法显示。',
+    retry: '重试',
+    closeViewer: '关闭大图',
+    previousPhoto: '上一张',
+    nextPhoto: '下一张',
+    loadMorePhotos: '加载更多照片',
   }
 }
 
@@ -129,7 +145,7 @@ function monthDays(cursor) {
   })
 }
 
-function usePhotoUrl(photo, { babyId, remote = false, eager = false } = {}) {
+function usePhotoUrl(photo, { babyId, remote = false, eager = false, variant = 'display', refreshKey = 0 } = {}) {
   const targetRef = useRef(null)
   const [intersecting, setIntersecting] = useState(false)
   const [resolved, setResolved] = useState({ id: '', url: '' })
@@ -150,11 +166,16 @@ function usePhotoUrl(photo, { babyId, remote = false, eager = false } = {}) {
     if (!photo || (!eager && !visible)) return undefined
     if (remote) {
       Promise.resolve().then(() => {
-        if (active) setResolved({ id: photo.id, url: photo.contentUrl || photo.url || '' })
+        const url = variant === 'thumbnail'
+          ? photo.thumbnailUrl
+          : variant === 'display'
+            ? photo.displayUrl
+            : photo.contentUrl || photo.url
+        if (active) setResolved({ id: photo.id, url: url || '' })
       })
       return () => { active = false }
     }
-    Promise.resolve(photo.blob || getBabyPhotoBlob({ babyId, photoId: photo.id }))
+    Promise.resolve(photo.blob || getBabyPhotoBlob({ babyId, photoId: photo.id, variant }))
       .then((blob) => {
         if (!active || !blob) return
         objectUrl = URL.createObjectURL(blob)
@@ -165,13 +186,13 @@ function usePhotoUrl(photo, { babyId, remote = false, eager = false } = {}) {
       active = false
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [babyId, eager, photo, remote, visible])
+  }, [babyId, eager, photo, refreshKey, remote, variant, visible])
 
   return { ref: targetRef, url: visible && resolved.id === photo?.id ? resolved.url : '' }
 }
 
-function LazyPhotoImage({ photo, babyId, remote = false, alt = '', className = '', eager = false, ...props }) {
-  const { ref, url } = usePhotoUrl(photo, { babyId, remote, eager })
+function LazyPhotoImage({ photo, babyId, remote = false, alt = '', className = '', eager = false, variant = 'thumbnail', refreshKey = 0, ...props }) {
+  const { ref, url } = usePhotoUrl(photo, { babyId, remote, eager, variant, refreshKey })
   return <img ref={ref} className={className} src={url || undefined} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" {...props} />
 }
 
@@ -199,7 +220,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     let active = true
     listBabyPhotos(baby.id, { remote, showcase }).then((records) => {
       if (!active) return
-      const next = records
+      const next = sortBabyPhotos(records)
       setPhotos(next)
       setSelectedId(next[0]?.id || '')
     }).catch((nextError) => {
@@ -218,10 +239,11 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     previewsToRelease.forEach((url) => URL.revokeObjectURL(url))
   }, [])
 
-  const selectedIndex = Math.max(0, photos.findIndex((photo) => photo.id === selectedId))
-  const selected = photos[selectedIndex] || null
-  const selectedImage = usePhotoUrl(selected, { babyId: baby.id, remote, eager: true })
-  const shelfClass = photos.length <= 4 ? 'album-shelf-track is-short' : 'album-shelf-track'
+  const selected = photos.find((photo) => photo.id === selectedId) || photos[0] || null
+  const homePhotos = photos.slice(0, HOME_PHOTO_LIMIT)
+  const selectedIndex = Math.max(0, homePhotos.findIndex((photo) => photo.id === selected?.id))
+  const selectedImage = usePhotoUrl(selected, { babyId: baby.id, remote, eager: true, variant: 'display' })
+  const shelfClass = homePhotos.length <= 4 ? 'album-shelf-track is-short' : 'album-shelf-track'
   const dialogLabel = locale === 'en-US' ? `Add ${pending.length} photos` : `添加 ${pending.length} 张照片`
 
   function releasePendingUrls(items) {
@@ -294,13 +316,15 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
         saved.push(photo)
         setSaveProgress(index + 1)
       }
-      setPhotos((current) => [...current, ...saved])
-      setSelectedId((current) => current || saved[0]?.id || '')
+      const next = sortBabyPhotos([...photos, ...saved])
+      setPhotos(next)
+      setSelectedId(next[0]?.id || '')
       closePending(true)
     } catch (nextError) {
       if (saved.length) {
-        setPhotos((current) => [...current, ...saved])
-        setSelectedId((current) => current || saved[0]?.id || '')
+        const next = sortBabyPhotos([...photos, ...saved])
+        setPhotos(next)
+        setSelectedId(next[0]?.id || '')
         const completed = pending.slice(0, saved.length)
         releasePendingUrls(completed)
         setPending((current) => current.slice(saved.length))
@@ -375,11 +399,6 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
     setCalendarOpen(true)
   }
 
-  function selectCalendarPhoto(photo) {
-    setSelectedId(photo.id)
-    setCalendarOpen(false)
-  }
-
   return (
     <section className="baby-album-surface" data-testid="baby-album" aria-labelledby="baby-album-title">
       <header className="album-header">
@@ -429,7 +448,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
         <div className="album-shelf-viewport">
           {photos.length ? (
             <div className={shelfClass}>
-              {photos.map((photo, index) => {
+              {homePhotos.map((photo, index) => {
                 const distance = Math.min(Math.abs(index - selectedIndex), 4)
                 const direction = index < selectedIndex ? 1 : -1
                 const active = photo.id === selected?.id
@@ -440,7 +459,7 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
                   <button
                     type="button"
                     className={`album-shelf-card${active ? ' active' : ''}`}
-                    style={{ transform, zIndex: active ? photos.length + 2 : photos.length - distance }}
+                    style={{ transform, zIndex: active ? homePhotos.length + 2 : homePhotos.length - distance }}
                     key={photo.id}
                     onClick={() => setSelectedId(photo.id)}
                     aria-pressed={active}
@@ -485,15 +504,18 @@ export function BabyAlbum({ baby, locale = 'zh-CN', readOnly = false, remote = f
           </form>
         </div>
       )}
-      {calendarOpen && <PhotoCalendarDialog locale={locale} copy={copy} babyId={baby.id} remote={remote} photos={photos} photosByDay={photosByDay} cursor={calendarCursor} selectedDay={calendarDay} onChangeCursor={setCalendarCursor} onSelectDay={setCalendarDay} onSelectPhoto={selectCalendarPhoto} onClose={() => setCalendarOpen(false)} />}
+      {calendarOpen && <PhotoCalendarDialog locale={locale} copy={copy} babyId={baby.id} remote={remote} photos={photos} photosByDay={photosByDay} cursor={calendarCursor} selectedDay={calendarDay} onChangeCursor={setCalendarCursor} onSelectDay={setCalendarDay} onClose={() => setCalendarOpen(false)} />}
     </section>
   )
 }
 
-function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, photosByDay, cursor, selectedDay, onChangeCursor, onSelectDay, onSelectPhoto, onClose }) {
+function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, photosByDay, cursor, selectedDay, onChangeCursor, onSelectDay, onClose }) {
   const isEnglish = locale === 'en-US'
+  const [lightboxId, setLightboxId] = useState('')
+  const [visiblePhotoCount, setVisiblePhotoCount] = useState(DAY_PHOTO_PAGE_SIZE)
   const days = monthDays(cursor)
   const selectedPhotos = photosByDay.get(selectedDay) || []
+  const visibleSelectedPhotos = selectedPhotos.slice(0, visiblePhotoCount)
   const weekdays = isEnglish ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['日', '一', '二', '三', '四', '五', '六']
   const monthLabel = cursor.toLocaleDateString(isEnglish ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'long' })
 
@@ -501,14 +523,22 @@ function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, pho
     const next = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1)
     onChangeCursor(next)
     const nextKey = monthDays(next).find((day) => photosByDay.has(day.key))?.key || calendarDayKey(next)
+    setLightboxId('')
+    setVisiblePhotoCount(DAY_PHOTO_PAGE_SIZE)
     onSelectDay(nextKey)
   }
 
+  function selectDay(key) {
+    setLightboxId('')
+    setVisiblePhotoCount(DAY_PHOTO_PAGE_SIZE)
+    onSelectDay(key)
+  }
+
   useEffect(() => {
-    const close = (event) => { if (event.key === 'Escape') onClose() }
+    const close = (event) => { if (event.key === 'Escape' && !lightboxId) onClose() }
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
-  }, [onClose])
+  }, [lightboxId, onClose])
 
   return <div className="album-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <article className="album-calendar-dialog" role="dialog" aria-modal="true" aria-labelledby="album-calendar-title">
@@ -522,17 +552,58 @@ function PhotoCalendarDialog({ locale, copy, babyId, remote = false, photos, pho
         {days.map((day) => {
           const dayPhotos = photosByDay.get(day.key) || []
           const active = day.key === selectedDay
-          return <button type="button" key={day.key} className={`album-calendar-day${day.inMonth ? '' : ' muted'}${active ? ' selected' : ''}${dayPhotos.length ? ' has-photos' : ''}`} onClick={() => onSelectDay(day.key)} aria-label={`${day.key}${dayPhotos.length ? ` · ${dayPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : ''}`}>
-            {dayPhotos[0] ? <LazyPhotoImage photo={dayPhotos[0]} babyId={babyId} remote={remote} alt="" /> : <span>{day.date.getDate()}</span>}
+          return <button type="button" key={day.key} className={`album-calendar-day${day.inMonth ? '' : ' muted'}${active ? ' selected' : ''}${dayPhotos.length ? ' has-photos' : ''}`} onClick={() => selectDay(day.key)} aria-label={`${day.key}${dayPhotos.length ? ` · ${dayPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : ''}`}>
+            {dayPhotos[0] && <LazyPhotoImage photo={dayPhotos[0]} babyId={babyId} remote={remote} alt="" />}
+            <span>{day.date.getDate()}</span>
             {dayPhotos.length > 0 && <b>{dayPhotos.length}</b>}
-            {!dayPhotos.length && <small>{day.date.getDate()}</small>}
           </button>
         })}
       </div>
       <section className="album-calendar-day-panel" aria-live="polite">
         <header><strong>{selectedDay}</strong><span>{selectedPhotos.length ? `${selectedPhotos.length} ${isEnglish ? 'photos' : '张照片'}` : copy.calendarEmpty}</span></header>
-        {selectedPhotos.length > 0 && <div className="album-calendar-photo-list">{selectedPhotos.map((photo) => <button type="button" key={photo.id} onClick={() => onSelectPhoto(photo)}><LazyPhotoImage photo={photo} babyId={babyId} remote={remote} alt="" /><span>{displayTime(photo.takenAt, locale)}</span></button>)}</div>}
+        {selectedPhotos.length > 0 && <div className="album-calendar-photo-list">{visibleSelectedPhotos.map((photo) => <button type="button" key={photo.id} onClick={() => setLightboxId(photo.id)} aria-label={`${isEnglish ? 'View large photo' : '查看大图'} · ${displayTime(photo.takenAt, locale)}`}><LazyPhotoImage photo={photo} babyId={babyId} remote={remote} alt="" /><span>{displayTime(photo.takenAt, locale)}</span></button>)}{visiblePhotoCount < selectedPhotos.length && <button type="button" className="album-calendar-load-more" onClick={() => setVisiblePhotoCount((count) => count + DAY_PHOTO_PAGE_SIZE)}>{copy.loadMorePhotos}</button>}</div>}
       </section>
     </article>
+    {lightboxId && <PhotoLightbox key={lightboxId} photos={selectedPhotos} photoId={lightboxId} babyId={babyId} remote={remote} locale={locale} copy={copy} onChange={setLightboxId} onClose={() => setLightboxId('')} />}
+  </div>
+}
+
+function PhotoLightbox({ photos, photoId, babyId, remote, locale, copy, onChange, onClose }) {
+  const index = Math.max(0, photos.findIndex((photo) => photo.id === photoId))
+  const photo = photos[index] || null
+  const [failed, setFailed] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const image = usePhotoUrl(photo, { babyId, remote, eager: true, variant: 'display', refreshKey })
+
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowLeft' && index > 0) onChange(photos[index - 1].id)
+      if (event.key === 'ArrowRight' && index < photos.length - 1) onChange(photos[index + 1].id)
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [index, onChange, onClose, photos])
+
+  if (!photo) return null
+  const retry = () => {
+    setFailed(false)
+    setLoaded(false)
+    setRefreshKey((current) => current + 1)
+  }
+
+  return <div className="album-lightbox-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <section className="album-lightbox" data-testid="album-lightbox" role="dialog" aria-modal="true" aria-label={locale === 'en-US' ? 'Large photo viewer' : '照片大图'}>
+      <header><span>{index + 1} / {photos.length}</span><button type="button" autoFocus onClick={onClose} aria-label={copy.closeViewer}><X size={20} /></button></header>
+      <div className="album-lightbox-stage">
+        <button type="button" className="album-lightbox-nav previous" onClick={() => onChange(photos[index - 1].id)} disabled={index === 0} aria-label={copy.previousPhoto}><ChevronLeft size={28} /></button>
+        {!loaded && !failed && <div className="album-lightbox-loading"><Clock3 size={26} /><span>{copy.loading}</span></div>}
+        {failed && <div className="album-lightbox-failed"><p>{copy.imageLoadError}</p><button type="button" onClick={retry}><RefreshCw size={16} />{copy.retry}</button></div>}
+        <img key={`${photo.id}-${refreshKey}`} src={image.url || undefined} alt={`${photo.fileName || ''} · ${displayTime(photo.takenAt, locale)}`} onLoad={() => setLoaded(true)} onError={() => setFailed(true)} hidden={failed} />
+        <button type="button" className="album-lightbox-nav next" onClick={() => onChange(photos[index + 1].id)} disabled={index === photos.length - 1} aria-label={copy.nextPhoto}><ChevronRight size={28} /></button>
+      </div>
+      <footer><strong>{displayTime(photo.takenAt, locale)}</strong><span>{photo.fileName || ''}</span></footer>
+    </section>
   </div>
 }

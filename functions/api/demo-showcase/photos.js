@@ -1,7 +1,9 @@
 import { getShowcaseSession } from '../../_shared/demoShowcase.js'
 import { json } from '../../_shared/auth.js'
+import { photoVariantUrls } from '../../_shared/photoVariants.js'
 
 function photo(row) {
+  const contentUrl = `/api/demo-showcase/photos/${encodeURIComponent(row.id)}`
   return {
     id: row.id,
     babyId: row.baby_id,
@@ -10,7 +12,8 @@ function photo(row) {
     takenAt: row.taken_at,
     timeSource: row.time_source,
     createdAt: row.created_at,
-    contentUrl: `/api/demo-showcase/photos/${encodeURIComponent(row.id)}`,
+    contentUrl,
+    ...photoVariantUrls(contentUrl),
   }
 }
 
@@ -21,7 +24,7 @@ export async function onRequestGet({ request, env }) {
     SELECT id, baby_id, content_type, size_bytes, taken_at, time_source, created_at
     FROM baby_photos
     WHERE baby_id = ?
-    ORDER BY created_at, id
+    ORDER BY taken_at DESC, created_at DESC, id DESC
   `).bind(session.babyId).all()
   return json({ photos: (rows.results || []).map(photo) }, 200, { 'cache-control': 'private, no-store' })
 }

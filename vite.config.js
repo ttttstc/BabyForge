@@ -102,6 +102,7 @@ function localVisualTestPlugin() {
       const household = { id: 'visual-test-household', name: '视觉测试家庭', role: 'owner', baby: null }
       const visualEvents = new Map()
       const visualPhotos = new Map()
+      let visualPhotoSequence = 0
       const visualDrafts = new Map()
       const hasVisualSession = (request) => /(?:^|;\s*)babyforge_visual_session=1(?:;|$)/.test(String(request.headers.cookie || ''))
       const rejectUnauthenticated = (request, response) => {
@@ -252,7 +253,9 @@ function localVisualTestPlugin() {
         const photoId = url.pathname.split('/').filter(Boolean).pop()
         if (request.method === 'GET') {
           const babyId = url.searchParams.get('babyId')
-          const photos = [...visualPhotos.values()].filter((photo) => !babyId || photo.babyId === babyId)
+          const photos = [...visualPhotos.values()]
+            .filter((photo) => !babyId || photo.babyId === babyId)
+            .sort((left, right) => Date.parse(right.takenAt) - Date.parse(left.takenAt) || Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.id.localeCompare(left.id))
           sendJson(response, 200, { photos })
           return
         }
@@ -267,14 +270,17 @@ function localVisualTestPlugin() {
           const field = (name) => raw.match(new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]*)`))?.[1] || ''
           const fileName = raw.match(/filename="([^"]+)"/)?.[1] || 'photo.png'
           const photo = {
-            id: `visual-photo-${visualPhotos.size + 1}`,
+            id: `visual-photo-${++visualPhotoSequence}`,
             babyId: field('babyId'),
             fileName,
             contentType: raw.match(/Content-Type:\s*([^\\r\\n]+)/i)?.[1] || contentType.split(';')[0] || 'image/png',
             sizeBytes: Buffer.byteLength(raw),
             takenAt: field('takenAt') || new Date().toISOString(),
             timeSource: field('timeSource') || 'upload',
+            createdAt: new Date().toISOString(),
             contentUrl: '/assets/login/login-hero.png',
+            thumbnailUrl: '/assets/login/login-hero.png',
+            displayUrl: '/assets/login/login-hero.png',
           }
           visualPhotos.set(photo.id, photo)
           sendJson(response, 201, { photo })

@@ -1,6 +1,7 @@
 import { json, requireSession } from '../_shared/auth.js'
 import { accessibleBaby } from '../_shared/care.js'
 import { appAssetUrl, appUpdateUrl, scheduleUpdateNotifications } from '../_shared/updateNotifications.js'
+import { photoVariantUrls } from '../_shared/photoVariants.js'
 
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024
 const MAX_MULTIPART_BYTES = MAX_PHOTO_BYTES + 1024 * 1024
@@ -10,6 +11,7 @@ const EXTENSION_TYPES = {
 }
 
 function photoFromRow(row) {
+  const contentUrl = `/api/photos/${encodeURIComponent(row.id)}`
   return {
     id: row.id,
     babyId: row.baby_id,
@@ -19,7 +21,8 @@ function photoFromRow(row) {
     takenAt: row.taken_at,
     timeSource: row.time_source,
     createdAt: row.created_at,
-    contentUrl: `/api/photos/${encodeURIComponent(row.id)}`,
+    contentUrl,
+    ...photoVariantUrls(contentUrl),
   }
 }
 
@@ -43,7 +46,7 @@ export async function onRequestGet({ request, env }) {
   if (!babyId) return json({ photos: [] })
   const baby = await accessibleBaby(env, auth.session, babyId)
   if (!baby || baby.status === 'detached') return json({ error: '无权访问该宝宝档案' }, 403)
-  const rows = await env.DB.prepare('SELECT * FROM baby_photos WHERE baby_id = ? ORDER BY created_at, id').bind(baby.id).all()
+  const rows = await env.DB.prepare('SELECT * FROM baby_photos WHERE baby_id = ? ORDER BY taken_at DESC, created_at DESC, id DESC').bind(baby.id).all()
   return json({ photos: (rows.results || []).map(photoFromRow) })
 }
 
