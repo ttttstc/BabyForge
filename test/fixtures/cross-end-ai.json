@@ -1,0 +1,14 @@
+{
+  "input": {
+    "contract": "babyforge.naiba.agent",
+    "contractVersion": "1.3.0",
+    "events": [
+      { "type": "meta", "requestId": "request-cross-end", "reason": "shared-fixture" },
+      { "type": "activity", "label": "正在核对已确认事实" },
+      { "type": "message", "delta": "这是基于共享事实的回答。" },
+      { "type": "sources", "items": [{ "id": "source-1", "version": "1", "url": "https://example.test/source", "title": "示例来源", "authority": "fixture", "kind": "knowledge" }] },
+      { "type": "done" }
+    ]
+  },
+  "expected": { "contract": "babyforge.naiba.agent", "requestId": "request-cross-end", "text": "这是基于共享事实的回答。", "activity": "正在核对已确认事实", "sourceCount": 1, "fallback": false }
+}

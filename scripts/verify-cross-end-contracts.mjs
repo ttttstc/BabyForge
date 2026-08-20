@@ -4,7 +4,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const projectRoot = path.resolve(scriptDirectory, '..')
+const projectRoot = path.resolve(process.env.CROSS_END_ROOT || path.resolve(scriptDirectory, '..'))
 const failures = []
 let checks = 0
 
@@ -14,8 +14,13 @@ function check(label, condition, detail = '') {
 }
 
 function read(relativePath) {
+  const override = relativePath === 'src/app/router.js'
+    ? process.env.CROSS_END_ROUTER_SOURCE
+    : relativePath === 'harmony/entry/src/main/ets/pages/Index.ets'
+      ? process.env.CROSS_END_NATIVE_INDEX
+      : null
   try {
-    return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8')
+    return fs.readFileSync(override || path.join(projectRoot, relativePath), 'utf8')
   } catch (error) {
     failures.push(`${relativePath}: 无法读取 (${error.message})`)
     return ''
@@ -23,7 +28,16 @@ function read(relativePath) {
 }
 
 function parse(relativePath) {
-  const text = read(relativePath)
+  const override = relativePath === 'contracts/native-capability-manifest.v1.json'
+    ? process.env.CROSS_END_NATIVE_MANIFEST
+    : relativePath === 'contracts/desktop-capability-manifest.v1.json'
+      ? process.env.CROSS_END_DESKTOP_MANIFEST
+      : relativePath === 'contracts/capability-registry.v1.json'
+        ? process.env.CROSS_END_CAPABILITY_REGISTRY
+        : null
+  const text = override
+    ? (() => { try { return fs.readFileSync(override, 'utf8') } catch (error) { failures.push(`${relativePath}: 无法读取覆盖文件 (${error.message})`); return '' } })()
+    : read(relativePath)
   try {
     return JSON.parse(text)
   } catch (error) {
@@ -42,6 +56,7 @@ function unique(values) {
 
 const desktop = parse('contracts/desktop-capability-manifest.v1.json')
 const native = parse('contracts/native-capability-manifest.v1.json')
+const registry = parse('contracts/capability-registry.v1.json')
 const writes = parse('contracts/native-write-contract.v1.json')
 const fixtures = parse('contracts/cross-end-fixtures.v1.json')
 const contractPaths = [
@@ -55,6 +70,7 @@ const contractPaths = [
 
 check('桌面能力清单必须是 1.0.0', desktop?.contract === 'babyforge.desktop.capabilities' && desktop?.contractVersion === '1.0.0')
 check('原生能力清单必须是 1.0.0', native?.contract === 'babyforge.native.capabilities' && native?.contractVersion === '1.0.0')
+check('能力注册表必须是 1.0.0', registry?.contract === 'babyforge.capability.registry' && registry?.contractVersion === '1.0.0')
 check('跨端写入合同必须是 1.0.0', writes?.contract === 'babyforge.native.writes' && writes?.contractVersion === '1.0.0')
 
 const desktopSurfaces = list(desktop?.surfaces)
@@ -70,6 +86,20 @@ const desktopById = new Map(desktopSurfaces.map((surface) => [surface?.id, surfa
 const nativeById = new Map(nativeSurfaces.map((surface) => [surface?.id, surface]))
 const desktopCapabilities = []
 const nativeCapabilities = []
+
+const routerSource = read('src/app/router.js')
+const actualRoutes = new Map([...routerSource.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9_]*)\s*:\s*['"]([^'"]+)['"],?$/gm)].map((match) => [match[1], match[2]]))
+const registeredRoutes = registry?.routes && typeof registry.routes === 'object' ? registry.routes : {}
+const ignoredRoutes = registry?.ignoredRoutes && typeof registry.ignoredRoutes === 'object' ? registry.ignoredRoutes : {}
+const declaredRouteKeys = [...new Set([...Object.keys(registeredRoutes), ...Object.keys(ignoredRoutes)])]
+check('路由注册表必须覆盖 router.js 的所有实际入口', JSON.stringify([...actualRoutes.keys()].sort()) === JSON.stringify(declaredRouteKeys.sort()), `实际=${[...actualRoutes.keys()].join(',')} 注册=${declaredRouteKeys.join(',')}`)
+check('路由注册表不得声明不存在的入口', declaredRouteKeys.every((key) => actualRoutes.has(key)))
+check('被忽略的路由必须在 router.js 中存在且有理由', Object.keys(ignoredRoutes).every((key) => !actualRoutes.has(key) || typeof ignoredRoutes[key] === 'string' && ignoredRoutes[key].length > 0))
+for (const surface of desktopSurfaces) {
+  const routeKeys = list(surface?.routeKeys)
+  check(`桌面 ${surface?.id || '(missing)'} 的路由必须来自权威注册表`, routeKeys.every((key) => registeredRoutes[key] === surface.id || (surface.id === 'album' && key === 'today')), `${routeKeys.join(',')}`)
+  check(`桌面 ${surface?.id || '(missing)'} 必须覆盖注册表归属路由`, Object.entries(registeredRoutes).filter(([, owner]) => owner === surface.id).every(([key]) => routeKeys.includes(key)))
+}
 
 for (const surface of desktopSurfaces) {
   const id = surface?.id || '(missing)'
@@ -102,6 +132,11 @@ for (const surface of nativeSurfaces) {
   if (surface?.platform === 'native') {
     check(`原生 ${id} 必须有 ArkUI 入口`, typeof surface?.entry === 'string' && surface.entry.length > 0)
     check(`原生 ${id} 必须声明实现证据`, list(surface?.nativeEvidence).length > 0)
+    const evidenceMap = surface?.capabilityEvidence && typeof surface.capabilityEvidence === 'object' ? surface.capabilityEvidence : {}
+    check(`原生 ${id} 必须为每项能力绑定独立证据`, JSON.stringify(Object.keys(evidenceMap).sort()) === JSON.stringify(capabilities.slice().sort()))
+    for (const capability of capabilities) {
+      check(`原生 ${id}/${capability} 必须有独立证据`, list(evidenceMap[capability]).length > 0)
+    }
   } else {
     check(`原生 ${id} 的平台边界必须有理由`, typeof surface?.native?.reason === 'string' && surface.native.reason.length > 0)
   }
@@ -115,14 +150,20 @@ check('原生能力 id 必须唯一', unique(nativeCapabilities))
 const nativeSource = [
   read('harmony/entry/src/main/ets/pages/Index.ets'),
   read('harmony/entry/src/main/ets/data/NativeResourceAdapter.ets'),
-  read('harmony/entry/src/main/ets/pages/LegacyWeb.ets'),
 ].join('\n')
 for (const surface of nativeSurfaces.filter((item) => item?.platform === 'native')) {
   for (const evidence of list(surface.nativeEvidence)) {
     check(`原生 ${surface.id} 的证据必须存在`, nativeSource.includes(evidence), `${evidence}`)
   }
+  for (const [capability, evidenceList] of Object.entries(surface.capabilityEvidence || {})) {
+    for (const evidence of list(evidenceList)) check(`原生 ${surface.id}/${capability} 的独立证据必须存在`, nativeSource.includes(evidence), `${evidence}`)
+  }
 }
-check('原生一级业务入口不得复制 React/桌面路由/展示常量', !nativeSource.includes('import React') && !nativeSource.includes('ROUTES.') && !nativeSource.includes('createDemoWorkspace') && !nativeSource.includes('../src') && !nativeSource.includes('src/domain'))
+const forbiddenNativePatterns = [
+  'import React', 'ROUTES.', 'createDemoWorkspace', '../src', 'src/domain',
+  'className=', 'data-testid=', 'href="#/', "href='#/", 'from \'../features/', 'from "../features/'
+]
+check('原生一级业务入口不得复制 React/桌面路由/展示常量', forbiddenNativePatterns.every((pattern) => !nativeSource.includes(pattern)), forbiddenNativePatterns.filter((pattern) => nativeSource.includes(pattern)).join(', '))
 check('原生默认入口不得把 ArkWeb 作为业务承载', !read('harmony/entry/src/main/ets/pages/Index.ets').includes('Web({') && !read('harmony/entry/src/main/ets/pages/Index.ets').includes('@kit.ArkWeb'))
 
 for (const [relativePath, supportedVersion] of contractPaths) {
@@ -130,7 +171,7 @@ for (const [relativePath, supportedVersion] of contractPaths) {
   check(`${relativePath} 必须声明受支持的合同版本`, contract?.contractVersion === supportedVersion)
 }
 check('写入合同必须覆盖创建、纠正、作废', ['create-care-event', 'correct-care-event', 'void-care-event'].every((id) => list(writes?.operations).some((operation) => operation?.id === id)))
-check('写入合同必须声明幂等和不明响应边界', typeof writes?.operations?.[0]?.idempotency === 'string' && typeof writes?.operations?.[0]?.ambiguousResponse === 'string')
+check('每个写入操作必须声明幂等和不明响应边界', list(writes?.operations).every((operation) => typeof operation?.idempotency === 'string' && typeof operation?.ambiguousResponse === 'string' && typeof operation?.reconciliation === 'string'))
 check('写入合同必须声明冲突与离线错误语义', writes?.errorSemantics?.conflict === 'EVENT_CONFLICT' && writes?.errorSemantics?.retryableNetwork === 'NETWORK_UNAVAILABLE' && typeof writes?.errorSemantics?.offlineFacts === 'string')
 const webAdapter = read('src/domain/nativeResourceAdapter.js')
 const arktsAdapter = read('harmony/entry/src/main/ets/data/NativeResourceAdapter.ets')

@@ -1,0 +1,17 @@
+{
+  "input": {
+    "user": { "id": "user-cross-end", "email": "parent@example.test", "nickname": "家长", "emailVerified": true },
+    "baby": { "id": "baby-cross-end", "nickname": "小满", "birthDate": "2026-01-01", "locale": "zh-CN" },
+    "permissions": { "role": "owner", "readOnly": false, "canEdit": true, "canManageHousehold": true },
+    "subscription": { "enabled": true },
+    "contacts": [{ "id": "contact-1", "email": "doctor@example.test", "label": "医生", "enabled": true }],
+    "visitorLinks": [{ "id": "visitor-1", "status": "active", "permissions": { "readOnly": true, "deidentified": true } }],
+    "llmConfig": { "configured": true, "baseUrl": "https://llm.example.test", "model": "fixture-model", "protocol": "openai-compatible", "apiKeyMasked": "••••1234" },
+    "sync": { "status": "synced", "retryable": false },
+    "localCache": { "available": true, "clearable": true },
+    "locale": "zh-CN",
+    "dataTimezone": "Asia/Shanghai",
+    "now": "2026-08-18T04:00:00.000Z"
+  },
+  "expected": { "contract": "babyforge.native.settings", "userId": "user-cross-end", "babyId": "baby-cross-end", "timezone": "Asia/Shanghai", "contactCount": 1, "visitorLinkCount": 1, "apiKeyMasked": "••••1234", "syncStatus": "synced" }
+}

@@ -180,7 +180,11 @@ function authorizedEventFixture(version = 1) {
 test('authorized correction and void enforce version conflicts and preserve tombstones', async () => {
   const stale = authorizedEventFixture(2)
   const staleRequest = new Request('https://babyforge.test/api/events/event-1', { method: 'PATCH', headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json' }, body: JSON.stringify({ version: 1, payload: { note: 'new' } }) })
-  assert.equal((await onRequestPatch({ request: staleRequest, env: stale.env, params: { id: 'event-1' } })).status, 409)
+  const staleResponse = await onRequestPatch({ request: staleRequest, env: stale.env, params: { id: 'event-1' } })
+  assert.equal(staleResponse.status, 409)
+  const staleBody = await staleResponse.json()
+  assert.equal(staleBody.code, 'EVENT_CONFLICT')
+  assert.equal(staleBody.current.id, 'event-1')
   assert.equal(stale.current.status, 'active')
 
   const fixture = authorizedEventFixture()
@@ -192,10 +196,15 @@ test('authorized correction and void enforce version conflicts and preserve tomb
 
   const staleDelete = authorizedEventFixture(2)
   const deleteRequest = new Request('https://babyforge.test/api/events/event-1', { method: 'DELETE', headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json' }, body: JSON.stringify({ version: 1 }) })
-  assert.equal((await onRequestDelete({ request: deleteRequest, env: staleDelete.env, params: { id: 'event-1' } })).status, 409)
+  const staleDeleteResponse = await onRequestDelete({ request: deleteRequest, env: staleDelete.env, params: { id: 'event-1' } })
+  assert.equal(staleDeleteResponse.status, 409)
+  assert.equal((await staleDeleteResponse.json()).code, 'EVENT_CONFLICT')
 
   const voided = authorizedEventFixture()
   const voidRequest = new Request('https://babyforge.test/api/events/event-1', { method: 'DELETE', headers: { cookie: 'babyforge_session=token', 'content-type': 'application/json' }, body: JSON.stringify({ version: 1 }) })
   assert.equal((await onRequestDelete({ request: voidRequest, env: voided.env, params: { id: 'event-1' } })).status, 200)
   assert.equal(voided.current.status, 'voided')
+  const repeatedVoid = await onRequestDelete({ request: voidRequest, env: voided.env, params: { id: 'event-1' } })
+  assert.equal(repeatedVoid.status, 409)
+  assert.equal((await repeatedVoid.json()).code, 'EVENT_CONFLICT')
 })

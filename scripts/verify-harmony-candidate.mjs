@@ -33,6 +33,43 @@ function readHapEntry(hapPath, entryName) {
   return result.status === 0 ? result.stdout : ''
 }
 
+function listHapEntries(hapPath) {
+  const result = spawnSync('tar', ['-tf', hapPath], { encoding: 'utf8', windowsHide: true })
+  if (result.status !== 0) return []
+  return String(result.stdout || '').split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)
+}
+
+function scanHapSecurity(hapPath) {
+  const entries = listHapEntries(hapPath)
+  const problems = []
+  if (entries.length === 0) return ['无法列出 HAP archive entries']
+  const unsafeName = /(?:^|\/)(?:[^/]*(?:\.p12|\.pfx|\.jks|\.pem|\.key)|[^/]*(?:private|credential|keystore)[^/]*)$/i
+  const textEntry = /\.(?:json|json5|xml|txt|js|ets|conf|ini|yaml|yml|properties|html|map)$/i
+  const secretPatterns = [
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
+    /(?:clientSecret|apiKey|accessToken|privateKey|storePassword|keyPassword)["']?\s*[:=]\s*["'][^"']{12,}["']/i,
+    /\b(?:sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9_]{20,})\b/,
+    /\b(?:parent@example\.com|user-fixture|baby-fixture|visual-test-user|token-fixture)\b/i,
+  ]
+  let scannedBytes = 0
+  for (const entry of entries) {
+    if (entry.includes('../') || entry.startsWith('/')) problems.push(`不安全的 archive 路径：${entry}`)
+    if (unsafeName.test(entry)) problems.push(`候选包包含签名/私钥材料文件：${entry}`)
+    if (!textEntry.test(entry) || scannedBytes >= 10 * 1024 * 1024) continue
+    const result = spawnSync('tar', ['-xOf', hapPath, entry], { encoding: 'utf8', maxBuffer: 1024 * 1024, windowsHide: true })
+    if (result.status !== 0) continue
+    const text = String(result.stdout || '').slice(0, 1024 * 1024)
+    scannedBytes += Buffer.byteLength(text)
+    for (const pattern of secretPatterns) {
+      if (pattern.test(text)) {
+        problems.push(`候选包文本资源命中秘密/真实数据标记：${entry}`)
+        break
+      }
+    }
+  }
+  return [...new Set(problems)]
+}
+
 const candidate = parse(read('contracts/harmony-candidate.v1.json'), 'contracts/harmony-candidate.v1.json')
 const appConfig = parse(read('harmony/AppScope/app.json5'), 'harmony/AppScope/app.json5')
 const moduleConfig = parse(read('harmony/entry/src/main/module.json5'), 'harmony/entry/src/main/module.json5')
@@ -73,6 +110,8 @@ if (!hapPath) {
     check('候选 HAP 必须只面向 phone', JSON.stringify(hapModule?.module?.deviceTypes || []) === JSON.stringify(candidate.deviceTypes))
     check('候选 HAP EntryAbility 必须锁定 portrait', hapAbility?.orientation === candidate.orientation)
   }
+  const securityProblems = scanHapSecurity(hapPath)
+  check('候选 HAP archive 不得包含私钥、秘密或真实数据标记', securityProblems.length === 0, securityProblems.join('；'))
   const signed = /(?:^|[-_])signed\.hap$/i.test(path.basename(hapPath))
   console.log(`候选 HAP 已检查：${path.relative(projectRoot, hapPath)}（${signed ? '文件名标记 signed，仍需 hap-sign-tool 实际验签' : 'unsigned；签名与真机状态未验证'}）`)
 }

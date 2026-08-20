@@ -712,13 +712,21 @@ struct Index {
   }
 
   private async voidFact(fact: NativeTodayFact): Promise<void> {
-    if (this.adapter === null || this.busy) return;
+    const adapter = this.adapter;
+    const today = this.today;
+    if (adapter === null || today === null || this.busy) return;
     this.busy = true;
     try {
-      await this.adapter.voidCareEvent(fact.id, fact.version);
+      await adapter.voidCareEvent(fact.id, fact.version);
       this.feedbackMessage = '事实已永久作废；原记录人、版本与审计关系保留。';
       await this.refreshAfterMutation(fact.category === 'growth_measurement', fact.category === 'vaccine');
     } catch (error) {
+      const found = await adapter.findCareEvent(String(today.baby['id']), fact.id).catch(() => null);
+      if (found !== null && String((found as Record<string, Object>)['status'] || '') === 'voided') {
+        this.feedbackMessage = '事实已永久作废；服务端已确认，原记录人、版本与审计关系保留。';
+        await this.refreshAfterMutation(fact.category === 'growth_measurement', fact.category === 'vaccine');
+        return;
+      }
       this.feedbackMessage = error instanceof Error ? error.message : '作废未完成，请刷新后核对。';
     } finally {
       this.busy = false;
@@ -748,6 +756,20 @@ struct Index {
       this.undoCorrectionOriginal = null;
       await this.refreshAfterMutation(undoCategory === 'growth_measurement', undoCategory === 'vaccine');
     } catch (error) {
+      const babyId = String(this.today?.baby['id'] || '');
+      const found = babyId.length > 0 ? await this.adapter.findCareEvent(babyId, this.undoEventId).catch(() => null) : null;
+      const foundStatus = found === null ? '' : String((found as Record<string, Object>)['status'] || '');
+      const reconciled = this.undoCorrectionOriginal !== null ? foundStatus === 'active' : foundStatus === 'voided';
+      if (reconciled) {
+        this.feedbackMessage = this.undoCorrectionOriginal !== null
+          ? '纠正已撤销；服务端已确认原事实恢复。'
+          : '事实已作废；服务端已确认，历史记录人和版本仍保留。';
+        this.undoEventId = '';
+        this.undoEventCategory = '';
+        this.undoCorrectionOriginal = null;
+        await this.refreshAfterMutation(undoCategory === 'growth_measurement', undoCategory === 'vaccine');
+        return;
+      }
       this.feedbackMessage = error instanceof Error ? error.message : '撤销未完成，请刷新时间线核对。';
     } finally {
       this.busy = false;

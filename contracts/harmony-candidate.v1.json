@@ -15,6 +15,7 @@
   "verification": {
     "source": "verify-harmony.mjs --source-only",
     "candidate": "verify-harmony-candidate.mjs",
+    "archiveSecurity": "candidate HAP entries and text resources are scanned for signing material, secrets, and fixture/real-user markers",
     "signature": "only verified when hap-sign-tool.jar is supplied",
     "device": "only verified by a connected authorized HarmonyOS device"
   }

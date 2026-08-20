@@ -121,8 +121,8 @@ const normalizeExperience = ({ baby, experienceFeed, now }) => {
 export function validateNativeExploreModel(model) {
   if (!model || typeof model !== 'object') throw new TypeError('Native explore model must be an object')
   if (model.contract !== NATIVE_EXPLORE_CONTRACT) throw new TypeError('Invalid native explore contract')
-  if (!model.contractVersion || !model.metadata?.generatedAt || !model.metadata?.timezone) {
-    throw new TypeError('Missing native explore metadata')
+  if (model.contractVersion !== NATIVE_EXPLORE_CONTRACT_VERSION || !model.metadata?.generatedAt || !model.metadata?.timezone) {
+    throw new TypeError('Invalid native explore contract metadata')
   }
   if (!model.baby?.id || !model.permissions) throw new TypeError('Missing native explore identity')
   for (const key of ['vaccines', 'diseases', 'diseaseSources', 'organs', 'anatomy', 'experience', 'experienceCategories']) {

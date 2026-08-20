@@ -21,8 +21,8 @@ const sanitizeLlmConfig = config => {
 export function validateNativeSettingsModel(model) {
   if (!model || typeof model !== 'object') throw new TypeError('Native settings model must be an object')
   if (model.contract !== NATIVE_SETTINGS_CONTRACT) throw new TypeError('Invalid native settings contract')
-  if (!model.contractVersion || !model.metadata?.generatedAt || !model.metadata?.timezone) {
-    throw new TypeError('Missing native settings metadata')
+  if (model.contractVersion !== NATIVE_SETTINGS_CONTRACT_VERSION || !model.metadata?.generatedAt || !model.metadata?.timezone) {
+    throw new TypeError('Invalid native settings contract metadata')
   }
   if (!model.permissions || !model.user || !model.baby) throw new TypeError('Missing native settings identity')
   for (const key of ['contacts', 'visitorLinks']) {

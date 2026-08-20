@@ -3,10 +3,40 @@
   "contractVersion": "1.0.0",
   "fixtures": [
     {
+      "id": "bootstrap",
+      "path": "test/fixtures/cross-end-bootstrap.json",
+      "consumers": ["web", "harmony"],
+      "requiredFields": ["input", "expected", "contract", "household", "baby", "permissions"]
+    },
+    {
       "id": "today",
       "path": "test/fixtures/cross-end-today.json",
       "consumers": ["web", "harmony"],
-      "requiredFields": ["baby", "events", "photos", "permissions", "recorder", "timezone", "selectedDay", "now"]
+      "requiredFields": ["baby", "events", "photos", "permissions", "recorder", "timezone", "selectedDay", "now", "expected"]
+    },
+    {
+      "id": "growth",
+      "path": "test/fixtures/cross-end-growth.json",
+      "consumers": ["web", "harmony"],
+      "requiredFields": ["input", "expected", "measurements", "milestoneRecords", "carePlanItems", "adminTaskRecords", "permissions", "dataTimezone", "now"]
+    },
+    {
+      "id": "explore",
+      "path": "test/fixtures/cross-end-explore.json",
+      "consumers": ["web", "harmony"],
+      "requiredFields": ["input", "expected", "events", "experienceFeed", "permissions", "dataTimezone", "now"]
+    },
+    {
+      "id": "settings",
+      "path": "test/fixtures/cross-end-settings.json",
+      "consumers": ["web", "harmony"],
+      "requiredFields": ["input", "expected", "user", "baby", "permissions", "contacts", "visitorLinks", "sync", "localCache"]
+    },
+    {
+      "id": "ai",
+      "path": "test/fixtures/cross-end-ai.json",
+      "consumers": ["web", "harmony"],
+      "requiredFields": ["input", "expected", "contract", "contractVersion", "events"]
     }
   ]
 }

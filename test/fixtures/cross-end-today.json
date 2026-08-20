@@ -41,5 +41,15 @@
     }
   ],
   "tasks": [],
-  "carePlanItems": []
+  "carePlanItems": [],
+  "expected": {
+    "contract": "babyforge.native.today",
+    "babyId": "baby-cross-end",
+    "selectedDay": "2026-08-18",
+    "timezone": "Asia/Shanghai",
+    "feedingValue": 120,
+    "feedingUnit": "mL",
+    "photoId": "photo-cross-end",
+    "photoTakenAt": "2026-08-18T01:00:00.000Z"
+  }
 }

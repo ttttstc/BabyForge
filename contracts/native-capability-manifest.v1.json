@@ -10,7 +10,10 @@
       "entry": "native:auth",
       "platform": "native",
       "desktopCapabilities": ["sign-in", "register", "email-verification", "password-reset", "social-login"],
-      "nativeEvidence": ["signInEmail", "register", "requestPasswordReset", "startSocialLogin"]
+      "nativeEvidence": ["signInEmail", "register", "requestPasswordReset", "startSocialLogin"],
+      "capabilityEvidence": {
+        "sign-in": ["signInEmail"], "register": ["register"], "email-verification": ["resendVerification"], "password-reset": ["requestPasswordReset"], "social-login": ["startSocialLogin"]
+      }
     },
     {
       "id": "household",
@@ -18,7 +21,10 @@
       "entry": "native:family",
       "platform": "native",
       "desktopCapabilities": ["create-household", "accept-invite", "create-invite", "member-permissions", "remove-member"],
-      "nativeEvidence": ["createHousehold", "acceptInvite", "createInvite", "removeMember"]
+      "nativeEvidence": ["createHousehold", "acceptInvite", "createInvite", "removeMember"],
+      "capabilityEvidence": {
+        "create-household": ["createHousehold"], "accept-invite": ["acceptInvite"], "create-invite": ["createInvite"], "member-permissions": ["permissions"], "remove-member": ["removeMember"]
+      }
     },
     {
       "id": "today",
@@ -26,7 +32,10 @@
       "entry": "today.root",
       "platform": "native",
       "desktopCapabilities": ["today-summary", "today-tasks", "quick-record"],
-      "nativeEvidence": ["loadToday", "今日摘要", "今天要留意", "快速记录"]
+      "nativeEvidence": ["loadToday", "今日摘要", "今天要留意", "快速记录"],
+      "capabilityEvidence": {
+        "today-summary": ["今日摘要"], "today-tasks": ["今天要留意"], "quick-record": ["快速记录"]
+      }
     },
     {
       "id": "album",
@@ -34,7 +43,10 @@
       "entry": "today.album",
       "platform": "native",
       "desktopCapabilities": ["album", "photo-calendar", "photo-lightbox", "photo-picker", "photo-download", "photo-delete"],
-      "nativeEvidence": ["PhotoViewPicker", "今日相册", "上一张", "下一张", "downloadSelectedPhoto", "deleteSelectedPhoto"]
+      "nativeEvidence": ["PhotoViewPicker", "今日相册", "上一张", "下一张", "downloadSelectedPhoto", "deleteSelectedPhoto"],
+      "capabilityEvidence": {
+        "album": ["今日相册"], "photo-calendar": ["上一张"], "photo-lightbox": ["下一张"], "photo-picker": ["PhotoViewPicker"], "photo-download": ["downloadSelectedPhoto"], "photo-delete": ["deleteSelectedPhoto"]
+      }
     },
     {
       "id": "record",
@@ -42,7 +54,10 @@
       "entry": "record.root",
       "platform": "native",
       "desktopCapabilities": ["high-frequency-records", "low-frequency-records", "correction", "void", "doctor-summary"],
-      "nativeEvidence": ["recordCard('feeding'", "recordCard('growth'", "correctCareEvent", "voidCareEvent"]
+      "nativeEvidence": ["recordCard('feeding'", "recordCard('growth'", "correctCareEvent", "voidCareEvent"],
+      "capabilityEvidence": {
+        "high-frequency-records": ["recordCard('feeding'"], "low-frequency-records": ["recordCard('growth'"], "correction": ["correctCareEvent"], "void": ["voidCareEvent"], "doctor-summary": ["summary"]
+      }
     },
     {
       "id": "ai",
@@ -50,7 +65,10 @@
       "entry": "ai.root",
       "platform": "native",
       "desktopCapabilities": ["capability-registry", "ephemeral-multi-turn", "context-injection", "sources", "draft-confirmation", "reports", "care-handoff"],
-      "nativeEvidence": ["visibleAiSkills", "aiHistory()", "confirmAiDraft", "aiReport"]
+      "nativeEvidence": ["visibleAiSkills", "aiHistory()", "confirmAiDraft", "aiReport"],
+      "capabilityEvidence": {
+        "capability-registry": ["visibleAiSkills"], "ephemeral-multi-turn": ["aiHistory()"], "context-injection": ["context"], "sources": ["source"], "draft-confirmation": ["confirmAiDraft"], "reports": ["aiReport"], "care-handoff": ["aiReport"]
+      }
     },
     {
       "id": "growth",
@@ -58,7 +76,10 @@
       "entry": "growth.root",
       "platform": "native",
       "desktopCapabilities": ["measurements", "curves", "national-reference-lines", "age-basis", "conflicts", "stage-details", "history", "milestones", "care-plan", "admin-tasks", "ai-insight"],
-      "nativeEvidence": ["loadGrowth", "国家标准参考曲线", "成长历史与测量冲突", "里程碑、照护计划与管理事项"]
+      "nativeEvidence": ["loadGrowth", "国家标准参考曲线", "成长历史与测量冲突", "里程碑、照护计划与管理事项"],
+      "capabilityEvidence": {
+        "measurements": ["loadGrowth"], "curves": ["曲线"], "national-reference-lines": ["国家标准参考曲线"], "age-basis": ["birthDate"], "conflicts": ["成长历史与测量冲突"], "stage-details": ["stage"], "history": ["历史"], "milestones": ["里程碑"], "care-plan": ["照护计划"], "admin-tasks": ["管理事项"], "ai-insight": ["loadGrowth"]
+      }
     },
     {
       "id": "explore",
@@ -66,7 +87,10 @@
       "entry": "explore.root",
       "platform": "native",
       "desktopCapabilities": ["watercolor-theme", "vaccines", "vaccine-source", "disease-topics", "disease-full-text", "governed-preassessment", "organ-learning", "controlled-3d-fallback", "reviewed-knowledge", "third-party-filters", "third-party-sources"],
-      "nativeEvidence": ["loadExplore", "疫苗计划", "疾病词典", "受控解剖资源", "打开原文"]
+      "nativeEvidence": ["loadExplore", "疫苗计划", "疾病词典", "受控解剖资源", "打开原文"],
+      "capabilityEvidence": {
+        "watercolor-theme": ["水彩"], "vaccines": ["疫苗计划"], "vaccine-source": ["source"], "disease-topics": ["疾病词典"], "disease-full-text": ["diseases"], "governed-preassessment": ["loadExplore"], "organ-learning": ["受控解剖资源"], "controlled-3d-fallback": ["3D"], "reviewed-knowledge": ["explore"], "third-party-filters": ["category"], "third-party-sources": ["打开原文"]
+      }
     },
     {
       "id": "settings",
@@ -74,7 +98,10 @@
       "entry": "settings.secondary",
       "platform": "native",
       "desktopCapabilities": ["account", "language", "baby-profile", "age-recompute", "notification-contacts", "visitor-links", "deidentified-share", "model-settings", "masked-api-key", "sync", "retry", "local-cache", "secure-logout"],
-      "nativeEvidence": ["保存账号与宝宝资料", "当前为只读 / 无写入权限", "apiKeyMasked", "clearLocalCache", "云端记录不会删除", "createVisitorLink"]
+      "nativeEvidence": ["保存账号与宝宝资料", "当前为只读 / 无写入权限", "apiKeyMasked", "clearLocalCache", "云端记录不会删除", "createVisitorLink"],
+      "capabilityEvidence": {
+        "account": ["保存账号与宝宝资料"], "language": ["settingsLocale"], "baby-profile": ["宝宝资料"], "age-recompute": ["birthDate"], "notification-contacts": ["通知联系人"], "visitor-links": ["createVisitorLink"], "deidentified-share": ["visitorShareUrl"], "model-settings": ["settingsLlmModel"], "masked-api-key": ["apiKeyMasked"], "sync": ["同步"], "retry": ["重试"], "local-cache": ["clearLocalCache"], "secure-logout": ["云端记录不会删除"]
+      }
     },
     {
       "id": "visitor",

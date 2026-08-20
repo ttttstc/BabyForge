@@ -1,0 +1,17 @@
+{
+  "input": {
+    "baby": { "id": "baby-cross-end", "nickname": "小满", "birthDate": "2026-01-01", "growthAgeBasis": "chronological", "sex": "female" },
+    "measurements": [
+      { "id": "measurement-weight", "type": "weight", "value": 6.2, "unit": "kg", "measuredAt": "2026-08-17T02:00:00.000Z", "recordedAt": "2026-08-17T02:05:00.000Z", "status": "active" },
+      { "id": "measurement-length", "type": "length", "value": 64, "unit": "cm", "measuredAt": "2026-08-16T02:00:00.000Z", "recordedAt": "2026-08-16T02:05:00.000Z", "status": "active" }
+    ],
+    "milestoneRecords": [{ "id": "milestone-smile", "status": "done" }],
+    "carePlanItems": [{ "id": "plan-vitamin", "title": "维生素 D", "status": "pending" }],
+    "adminTaskRecords": [{ "id": "task-checkup", "status": "pending" }],
+    "permissions": { "role": "owner", "readOnly": false, "canEdit": true, "canManageHousehold": true },
+    "locale": "zh-CN",
+    "dataTimezone": "Asia/Shanghai",
+    "now": "2026-08-18T04:00:00.000Z"
+  },
+  "expected": { "contract": "babyforge.native.growth", "babyId": "baby-cross-end", "timezone": "Asia/Shanghai", "latestWeight": 6.2, "latestWeightUnit": "kg", "measurementCount": 2, "planId": "plan-vitamin", "permissionRole": "owner" }
+}

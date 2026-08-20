@@ -192,13 +192,24 @@ export class NativeResourceAdapter {
         }
       }
       if (responseCode < 200 || responseCode >= 300) {
-        const error = record(payload)['error'];
-        const errorValue: Record<string, Object> = error !== null && typeof error === 'object' ? record(error) : emptyRecord();
+        const rawError = record(payload)['error'];
+        const errorValue: Record<string, Object> = rawError !== null && typeof rawError === 'object' ? record(rawError) : emptyRecord();
+        const nestedCode = errorValue['code'];
+        const topLevelCode = record(payload)['code'];
+        const nestedMessage = errorValue['message'];
+        const topLevelMessage = typeof rawError === 'string' ? rawError : null;
+        const retryable = errorValue['retryable'];
         throw new NativeTransportError(
-          typeof errorValue['code'] === 'string' ? String(errorValue['code']) : 'SERVICE_ERROR',
-          typeof errorValue['message'] === 'string' ? String(errorValue['message']) : '请求未完成，请稍后重试。',
+          typeof nestedCode === 'string'
+            ? String(nestedCode)
+            : typeof topLevelCode === 'string'
+              ? String(topLevelCode)
+              : responseCode === 401 ? 'AUTH_REQUIRED' : 'SERVICE_ERROR',
+          typeof nestedMessage === 'string'
+            ? String(nestedMessage)
+            : topLevelMessage !== null ? topLevelMessage : '请求未完成，请稍后重试。',
           responseCode,
-          Boolean(errorValue['retryable']) || responseCode >= 500
+          Boolean(retryable) || Boolean(record(payload)['retryable']) || responseCode >= 500
         );
       }
       return payload;

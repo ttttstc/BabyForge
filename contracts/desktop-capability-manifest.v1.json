@@ -2,10 +2,14 @@
   "contract": "babyforge.desktop.capabilities",
   "contractVersion": "1.0.0",
   "sourceOfTruth": "src/app/router.js",
+  "ignoredRouteKeys": {
+    "harmonyPrototype": "开发期原生原型入口，不属于 Web 业务能力清单"
+  },
   "surfaces": [
     {
       "id": "auth",
       "entry": "#/login",
+      "routeKeys": ["login", "resetPassword"],
       "desktopCapabilities": ["sign-in", "register", "email-verification", "password-reset", "social-login"],
       "desktopEvidence": [
         { "file": "src/app/App.jsx", "contains": "ROUTES.login" },
@@ -15,6 +19,7 @@
     {
       "id": "household",
       "entry": "#/household",
+      "routeKeys": ["household", "onboarding"],
       "desktopCapabilities": ["create-household", "accept-invite", "create-invite", "member-permissions", "remove-member"],
       "desktopEvidence": [
         { "file": "src/app/router.js", "contains": "ROUTES.household" },
@@ -24,6 +29,7 @@
     {
       "id": "today",
       "entry": "#/today",
+      "routeKeys": ["today"],
       "desktopCapabilities": ["today-summary", "today-tasks", "quick-record"],
       "desktopEvidence": [
         { "file": "src/app/router.js", "contains": "ROUTES.today" },
@@ -33,6 +39,7 @@
     {
       "id": "album",
       "entry": "#/today (相册区域)",
+      "routeKeys": ["today"],
       "desktopCapabilities": ["album", "photo-calendar", "photo-lightbox", "photo-picker", "photo-download", "photo-delete"],
       "desktopEvidence": [
         { "file": "src/features/Workspace.jsx", "contains": "BabyAlbum" },
@@ -42,6 +49,7 @@
     {
       "id": "record",
       "entry": "#/records",
+      "routeKeys": ["records", "summary"],
       "desktopCapabilities": ["high-frequency-records", "low-frequency-records", "correction", "void", "doctor-summary"],
       "desktopEvidence": [
         { "file": "src/app/router.js", "contains": "ROUTES.records" },
@@ -51,6 +59,7 @@
     {
       "id": "growth",
       "entry": "#/growth",
+      "routeKeys": ["growth", "growthChart", "growthStage", "growthHistory", "stage"],
       "desktopCapabilities": ["measurements", "curves", "national-reference-lines", "age-basis", "conflicts", "stage-details", "history", "milestones", "care-plan", "admin-tasks", "ai-insight"],
       "desktopEvidence": [
         { "file": "src/app/router.js", "contains": "ROUTES.growth" },
@@ -60,6 +69,7 @@
     {
       "id": "explore",
       "entry": "#/health/* + #/experience",
+      "routeKeys": ["health", "healthVaccines", "healthDiseases", "healthOrgans", "vaccines", "jaundice", "pediatric", "experience"],
       "desktopCapabilities": ["watercolor-theme", "vaccines", "vaccine-source", "disease-topics", "disease-full-text", "governed-preassessment", "organ-learning", "controlled-3d-fallback", "reviewed-knowledge", "third-party-filters", "third-party-sources"],
       "desktopEvidence": [
         { "file": "src/app/App.jsx", "contains": "PediatricDiseasesView" },
@@ -69,6 +79,7 @@
     {
       "id": "ai",
       "entry": "#/naiba-ai",
+      "routeKeys": ["naibaAi"],
       "desktopCapabilities": ["capability-registry", "ephemeral-multi-turn", "context-injection", "sources", "draft-confirmation", "reports", "care-handoff"],
       "desktopEvidence": [
         { "file": "src/app/router.js", "contains": "ROUTES.naibaAi" },
@@ -78,6 +89,7 @@
     {
       "id": "settings",
       "entry": "#/settings",
+      "routeKeys": ["settings"],
       "desktopCapabilities": ["account", "language", "baby-profile", "age-recompute", "notification-contacts", "visitor-links", "deidentified-share", "model-settings", "masked-api-key", "sync", "retry", "local-cache", "secure-logout"],
       "desktopEvidence": [
         { "file": "src/app/router.js", "contains": "ROUTES.settings" },
@@ -87,6 +99,7 @@
     {
       "id": "visitor",
       "entry": "#/visit/:token",
+      "routeKeys": ["visitor"],
       "desktopCapabilities": ["visitor-view", "visitor-redaction", "visitor-expiry"],
       "desktopEvidence": [
         { "file": "src/app/router.js", "contains": "ROUTES.visitor" },

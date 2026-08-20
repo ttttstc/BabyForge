@@ -40,11 +40,21 @@ function parseBody(response, body) {
 }
 
 function readErrorBody(response, body) {
+  if (typeof body?.error === 'string') return body.error
   if (body?.error?.message) return body.error.message
   if (response.status === 401) return '登录状态已失效，请重新登录。'
   if (response.status === 403) return '当前账号没有执行此操作的权限。'
   if (response.status >= 500) return '共享业务服务暂时不可用，请重试。'
   return '请求未完成，请检查输入后重试。'
+}
+
+function normalizeServiceError(payload, response) {
+  const rawError = payload?.error
+  const error = rawError && typeof rawError === 'object' ? rawError : {}
+  const code = error.code || payload?.code || (response.status === 401 ? 'AUTH_REQUIRED' : 'SERVICE_ERROR')
+  const retryable = Boolean(error.retryable ?? payload?.retryable) || response.status >= 500
+  const details = error.details || (payload?.current ? { current: payload.current } : null)
+  return { code, retryable, details }
 }
 
 export function createNativeResourceClient({ fetchImpl = globalThis.fetch, baseUrl = '', timezone = 'Asia/Shanghai' } = {}) {
@@ -68,10 +78,11 @@ export function createNativeResourceClient({ fetchImpl = globalThis.fetch, baseU
     let payload = {}
     try { payload = await response.json() } catch { /* handled below */ }
     if (!response.ok) {
+      const serviceError = normalizeServiceError(payload, response)
       throw new NativeResourceClientError(
-        payload?.error?.code || (response.status === 401 ? 'AUTH_REQUIRED' : 'SERVICE_ERROR'),
+        serviceError.code,
         readErrorBody(response, payload),
-        { status: response.status, retryable: Boolean(payload?.error?.retryable) || response.status >= 500, details: payload?.error?.details || null },
+        { status: response.status, retryable: serviceError.retryable, details: serviceError.details },
       )
     }
     return payload

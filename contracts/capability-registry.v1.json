@@ -1,0 +1,33 @@
+{
+  "contract": "babyforge.capability.registry",
+  "contractVersion": "1.0.0",
+  "sourceOfTruth": "src/app/router.js",
+  "routes": {
+    "login": "auth",
+    "resetPassword": "auth",
+    "household": "household",
+    "onboarding": "household",
+    "today": "today",
+    "records": "record",
+    "summary": "record",
+    "growth": "growth",
+    "growthChart": "growth",
+    "growthStage": "growth",
+    "growthHistory": "growth",
+    "stage": "growth",
+    "health": "explore",
+    "healthVaccines": "explore",
+    "healthDiseases": "explore",
+    "healthOrgans": "explore",
+    "vaccines": "explore",
+    "jaundice": "explore",
+    "pediatric": "explore",
+    "experience": "explore",
+    "naibaAi": "ai",
+    "settings": "settings",
+    "visitor": "visitor"
+  },
+  "ignoredRoutes": {
+    "harmonyPrototype": "开发期原生原型入口，不属于 Web 业务能力"
+  }
+}
