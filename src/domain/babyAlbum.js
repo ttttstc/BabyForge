@@ -15,6 +15,7 @@ const PHOTO_TYPES = new Set([
   'image/webp',
 ])
 const PHOTO_EXTENSION = /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i
+const THUMBNAIL_SIZE = 240
 
 function validDate(value) {
   const date = value instanceof Date ? value : new Date(value)
@@ -23,6 +24,43 @@ function validDate(value) {
 
 export function isSupportedPhoto(file) {
   return Boolean(file && file.size > 0 && file.size <= MAX_PHOTO_BYTES && (PHOTO_TYPES.has(file.type) || (!file.type && PHOTO_EXTENSION.test(file.name))))
+}
+
+function timestamp(value) {
+  const time = new Date(value || 0).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+export function compareBabyPhotos(left, right) {
+  return timestamp(right?.takenAt) - timestamp(left?.takenAt)
+    || timestamp(right?.createdAt) - timestamp(left?.createdAt)
+    || String(right?.id || '').localeCompare(String(left?.id || ''))
+}
+
+export function sortBabyPhotos(photos) {
+  return [...photos].sort(compareBabyPhotos)
+}
+
+async function createPhotoThumbnail(blob) {
+  if (typeof globalThis.createImageBitmap !== 'function' || typeof document === 'undefined') return null
+  let bitmap
+  try {
+    bitmap = await globalThis.createImageBitmap(blob)
+    const sourceSize = Math.min(bitmap.width, bitmap.height)
+    const sourceX = Math.max(0, (bitmap.width - sourceSize) / 2)
+    const sourceY = Math.max(0, (bitmap.height - sourceSize) / 2)
+    const canvas = document.createElement('canvas')
+    canvas.width = THUMBNAIL_SIZE
+    canvas.height = THUMBNAIL_SIZE
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    context.drawImage(bitmap, sourceX, sourceY, sourceSize, sourceSize, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
+    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.72))
+  } catch {
+    return null
+  } finally {
+    bitmap?.close?.()
+  }
 }
 
 export function dateTimeInputValue(value) {
@@ -74,11 +112,12 @@ async function listLocalPhotos(babyId) {
     request.onsuccess = () => {
       const cursor = request.result
       if (!cursor) {
-        resolve(photos.sort((left, right) => left.createdAt.localeCompare(right.createdAt)))
+        resolve(sortBabyPhotos(photos))
         return
       }
       const photo = { ...cursor.value }
       delete photo.blob
+      delete photo.thumbnailBlob
       photos.push(photo)
       cursor.continue()
     }
@@ -87,7 +126,7 @@ async function listLocalPhotos(babyId) {
   })
 }
 
-async function readLocalPhotoBlob({ babyId, photoId }) {
+async function readLocalPhotoRecord({ babyId, photoId }) {
   const db = await openAlbumDatabase()
   if (!db) return null
   return new Promise((resolve, reject) => {
@@ -95,16 +134,28 @@ async function readLocalPhotoBlob({ babyId, photoId }) {
     const request = transaction.objectStore(PHOTO_STORE).get(String(photoId))
     request.onsuccess = () => {
       const record = request.result
-      resolve(record?.babyId === String(babyId) ? record.blob || null : null)
+      resolve(record?.babyId === String(babyId) ? record : null)
     }
     request.onerror = () => reject(request.error)
     transaction.oncomplete = () => db.close()
   })
 }
 
+async function saveLocalThumbnail(record, thumbnailBlob) {
+  const db = await openAlbumDatabase()
+  if (!db) return
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(PHOTO_STORE, 'readwrite')
+    transaction.objectStore(PHOTO_STORE).put({ ...record, thumbnailBlob })
+    transaction.oncomplete = () => { db.close(); resolve() }
+    transaction.onerror = () => { db.close(); reject(transaction.error) }
+  })
+}
+
 async function saveLocalPhoto({ babyId, file, takenAt, timeSource }) {
   const db = await openAlbumDatabase()
   if (!db) throw new Error('当前浏览器不支持本地相册存储')
+  const thumbnailBlob = await createPhotoThumbnail(file)
   const record = {
     id: `photo-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`,
     babyId: String(babyId),
@@ -115,6 +166,7 @@ async function saveLocalPhoto({ babyId, file, takenAt, timeSource }) {
     timeSource,
     createdAt: new Date().toISOString(),
     blob: file.slice(0, file.size, file.type),
+    ...(thumbnailBlob ? { thumbnailBlob } : {}),
   }
   await new Promise((resolve, reject) => {
     const transaction = db.transaction(PHOTO_STORE, 'readwrite')
@@ -159,16 +211,28 @@ async function responsePayload(response) {
   return payload
 }
 
-export async function listBabyPhotos(babyId, { remote = false, showcase = false } = {}) {
+export async function listBabyPhotos(babyId, { remote = false, showcase = false, limit, from, to } = {}) {
   if (!remote) return listLocalPhotos(babyId)
-  const endpoint = showcase ? '/api/demo-showcase/photos' : `/api/photos?babyId=${encodeURIComponent(babyId)}`
+  const params = new URLSearchParams()
+  if (!showcase) params.set('babyId', babyId)
+  if (Number.isFinite(limit)) params.set('limit', String(limit))
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  const endpoint = `${showcase ? '/api/demo-showcase/photos' : '/api/photos'}?${params.toString()}`
   const response = await fetch(endpoint, { credentials: 'include' })
   return (await responsePayload(response)).photos || []
 }
 
-export function getBabyPhotoBlob({ babyId, photoId }, { remote = false } = {}) {
+export async function getBabyPhotoBlob({ babyId, photoId, variant = 'display' }, { remote = false } = {}) {
   if (remote || !babyId || !photoId) return Promise.resolve(null)
-  return readLocalPhotoBlob({ babyId, photoId })
+  const record = await readLocalPhotoRecord({ babyId, photoId })
+  if (!record) return null
+  if (variant !== 'thumbnail') return record.blob || null
+  if (record.thumbnailBlob) return record.thumbnailBlob
+  const thumbnailBlob = await createPhotoThumbnail(record.blob)
+  if (!thumbnailBlob) return record.blob || null
+  await saveLocalThumbnail(record, thumbnailBlob)
+  return thumbnailBlob
 }
 
 export async function uploadBabyPhoto(input, { remote = false } = {}) {

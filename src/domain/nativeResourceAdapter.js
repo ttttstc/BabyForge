@@ -135,7 +135,7 @@ export function createNativeResourceClient({ fetchImpl = globalThis.fetch, baseU
       return request('/api/ai/config', { method: 'DELETE' })
     },
     async photos(babyId) {
-      return request(`/api/photos?babyId=${encodeURIComponent(babyId)}`)
+      return request(`/api/photos?babyId=${encodeURIComponent(babyId)}&limit=500`)
     },
     async deletePhoto(photoId) {
       return request(`/api/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' })

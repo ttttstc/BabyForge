@@ -1,5 +1,6 @@
 import { json, requireSession } from '../../_shared/auth.js'
 import { appAssetUrl, appUpdateUrl, scheduleUpdateNotifications } from '../../_shared/updateNotifications.js'
+import { PHOTO_VARIANTS, photoObjectKeys, readPhotoAsset } from '../../_shared/photoVariants.js'
 
 async function accessiblePhoto(env, principalOrAccountId, photoId) {
   const formal = principalOrAccountId && typeof principalOrAccountId === 'object'
@@ -20,20 +21,30 @@ export async function onRequestGet({ request, env, params }) {
   if (!env.BABY_PHOTOS) return json({ error: 'R2 相册存储未配置' }, 503)
   const auth = await requireSession(request, env)
   if (auth.response) return auth.response
-  const download = new URL(request.url).searchParams.get('download') === '1'
+  const search = new URL(request.url).searchParams
+  const download = search.get('download') === '1'
+  const variant = search.get('variant') || ''
+  if (variant && !PHOTO_VARIANTS.has(variant)) return json({ error: '照片尺寸不存在' }, 400)
+  if (download && variant) return json({ error: '下载仅支持原始照片' }, 400)
   if (download && auth.session.role === 'guest') return json({ error: '游客账号只读，不能下载照片' }, 403)
   const photo = await accessiblePhoto(env, auth.session, params.id)
   if (!photo || photo.baby_status === 'detached') return json({ error: '照片不存在或无权访问' }, 404)
-  const object = await env.BABY_PHOTOS.get(photo.object_key)
+  let object
+  try {
+    object = await readPhotoAsset({ env, objectKey: photo.object_key, contentType: photo.content_type, variant })
+  } catch (error) {
+    const message = error?.message === 'PHOTO_TRANSFORMER_UNAVAILABLE' ? '照片缩略服务未配置' : '照片暂时无法处理，请重试'
+    return json({ error: message }, 503, { 'cache-control': 'no-store' })
+  }
   if (!object) return json({ error: '照片文件不存在' }, 404)
   const headers = new Headers()
   object.writeHttpMetadata(headers)
-  headers.set('content-type', photo.content_type)
+  headers.set('content-type', variant ? 'image/webp' : photo.content_type)
   if (download) {
     const fileName = String(photo.file_name || 'photo').replace(/[\r\n"\\]/g, '_')
     headers.set('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
   }
-  headers.set('cache-control', 'private, max-age=3600')
+  headers.set('cache-control', variant ? 'private, max-age=604800' : 'private, max-age=3600')
   headers.set('etag', object.httpEtag)
   headers.set('x-content-type-options', 'nosniff')
   return new Response(object.body, { headers })
@@ -55,7 +66,7 @@ export async function onRequestDelete({ request, env, params, waitUntil }) {
     return json({ error: error?.message || '照片删除未完成' }, 409)
   }
   try {
-    await env.BABY_PHOTOS.delete(photo.object_key)
+    await env.BABY_PHOTOS.delete(photoObjectKeys(photo.object_key))
   } catch (error) {
     scheduleUpdateNotifications({
       env, householdId: photo.household_id, actorUserId: auth.session.userId,
