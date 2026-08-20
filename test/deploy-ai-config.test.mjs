@@ -26,3 +26,16 @@ test('local secret sync preserves exact values without PowerShell pipeline newli
   assert.match(script, /gh secret set \$secretName .* --body \$secretValue/)
   assert.doesNotMatch(script, /\$secretValue\s*\|\s*gh secret set/)
 })
+
+test('Cloudflare deploys the private photo transformer before Pages binds it', async () => {
+  const [workflow, pagesConfig, transformerConfig] = await Promise.all([
+    readFile(new URL('../.github/workflows/deploy-cloudflare.yml', import.meta.url), 'utf8'),
+    readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'),
+    readFile(new URL('../workers/photo-transformer/wrangler.jsonc', import.meta.url), 'utf8'),
+  ])
+  assert.match(pagesConfig, /"binding": "PHOTO_TRANSFORMER"/)
+  assert.match(pagesConfig, /"service": "babyforge-photo-transformer"/)
+  assert.match(transformerConfig, /"binding": "IMAGES"/)
+  assert.match(transformerConfig, /"workers_dev": false/)
+  assert.ok(workflow.indexOf('workers/photo-transformer/wrangler.jsonc') < workflow.indexOf('pages deploy dist'), 'photo transformer must deploy before Pages')
+})

@@ -18,5 +18,11 @@
       "bucket_name": "babyforge-photos",
       "preview_bucket_name": "babyforge-photos-preview"
     }
+  ],
+  "services": [
+    {
+      "binding": "PHOTO_TRANSFORMER",
+      "service": "babyforge-photo-transformer"
+    }
   ]
 }
