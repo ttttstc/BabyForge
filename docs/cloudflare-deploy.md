@@ -1,10 +1,11 @@
 # BabyForge Cloudflare 部署
 
-当前部署形态是 Cloudflare Pages + Pages Functions + D1 + R2：
+当前部署形态是 Cloudflare Pages + Pages Functions + D1 + R2，并使用一个内部 Cloudflare Images Worker：
 
 - Pages 托管 Vite 构建产物和 `public/assets`。
 - Pages Functions 提供 `/api/login`、`/api/logout`、`/api/session`、宝宝档案 `/api/sync`，事件级 `/api/events`、`/api/events/:id`、共享记录人 `/api/actors`，以及相册 `/api/photos`、`/api/photos/:id`。
-- D1 保存账号、会话、家庭成员、宝宝档案、照护数据和照片元数据；R2 保存原始照片文件。
+- D1 保存账号、会话、家庭成员、宝宝档案、照护数据和照片元数据；R2 保存原始照片，以及按需生成的 `thumb`、`display` WebP 派生图。
+- `babyforge-photo-transformer` 只通过 `PHOTO_TRANSFORMER` Service Binding 接收已授权 Pages Function 传入的原图字节。它没有 D1/R2 绑定，也不提供公开 `workers.dev` 地址。
 - Cloudflare 相册目前不做 EXIF 清洗：原始图片中的拍摄时间、设备或定位等元数据可能随文件被家庭成员读取。上传前请先使用系统相册或图片编辑器移除不希望共享的元数据。
 - 知识库仍然随前端版本发布，暂不开放线上编辑。
 
@@ -22,18 +23,21 @@ npx wrangler login
 npx wrangler r2 bucket create babyforge-photos
 npx wrangler r2 bucket create babyforge-photos-preview
 npm run cloudflare:db:migrate
+npm run cloudflare:photo-transformer:deploy
 npx wrangler pages project create babyforge --production-branch main
 npm run cloudflare:deploy
 ```
 
 ## GitHub Actions 自动部署
 
-仓库已提供 `.github/workflows/deploy-cloudflare.yml`。合并到 `main` 后，GitHub Actions 会依次执行测试、lint、构建、R2 检查、D1 迁移和 Pages 部署；R2 未开通或照片桶缺失时会在部署前停止，不会发布一个相册不可用的版本。
+仓库已提供 `.github/workflows/deploy-cloudflare.yml`。合并到 `main` 后，GitHub Actions 会依次执行测试、lint、构建、R2 检查、D1 迁移、图片转换 Worker 部署和 Pages 部署；R2 未开通、照片桶缺失或转换 Worker 部署失败时会在 Pages 发布前停止。
 
 在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加两个 Repository secrets：
 
 - `CLOUDFLARE_ACCOUNT_ID`：`6d27f195bf6b21f018fc46151ff0bbda`
-- `CLOUDFLARE_API_TOKEN`：Cloudflare Account API Token。至少需要 Pages Edit、D1 Edit 和 Workers R2 Storage Read；如果希望自动创建桶，再增加 Workers R2 Storage Edit。
+- `CLOUDFLARE_API_TOKEN`：Cloudflare Account API Token。至少需要 Pages Edit、Workers Scripts Edit、D1 Edit 和 Workers R2 Storage Read；如果希望自动创建桶，再增加 Workers R2 Storage Edit。
+
+Cloudflare 账号还需启用 Images。缩略图和浏览图使用固定服务端预设，不能由客户端提交任意宽高：`thumb` 为 240×240 WebP，`display` 为最长边 1600 的 WebP。首次访问历史照片时生成并写入私有 R2，后续直接读取派生对象；转换失败时界面提供重试，不会把整张原图批量回退到月历。
 
 这个 Token 只放在 GitHub Secrets，不提交到仓库，也不再依赖本机 `wrangler login`。Cloudflare 官方的 Pages CI 流程同样使用 Account ID + API Token。
 
@@ -63,7 +67,17 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 
 ## 本地预览
 
-本地 Vite 开发环境使用演示账号，相册照片保存在浏览器 IndexedDB，不需要 D1 或 R2；生产构建不会把演示密码编译进前端。要在本地联调 Pages Functions，可使用 Wrangler 的 Pages 本地开发，它会为配置中的 D1 与 R2 binding 使用本地持久化数据。
+本地 Vite 开发环境使用演示账号，相册照片保存在浏览器 IndexedDB，并在浏览器可解码时生成和缓存缩略图，不需要 D1、R2 或 Images；生产构建不会把演示密码编译进前端。
+
+联调完整云端相册时先验证并启动转换 Worker，再让 Pages 使用 Service Binding：
+
+```powershell
+npm run cloudflare:photo-transformer:build
+npx wrangler dev --config workers/photo-transformer/wrangler.jsonc --remote
+npx wrangler pages dev dist --service PHOTO_TRANSFORMER=babyforge-photo-transformer
+```
+
+Images 的本地模拟只覆盖部分格式；HEIC 等格式需要 `--remote` 做真实转换验收。Pages 的 D1 与 R2 binding 仍使用 Wrangler 配置的本地或显式远端资源。
 
 奶爸 AI 在 Vite 开发环境读取未提交的 `.env.local` 中的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` 和 `OPENAI_USE_RESPONSES`。可访问 `/api/ai/local-status` 检查当前实际使用的 provider、protocol 和 model；该接口不会返回密钥。没有显式配置时不会自动连接本机或其他模型服务。
 
@@ -72,9 +86,10 @@ npx wrangler pages secret put TAVILY_API_KEY --project-name babyforge
 1. 检查 `wrangler.jsonc` 中的 `database_id` 与 Cloudflare 控制台一致。
 2. 确认 Pages 项目绑定了 `DB` D1 binding。
 3. 确认 Pages 项目绑定了 `BABY_PHOTOS` R2 binding，生产 bucket 为 `babyforge-photos`。
-4. 管理员首次登录并建立宝宝档案后，再用游客账号验证只读权限。
-5. 确认 `POST /api/sync` 和 `POST /api/photos` 对游客返回 `403`，已授权且未 detached 的家庭成员才能读取 `/api/photos/:id`。
-6. 确认 `POST /api/events`、`PATCH /api/events/:id`、`DELETE /api/events/:id` 对游客返回 `403`，修改携带过期 `version` 时返回 `409`，纠正和作废仍保留原始事件。
+4. 确认 `babyforge-photo-transformer` 已部署、启用 Images binding，Pages 项目绑定了 `PHOTO_TRANSFORMER` Service Binding。
+5. 管理员首次登录并建立宝宝档案后，再用游客账号验证只读权限。
+6. 确认 `POST /api/sync` 和 `POST /api/photos` 对游客返回 `403`，已授权且未 detached 的家庭成员才能读取 `/api/photos/:id`。
+7. 确认 `POST /api/events`、`PATCH /api/events/:id`、`DELETE /api/events/:id` 对游客返回 `403`，修改携带过期 `version` 时返回 `409`，纠正和作废仍保留原始事件。
 
 ## 奶爸 AI 模型配置
 
@@ -120,4 +135,4 @@ LLM_KEY_ENCRYPTION_KEY_VERSION="1"
 - `RESEND_LIST_UNSUBSCRIBE_URL`：可选，只有在该 URL 能直接处理退订请求时才配置；邮件设置页仍会提供管理提醒入口。
 
 同时建议在 DNS 添加 DMARC 记录，先以 `p=none` 观察 SPF、DKIM 和 DMARC 通过情况，再逐步提升到 `p=quarantine`。部署后可在 Gmail 原邮件的“显示原始邮件”中确认 `SPF=PASS`、`DKIM=PASS`、`DMARC=PASS`。代码会同时发送 HTML 与纯文本版本，并设置回复地址与可选的退订头，降低内容层面的垃圾邮件风险。
-7. 如使用自定义域名，在 Cloudflare 控制台完成域名绑定后再分享链接。
+8. 如使用自定义域名，在 Cloudflare 控制台完成域名绑定后再分享链接。

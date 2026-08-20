@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0.0] - 2026-08-20
+
+### Added
+
+- Browse date covers with cached private WebP thumbnails and open an immersive same-day large-photo viewer with previous/next navigation.
+- Generate private `thumb` and `display` variants on demand through the Cloudflare Images transformer Worker, including local browser thumbnail caching.
+
+### Changed
+
+- Sort album photos by capture time (`takenAt`) newest first, keep the home shelf focused on the latest 12 photos, and index the cloud timeline for that order.
+- Keep original downloads unchanged while date grids and lightbox views use appropriately sized variants with retryable transform failures.
+
+### Fixed
+
+- Make photos selected from the date calendar open as real large images instead of only changing the home selection.
+
 ## [0.3.0.0] - 2026-08-11
 
 ### Added
