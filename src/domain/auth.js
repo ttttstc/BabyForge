@@ -61,6 +61,7 @@ async function loadBetterAuthSession(fetchImpl, storage = globalThis.localStorag
     babies: household?.baby ? [household.baby] : [],
     mode: 'cloudflare',
     auth: 'better-auth',
+    requiresPasswordSetup: Boolean(me.user.requiresPasswordSetup),
   })
 }
 
@@ -166,6 +167,20 @@ export async function updateNickname(value, options = {}) {
   try { payload = await response.json() } catch { /* handled below */ }
   if (!response.ok) throw new Error(payload?.error || '昵称保存失败')
   return payload.user
+}
+
+export async function setAccountPassword(password, options = {}) {
+  const fetchImpl = options.fetchImpl || globalThis.fetch
+  const response = await authFetch(fetchImpl, '/api/me/password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ newPassword: password }),
+  })
+  let payload = {}
+  try { payload = await response.json() } catch { /* handled below */ }
+  if (!response.ok) throw new Error(payload?.error || '密码设置失败')
+  return payload
 }
 
 export async function register({ email, password }, options = {}) {

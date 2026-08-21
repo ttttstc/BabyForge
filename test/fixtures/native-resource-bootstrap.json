@@ -19,7 +19,8 @@
     "emailVerified": true,
     "nickname": "家长",
     "displayName": "家长",
-    "avatar": null
+    "avatar": null,
+    "requiresPasswordSetup": false
   },
   "household": {
     "id": "household-fixture",

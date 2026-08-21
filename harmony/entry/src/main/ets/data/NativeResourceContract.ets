@@ -20,6 +20,7 @@ export interface NativeUser {
   nickname: string;
   displayName: string;
   avatar: string | null;
+  requiresPasswordSetup: boolean;
 }
 
 export interface NativeBaby {
@@ -198,7 +199,8 @@ export function parseNativeResource(value: Object): NativeResourceEnvelope {
         emailVerified: booleanField(user.emailVerified, 'user.emailVerified'),
         nickname: stringField(user.nickname, 'user.nickname'),
         displayName: stringField(user.displayName, 'user.displayName'),
-        avatar: nullableStringField(user.avatar, 'user.avatar')
+        avatar: nullableStringField(user.avatar, 'user.avatar'),
+        requiresPasswordSetup: booleanField(user.requiresPasswordSetup, 'user.requiresPasswordSetup')
       };
     })(),
     household: parseHousehold(item.household)

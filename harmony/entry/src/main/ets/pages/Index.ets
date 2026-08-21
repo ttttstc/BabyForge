@@ -45,7 +45,7 @@ import { NativeGrowthItem, NativeGrowthMetric, NativeGrowthModel } from '../data
 import { NativeExploreItem, NativeExploreModel } from '../data/NativeExploreContract';
 import { NativeSettingsItem, NativeSettingsModel, NativeSettingsPatch } from '../data/NativeSettingsContract';
 
-type NativePhase = 'loading' | 'login' | 'household' | 'ready' | 'error';
+type NativePhase = 'loading' | 'login' | 'passwordSetup' | 'household' | 'ready' | 'error';
 type LoginMode = 'login' | 'register' | 'reset';
 type TodayPhase = 'loading' | 'ready' | 'error';
 type SurfacePhase = 'idle' | 'loading' | 'ready' | 'error';
@@ -179,6 +179,7 @@ struct Index {
   @State private reducedMotion: boolean = false;
   @State private email: string = '';
   @State private password: string = '';
+  @State private confirmPassword: string = '';
   @State private householdName: string = '';
   @State private babyNickname: string = '';
   @State private babyBirthDate: string = '';
@@ -276,15 +277,37 @@ struct Index {
     this.photoPixel = null;
   }
 
-  private consumeNativeAuthCallback(): void {
+  private async consumeNativeAuthCallback(): Promise<void> {
     if (this.nativeAuthCallback.length === 0 || this.nativeAuthCallback === this.handledNativeAuthCallback) return;
     const callback = this.nativeAuthCallback;
     this.handledNativeAuthCallback = callback;
     AppStorage.setOrCreate('nativeAuthCallback', '');
-    this.statusMessage = callback.includes('error=')
-      ? 'Google 登录未完成，请重试。'
-      : 'Google 登录已返回，正在同步账户…';
-    this.loadResource();
+    const token = this.callbackValue(callback, 'token');
+    if (callback.includes('error=') || token.length === 0 || this.adapter === null) {
+      this.phase = 'login';
+      this.statusMessage = 'Google 登录未完成，请重试。';
+      return;
+    }
+    this.phase = 'loading';
+    this.statusMessage = 'Google 登录已返回，正在同步账户…';
+    try {
+      await this.applyResource(await this.adapter.finishSocialLogin(token));
+    } catch (error) {
+      this.phase = 'login';
+      this.statusMessage = error instanceof Error ? error.message : 'Google 登录会话恢复失败，请重试。';
+    }
+  }
+
+  private callbackValue(uri: string, name: string): string {
+    const queryIndex = uri.indexOf('?');
+    if (queryIndex < 0) return '';
+    for (const item of uri.slice(queryIndex + 1).split('&')) {
+      const separator = item.indexOf('=');
+      const key = separator < 0 ? item : item.slice(0, separator);
+      if (key !== name) continue;
+      try { return decodeURIComponent(separator < 0 ? '' : item.slice(separator + 1)); } catch { return ''; }
+    }
+    return '';
   }
 
   onBackPress(): boolean {
@@ -371,7 +394,7 @@ struct Index {
     this.resetSurfaceModels();
     this.resource = result.resource;
     this.staleCache = result.stale;
-    this.phase = result.resource.household === null ? 'household' : 'ready';
+    this.phase = result.resource.user.requiresPasswordSetup ? 'passwordSetup' : result.resource.household === null ? 'household' : 'ready';
     this.showFamilyPanel = false;
     this.statusMessage = result.stale ? '当前显示最近一次成功同步的内容；恢复网络后可重新读取。' : '';
     if (this.phase === 'ready') await this.loadToday();
@@ -966,6 +989,25 @@ struct Index {
       await context.openLink(url);
     } catch (error) {
       this.statusMessage = error instanceof Error ? error.message : '第三方登录暂时不可用。';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async setAccountPassword(): Promise<void> {
+    if (this.adapter === null || this.password.length === 0) return;
+    if (this.password !== this.confirmPassword) {
+      this.statusMessage = '两次输入的密码不一致。';
+      return;
+    }
+    this.busy = true;
+    try {
+      const result = await this.adapter.setAccountPassword(this.password);
+      this.password = '';
+      this.confirmPassword = '';
+      await this.applyResource(result);
+    } catch (error) {
+      this.statusMessage = error instanceof Error ? error.message : '密码设置失败，请重试。';
     } finally {
       this.busy = false;
     }
@@ -1763,6 +1805,59 @@ struct Index {
       }
       .width('100%')
       .padding({ left: 24, right: 24, top: 46, bottom: 32 });
+    }
+    .width('100%')
+    .height('100%');
+  }
+
+  @Builder
+  private passwordSetupView(): void {
+    Scroll() {
+      Column({ space: 14 }) {
+        Text('为 Google 账号设置登录密码')
+          .fontSize(this.largeText ? 28 : 24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#4E3B35');
+        Text(`为 ${this.resource?.user.email || '当前邮箱'} 设置密码。下次可使用 Google 或邮箱密码登录。`)
+          .fontSize(this.largeText ? 16 : 13)
+          .fontColor('#806E68')
+          .textAlign(TextAlign.Center);
+        TextInput({ placeholder: '新密码（至少 6 位，包含字母和数字）' })
+          .type(InputType.Password)
+          .width('100%')
+          .height(52)
+          .onChange((value: string) => this.password = value);
+        TextInput({ placeholder: '再次输入新密码' })
+          .type(InputType.Password)
+          .width('100%')
+          .height(52)
+          .onChange((value: string) => this.confirmPassword = value);
+        if (this.statusMessage.length > 0) {
+          Text(this.statusMessage)
+            .fontSize(this.largeText ? 16 : 13)
+            .fontColor('#B85F53')
+            .textAlign(TextAlign.Center);
+        }
+        Button(this.busy ? '设置中…' : '设置密码并继续')
+          .width('100%')
+          .height(50)
+          .enabled(!this.busy)
+          .fontColor(Color.White)
+          .backgroundColor('#D98372')
+          .borderRadius(25)
+          .onClick(() => this.setAccountPassword());
+        Button('使用 Google 重新验证')
+          .width('100%')
+          .height(46)
+          .enabled(!this.busy)
+          .backgroundColor('#FFF9F0')
+          .borderColor('#E8D8CE')
+          .borderWidth(1)
+          .borderRadius(23)
+          .onClick(() => this.socialLogin());
+      }
+      .width('100%')
+      .padding({ left: 24, right: 24, top: 56, bottom: 32 });
     }
     .width('100%')
     .height('100%');
@@ -2739,6 +2834,7 @@ struct Index {
     Stack() {
       if (this.phase === 'loading') this.loadingView();
       if (this.phase === 'login') this.loginView();
+      if (this.phase === 'passwordSetup') this.passwordSetupView();
       if (this.phase === 'household') this.householdView();
       if (this.phase === 'ready') this.readyView();
       if (this.phase === 'error') this.errorView();

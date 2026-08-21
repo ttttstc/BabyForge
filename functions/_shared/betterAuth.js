@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth'
+import { oneTimeToken } from 'better-auth/plugins/one-time-token'
 import { sendTransactionalEmail } from './email.js'
 
 const authByDatabase = new WeakMap()
@@ -52,6 +53,7 @@ function createBetterAuth(env, waitUntil) {
         clientSecret: env.GOOGLE_CLIENT_SECRET,
       },
     } : {},
+    plugins: [oneTimeToken({ expiresIn: 3, storeToken: 'hashed' })],
     account: {
       accountLinking: {
         enabled: false,
@@ -120,6 +122,17 @@ export async function getBetterAuthSession(request, env) {
   } catch {
     return null
   }
+}
+
+export async function requiresPasswordSetup(env, userId) {
+  if (!userId) return false
+  const account = await env.DB.prepare(`
+    SELECT 1 AS present
+    FROM "account"
+    WHERE userId = ? AND providerId = 'credential' AND password IS NOT NULL
+    LIMIT 1
+  `).bind(userId).first()
+  return !account
 }
 
 export async function handleBetterAuthRequest(request, env, waitUntil) {

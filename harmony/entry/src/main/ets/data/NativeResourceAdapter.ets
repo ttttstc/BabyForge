@@ -14,7 +14,7 @@ import { NativeExploreModel, parseNativeExplore } from './NativeExploreContract'
 import { NativeSettingsModel, NativeSettingsPatch, parseNativeSettings } from './NativeSettingsContract';
 
 const SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com';
-const NATIVE_AUTH_CALLBACK_URL: string = 'babyforge://auth/callback';
+const NATIVE_AUTH_CALLBACK_URL: string = `${SERVICE_ORIGIN}/api/native/auth/callback`;
 
 export interface NativeBootstrapResult {
   resource: NativeResourceEnvelope;
@@ -47,6 +47,8 @@ interface NativeRequestBody {
   name?: string;
   provider?: string;
   callbackURL?: string;
+  token?: string;
+  newPassword?: string;
   baby?: NativeBabyInput | null;
   event?: NativeCareEvent;
   enabled?: boolean;
@@ -543,6 +545,16 @@ export class NativeResourceAdapter {
     const payload = record(await this.request('/api/auth/sign-in/social', http.RequestMethod.POST, requestBody({ provider, callbackURL: NATIVE_AUTH_CALLBACK_URL })));
     if (typeof payload['url'] !== 'string') throw new NativeTransportError('INVALID_RESPONSE', '第三方登录未返回跳转地址。');
     return String(payload['url']);
+  }
+
+  async finishSocialLogin(token: string): Promise<NativeBootstrapResult> {
+    await this.request('/api/auth/one-time-token/verify', http.RequestMethod.POST, requestBody({ token }));
+    return this.bootstrap();
+  }
+
+  async setAccountPassword(newPassword: string): Promise<NativeBootstrapResult> {
+    await this.request('/api/me/password', http.RequestMethod.POST, requestBody({ newPassword }));
+    return this.bootstrap();
   }
 
   async createHousehold(name: string, baby: NativeBabyInput | null): Promise<NativeBootstrapResult> {

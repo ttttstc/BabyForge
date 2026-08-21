@@ -1,6 +1,7 @@
 import { json } from '../../_shared/auth.js'
 import { findHouseholdForPrincipal, getPrincipal } from '../../_shared/principal.js'
 import { NATIVE_RESOURCE_CONTRACT, NATIVE_RESOURCE_CONTRACT_VERSION, NATIVE_RESOURCE_TIMEZONE } from '../../../src/domain/nativeResourceContract.js'
+import { requiresPasswordSetup } from '../../_shared/betterAuth.js'
 
 function sourceVersion(env) {
   return String(env.BABYFORGE_RESOURCE_SOURCE_VERSION || env.CF_PAGES_COMMIT_SHA || 'web-runtime').slice(0, 120)
@@ -75,7 +76,7 @@ async function listInvites(env, householdId, canManage) {
   }))
 }
 
-function mapUser(principal) {
+function mapUser(principal, passwordSetupRequired) {
   return {
     id: String(principal.userId || principal.accountId),
     email: principal.email || null,
@@ -83,6 +84,7 @@ function mapUser(principal) {
     nickname: String(principal.displayName || '家长'),
     displayName: String(principal.displayName || '家长'),
     avatar: principal.user?.image || null,
+    requiresPasswordSetup: passwordSetupRequired,
   }
 }
 
@@ -135,7 +137,7 @@ export async function onRequestGet({ request, env }) {
       canCreateHousehold: !household,
       canAcceptInvite: !household,
     },
-    user: mapUser(principal),
+    user: mapUser(principal, principal.auth === 'better-auth' && await requiresPasswordSetup(env, principal.userId)),
     household,
   })
 }
