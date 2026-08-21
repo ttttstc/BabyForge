@@ -11,6 +11,7 @@ import { createDemoWorkspace } from '../src/domain/storage.js'
 import { onRequestPost as demoLogin } from '../functions/api/demo-login.js'
 import { onRequestPost as formalLogin } from '../functions/api/login.js'
 import { completeNativeAuth } from '../functions/api/native/auth/callback.js'
+import { startNativeAuth } from '../functions/api/native/auth/start.js'
 
 test('formal password policy requires letters and numbers', () => {
   assert.equal(passwordPolicyError('abc123'), null)
@@ -86,6 +87,27 @@ test('native OAuth callback turns the browser session into a short-lived one-tim
   assert.equal(forwardedCookie, 'better-auth.session_token=browser-session')
   assert.equal(response.headers.get('location'), 'babyforge://auth/callback?token=single-use-token')
   assert.equal(response.headers.get('cache-control'), 'no-store')
+})
+
+test('native OAuth starts inside the browser and preserves the Better Auth state cookie', async () => {
+  let signInRequest
+  const response = await startNativeAuth(new Request('https://babyforge.bbroot.com/api/native/auth/start'), {
+    async handler(request) {
+      signInRequest = request
+      return new Response(JSON.stringify({ url: 'https://accounts.google.com/o/oauth2/v2/auth?state=browser-state' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'set-cookie': 'better-auth.state=browser-state; Path=/; HttpOnly; Secure; SameSite=Lax',
+        },
+      })
+    },
+  })
+  assert.equal(signInRequest.method, 'POST')
+  assert.deepEqual(await signInRequest.json(), { provider: 'google', callbackURL: 'https://babyforge.bbroot.com/api/native/auth/callback' })
+  assert.equal(response.status, 302)
+  assert.match(response.headers.get('set-cookie'), /better-auth\.state=browser-state/)
+  assert.match(response.headers.get('location'), /^https:\/\/accounts\.google\.com\//)
 })
 
 test('OAuth-only sessions preserve the required password setup gate', async () => {

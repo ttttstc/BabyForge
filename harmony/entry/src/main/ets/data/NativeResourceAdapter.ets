@@ -14,7 +14,7 @@ import { NativeExploreModel, parseNativeExplore } from './NativeExploreContract'
 import { NativeSettingsModel, NativeSettingsPatch, parseNativeSettings } from './NativeSettingsContract';
 
 const SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com';
-const NATIVE_AUTH_CALLBACK_URL: string = `${SERVICE_ORIGIN}/api/native/auth/callback`;
+const NATIVE_AUTH_START_URL: string = `${SERVICE_ORIGIN}/api/native/auth/start`;
 
 export interface NativeBootstrapResult {
   resource: NativeResourceEnvelope;
@@ -542,9 +542,8 @@ export class NativeResourceAdapter {
   }
 
   async startSocialLogin(provider: string = 'google'): Promise<string> {
-    const payload = record(await this.request('/api/auth/sign-in/social', http.RequestMethod.POST, requestBody({ provider, callbackURL: NATIVE_AUTH_CALLBACK_URL })));
-    if (typeof payload['url'] !== 'string') throw new NativeTransportError('INVALID_RESPONSE', '第三方登录未返回跳转地址。');
-    return String(payload['url']);
+    if (provider !== 'google') throw new NativeTransportError('UNSUPPORTED_PROVIDER', '暂不支持该第三方登录方式。');
+    return NATIVE_AUTH_START_URL;
   }
 
   async finishSocialLogin(token: string): Promise<NativeBootstrapResult> {
