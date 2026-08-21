@@ -36,6 +36,7 @@ export interface NativeBabyInput {
 interface NativeHeaders {
   accept: string;
   'x-babyforge-timezone': string;
+  origin: string;
   Cookie?: string;
   'content-type'?: string;
 }
@@ -161,11 +162,13 @@ export class NativeResourceAdapter {
       ? {
         accept: 'application/json',
         'x-babyforge-timezone': this.timezone,
+        origin: SERVICE_ORIGIN,
         'content-type': 'application/json'
       }
       : {
         accept: 'application/json',
-        'x-babyforge-timezone': this.timezone
+        'x-babyforge-timezone': this.timezone,
+        origin: SERVICE_ORIGIN
       };
     const cookie: string = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
@@ -453,7 +456,7 @@ export class NativeResourceAdapter {
       { name: 'timeSource', contentType: 'text/plain', data: timeSource },
       { name: 'photo', contentType, remoteFileName: `native-${Date.now()}.${extension}`, filePath: uri }
     ];
-    const headers: NativeHeaders = { accept: 'application/json', 'x-babyforge-timezone': this.timezone };
+    const headers: NativeHeaders = { accept: 'application/json', 'x-babyforge-timezone': this.timezone, origin: SERVICE_ORIGIN };
     const cookie = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
     try {
@@ -485,7 +488,7 @@ export class NativeResourceAdapter {
   private async fetchPhoto(photoId: string, download: boolean): Promise<NativePhotoDownload> {
     await this.ensureOpened();
     const request = http.createHttp();
-    const headers: NativeHeaders = { accept: 'image/*', 'x-babyforge-timezone': this.timezone };
+    const headers: NativeHeaders = { accept: 'image/*', 'x-babyforge-timezone': this.timezone, origin: SERVICE_ORIGIN };
     const cookie = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
     try {
