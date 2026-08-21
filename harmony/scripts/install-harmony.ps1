@@ -7,6 +7,23 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Invoke-NativeText {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [Parameter(Mandatory = $false)][string[]]$Arguments = @()
+  )
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $output = (& $FilePath @Arguments 2>&1 | Out-String).Trim()
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  [PSCustomObject]@{ Output = $output; ExitCode = $exitCode }
+}
+
 $harmonyRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $outputRoot = Join-Path $harmonyRoot 'entry\build\default\outputs\default'
 
@@ -48,10 +65,9 @@ New-Item -ItemType Directory -Path $signatureTempDirectory -Force | Out-Null
 try {
   $certChainPath = Join-Path $signatureTempDirectory 'cert-chain.cer'
   $profilePath = Join-Path $signatureTempDirectory 'profile.p7b'
-  $signatureOutput = & $javaCommand.Source -jar $resolvedHapSignToolPath verify-app -inFile $signedHap.FullName -outCertChain $certChainPath -outProfile $profilePath 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    $signatureDetail = ($signatureOutput | Out-String).Trim()
-    throw "HAP 签名验签失败：$signatureDetail"
+  $signatureResult = Invoke-NativeText $javaCommand.Source @('-jar', $resolvedHapSignToolPath, 'verify-app', '-inFile', $signedHap.FullName, '-outCertChain', $certChainPath, '-outProfile', $profilePath)
+  if ($signatureResult.ExitCode -ne 0) {
+    throw "HAP 签名验签失败：$($signatureResult.Output)"
   }
 } finally {
   if (Test-Path -LiteralPath $signatureTempDirectory) {
@@ -59,8 +75,9 @@ try {
   }
 }
 
-$moduleJson = (& tar.exe -xOf $signedHap.FullName module.json 2>$null | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($moduleJson)) {
+$moduleResult = Invoke-NativeText 'tar.exe' @('-xOf', $signedHap.FullName, 'module.json')
+$moduleJson = $moduleResult.Output
+if ($moduleResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($moduleJson)) {
   throw "签名 HAP 缺少可读的 module.json，已拒绝安装。"
 }
 try {
@@ -84,8 +101,9 @@ if (-not [string]::IsNullOrWhiteSpace($ConnectKey)) {
   $deviceArgs += @('-t', $ConnectKey)
 }
 
-$targetOutput = (& $HdcPath @deviceArgs list targets 2>&1 | Out-String).Trim()
-if ($LASTEXITCODE -ne 0) {
+$targetResult = Invoke-NativeText $HdcPath ($deviceArgs + @('list', 'targets'))
+$targetOutput = $targetResult.Output
+if ($targetResult.ExitCode -ne 0) {
   throw "HDC 无法列出设备：$targetOutput"
 }
 if ([string]::IsNullOrWhiteSpace($targetOutput) -or $targetOutput -match '\[Empty\]') {
@@ -94,15 +112,15 @@ if ([string]::IsNullOrWhiteSpace($targetOutput) -or $targetOutput -match '\[Empt
 
 Write-Output "使用设备：$targetOutput"
 Write-Output "安装：$($signedHap.FullName)"
-& $HdcPath @deviceArgs install $signedHap.FullName
-if ($LASTEXITCODE -ne 0) {
-  throw "HAP 安装失败，退出码：$LASTEXITCODE"
+$installResult = Invoke-NativeText $HdcPath ($deviceArgs + @('install', $signedHap.FullName))
+if ($installResult.ExitCode -ne 0 -or $installResult.Output -match '(?im)(?:msg:error|error:\s|failed to install)') {
+  throw "HAP 安装失败，退出码：$($installResult.ExitCode)；$($installResult.Output)"
 }
 
 if ($Launch) {
-  & $HdcPath @deviceArgs shell aa start -a EntryAbility -b com.ni.babyforge
-  if ($LASTEXITCODE -ne 0) {
-    throw "应用启动失败，退出码：$LASTEXITCODE"
+  $launchResult = Invoke-NativeText $HdcPath ($deviceArgs + @('shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.ni.babyforge'))
+  if ($launchResult.ExitCode -ne 0 -or $launchResult.Output -match '(?im)(?:msg:error|error:\s|failed to start)') {
+    throw "应用启动失败，退出码：$($launchResult.ExitCode)；$($launchResult.Output)"
   }
   Write-Output '已请求启动 com.ni.babyforge。'
 }
