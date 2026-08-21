@@ -53,7 +53,10 @@ function createBetterAuth(env, waitUntil) {
         clientSecret: env.GOOGLE_CLIENT_SECRET,
       },
     } : {},
-    plugins: [oneTimeToken({ expiresIn: 3, storeToken: 'hashed' })],
+    // Native OAuth includes a manual system-browser confirmation step on
+    // HarmonyOS; keep the single-use handoff short-lived but long enough for
+    // the user to complete that confirmation without racing the expiry.
+    plugins: [oneTimeToken({ expiresIn: 10, storeToken: 'hashed' })],
     account: {
       accountLinking: {
         enabled: false,

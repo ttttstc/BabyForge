@@ -200,16 +200,20 @@ export class NativeResourceAdapter {
         const topLevelCode = record(payload)['code'];
         const nestedMessage = errorValue['message'];
         const topLevelMessage = typeof rawError === 'string' ? rawError : null;
+        const payloadMessage = record(payload)['message'];
         const retryable = errorValue['retryable'];
+        const serviceMessage = typeof nestedMessage === 'string'
+          ? String(nestedMessage)
+          : topLevelMessage !== null
+            ? topLevelMessage
+            : typeof payloadMessage === 'string' ? String(payloadMessage) : '';
         throw new NativeTransportError(
           typeof nestedCode === 'string'
             ? String(nestedCode)
             : typeof topLevelCode === 'string'
               ? String(topLevelCode)
               : responseCode === 401 ? 'AUTH_REQUIRED' : 'SERVICE_ERROR',
-          typeof nestedMessage === 'string'
-            ? String(nestedMessage)
-            : topLevelMessage !== null ? topLevelMessage : '请求未完成，请稍后重试。',
+          serviceMessage === 'Invalid token' ? 'Google 登录会话已失效，请重新开始。' : serviceMessage || '请求未完成，请稍后重试。',
           responseCode,
           Boolean(retryable) || Boolean(record(payload)['retryable']) || responseCode >= 500
         );
