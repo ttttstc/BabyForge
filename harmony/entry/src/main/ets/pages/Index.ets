@@ -983,10 +983,12 @@ struct Index {
   private async socialLogin(): Promise<void> {
     if (this.adapter === null) return;
     this.busy = true;
+    this.statusMessage = '正在打开 Google…授权完成后，请在系统提示中点击“打开 BabyForge”返回。';
     try {
       const url = await this.adapter.startSocialLogin('google');
       const context = getContext(this) as common.UIAbilityContext;
       await context.openLink(url);
+      this.statusMessage = '请在系统浏览器完成 Google 登录；授权后点击“打开 BabyForge”返回。';
     } catch (error) {
       this.statusMessage = error instanceof Error ? error.message : '第三方登录暂时不可用。';
     } finally {
