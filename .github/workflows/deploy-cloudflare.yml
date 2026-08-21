@@ -144,8 +144,15 @@ jobs:
         run: |
           remaining=1
           for attempt in {1..100}; do
-            response="$(curl --fail-with-body --silent --show-error --retry 5 --retry-all-errors --retry-delay 2 --max-time 30 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" "$DEPLOYMENT_URL/api/ai/key-migration")"
-            remaining="$(RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); if (!result.ok || !Number.isSafeInteger(result.remaining)) process.exit(1); process.stdout.write(String(result.remaining))")"
+            if ! response="$(curl --fail-with-body --silent --show-error --max-time 30 -X POST -H "Authorization: Bearer $AI_HEALTH_TOKEN" "$DEPLOYMENT_URL/api/ai/key-migration")"; then
+              sleep 2
+              continue
+            fi
+            if ! parsed_remaining="$(RESPONSE="$response" node -e "const result=JSON.parse(process.env.RESPONSE); if (!result.ok || !Number.isSafeInteger(result.remaining)) process.exit(1); process.stdout.write(String(result.remaining))")"; then
+              sleep 2
+              continue
+            fi
+            remaining="$parsed_remaining"
             if [ "$remaining" = "0" ]; then break; fi
           done
           test "$remaining" = "0"
