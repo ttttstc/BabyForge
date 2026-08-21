@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { passwordPolicyError } from '../functions/_shared/betterAuth.js'
+import { passwordPolicyError, requiresPasswordSetup } from '../functions/_shared/betterAuth.js'
 import { hashToken, randomToken } from '../functions/_shared/principal.js'
-import { login, logout, register, resetPassword, resumeSession, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
+import { login, logout, register, resetPassword, resumeSession, setAccountPassword, startGoogleLogin, updateNickname } from '../src/domain/auth.js'
 import { pullWorkspace } from '../src/domain/sync.js'
 import { parseInviteToken } from '../src/domain/householdAccess.js'
 import { buildInviteRoute, buildVisitorRoute, inviteTokenFromLocation, parseHashLocation, visitorTokenFromLocation } from '../src/app/router.js'
@@ -10,6 +10,8 @@ import { nicknamePolicyError, normalizeNickname } from '../functions/api/me.js'
 import { createDemoWorkspace } from '../src/domain/storage.js'
 import { onRequestPost as demoLogin } from '../functions/api/demo-login.js'
 import { onRequestPost as formalLogin } from '../functions/api/login.js'
+import { completeNativeAuth } from '../functions/api/native/auth/callback.js'
+import { startNativeAuth } from '../functions/api/native/auth/start.js'
 
 test('formal password policy requires letters and numbers', () => {
   assert.equal(passwordPolicyError('abc123'), null)
@@ -54,6 +56,68 @@ test('OAuth session keeps the existing household when the follow-up household re
   })
   assert.equal(session.household.id, 'household-existing')
   assert.deepEqual(session.babies, [baby])
+  assert.equal(session.requiresPasswordSetup, false)
+})
+
+test('password setup is required only when the Better Auth user has no credential account', async () => {
+  const environment = (present) => ({
+    DB: {
+      prepare(sql) {
+        assert.match(sql, /providerId = 'credential'/)
+        return { bind(userId) { return { async first() { return present && userId === 'google-user' ? { present: 1 } : null } } } }
+      },
+    },
+  })
+  assert.equal(await requiresPasswordSetup(environment(false), 'google-user'), true)
+  assert.equal(await requiresPasswordSetup(environment(true), 'google-user'), false)
+})
+
+test('native OAuth callback turns the browser session into a short-lived one-time token', async () => {
+  const request = new Request('https://babyforge.bbroot.com/api/native/auth/callback', { headers: { cookie: 'better-auth.session_token=browser-session' } })
+  let forwardedCookie = ''
+  const response = await completeNativeAuth(request, {
+    api: {
+      async generateOneTimeToken({ headers }) {
+        forwardedCookie = headers.get('cookie')
+        return { token: 'single-use-token' }
+      },
+    },
+  })
+  assert.equal(response.status, 302)
+  assert.equal(forwardedCookie, 'better-auth.session_token=browser-session')
+  assert.equal(response.headers.get('location'), 'babyforge://auth/callback?token=single-use-token')
+  assert.equal(response.headers.get('cache-control'), 'no-store')
+})
+
+test('native OAuth starts inside the browser and preserves the Better Auth state cookie', async () => {
+  let signInRequest
+  const response = await startNativeAuth(new Request('https://babyforge.bbroot.com/api/native/auth/start'), {
+    async handler(request) {
+      signInRequest = request
+      return new Response(JSON.stringify({ url: 'https://accounts.google.com/o/oauth2/v2/auth?state=browser-state' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'set-cookie': 'better-auth.state=browser-state; Path=/; HttpOnly; Secure; SameSite=Lax',
+        },
+      })
+    },
+  })
+  assert.equal(signInRequest.method, 'POST')
+  assert.deepEqual(await signInRequest.json(), { provider: 'google', callbackURL: 'https://babyforge.bbroot.com/api/native/auth/callback' })
+  assert.equal(response.status, 302)
+  assert.match(response.headers.get('set-cookie'), /better-auth\.state=browser-state/)
+  assert.match(response.headers.get('location'), /^https:\/\/accounts\.google\.com\//)
+})
+
+test('OAuth-only sessions preserve the required password setup gate', async () => {
+  const session = await resumeSession({
+    storage: { setItem() {} },
+    fetchImpl: async (path) => path === '/api/me'
+      ? new Response(JSON.stringify({ user: { id: 'google-user', email: 'parent@example.com', nickname: '家长', requiresPasswordSetup: true }, household: null }), { status: 200, headers: { 'content-type': 'application/json' } })
+      : new Response('{"household":null}', { status: 200, headers: { 'content-type': 'application/json' } }),
+  })
+  assert.equal(session.requiresPasswordSetup, true)
 })
 
 test('registered household falls back to the /api/me snapshot when the follow-up request stalls', async () => {
@@ -140,6 +204,19 @@ test('password reset submits the link token and new password', async () => {
   })
   assert.equal(request.path, '/api/auth/reset-password')
   assert.deepEqual(JSON.parse(request.options.body), { token: 'reset-token', newPassword: 'newpass1' })
+})
+
+test('initial account password is set through the authenticated server endpoint', async () => {
+  let request
+  await setAccountPassword('newpass1', {
+    fetchImpl: async (path, options) => {
+      request = { path, options }
+      return new Response('{"status":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  assert.equal(request.path, '/api/me/password')
+  assert.equal(request.options.credentials, 'include')
+  assert.deepEqual(JSON.parse(request.options.body), { newPassword: 'newpass1' })
 })
 
 test('network failures become an actionable auth message', async () => {

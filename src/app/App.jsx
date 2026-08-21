@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, startGoogleLogin, updateNickname } from '../domain/auth.js'
+import { canEdit, loadSession, login, logout, persistSession, register, requestPasswordReset, resendVerification, resetPassword, resumeSession, SESSION_KEY, setAccountPassword, startGoogleLogin, updateNickname } from '../domain/auth.js'
 import { acceptHouseholdInvite } from '../domain/householdAccess.js'
 import { clearState, createDemoWorkspace, createInitialState, hydrateState, loadState, saveState } from '../domain/storage.js'
 import { pullShowcaseWorkspace, pullWorkspace, pushWorkspace } from '../domain/sync.js'
@@ -282,7 +282,7 @@ function AppContent() {
     // A Google/email callback updates the auth session before its household
     // workspace has finished loading. Do not let the route guard interpret
     // that short-lived empty state as a brand-new account.
-    if (sessionActivating) return
+    if (sessionActivating || session?.requiresPasswordSetup) return
     if (!session) {
       if (route !== ROUTES.login && !inviteToken) navigate(ROUTES.login)
       return
@@ -572,6 +572,14 @@ function AppContent() {
     }
   }
 
+  async function handleAccountPasswordSetup(password) {
+    await setAccountPassword(password)
+    const next = { ...sessionRef.current, requiresPasswordSetup: false }
+    persistSession(next)
+    sessionRef.current = next
+    setSession(next)
+  }
+
   async function handleInviteAccepted(token) {
     const payload = await acceptHouseholdInvite(token)
     const household = payload.household
@@ -641,6 +649,10 @@ function AppContent() {
   if (sessionActivating && route !== ROUTES.resetPassword) {
     const isEnglish = state.preferences.locale === 'en-US'
     return <main className="login-shell" aria-busy="true"><section className="login-card"><p className="eyebrow">BabyForge</p><h2>{isEnglish ? 'Restoring your household…' : '正在恢复家庭空间…'}</h2><p className="muted">{isEnglish ? 'Loading your baby profile and workspace.' : '正在读取你的宝宝档案和工作区，请稍候。'}</p></section></main>
+  }
+
+  if (session?.mode === 'cloudflare' && session.requiresPasswordSetup) {
+    return <LoginView locale={state.preferences.locale} onLocaleChange={(locale) => commitState((current) => ({ ...current, preferences: { ...current.preferences, locale } }))} passwordSetupMode accountEmail={session.email} onSetAccountPassword={handleAccountPasswordSetup} onGoogleLogin={() => startGoogleLogin(ROUTES.login)} />
   }
 
   if (!session || route === ROUTES.login || route === ROUTES.resetPassword || (session?.role === 'guest' && !state.baby)) {

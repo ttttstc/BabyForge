@@ -43,6 +43,33 @@ test('invalid password reset links explain the next step', async ({ page }) => {
   await expect(page.getByRole('button', { name: '更新密码' })).toBeDisabled()
 })
 
+test('Google-only accounts must set a password before entering the household', async ({ page }) => {
+  let passwordRequest
+  await page.route('**/api/me', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ user: { id: 'google-user', email: 'niwa@example.com', emailVerified: true, nickname: 'Niwa', requiresPasswordSetup: true }, household: null }),
+  }))
+  await page.route('**/api/household', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"household":null}' }))
+  await page.route('**/api/me/password', async (route) => {
+    passwordRequest = JSON.parse(route.request().postData() || '{}')
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":true,"requiresPasswordSetup":false}' })
+  })
+
+  await page.goto('/#/login')
+  await expect(page.getByRole('heading', { name: '为 Google 账号设置登录密码' })).toBeVisible()
+  await expect(page.getByText(/niwa@example\.com/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '使用 Google 重新验证' })).toBeVisible()
+  await page.getByLabel('新密码', { exact: true }).fill('newpass1')
+  await page.getByLabel('确认新密码').fill('different1')
+  await page.getByRole('button', { name: '设置密码并继续' }).click()
+  await expect(page.getByText('两次输入的密码不一致。')).toBeVisible()
+  await page.getByLabel('确认新密码').fill('newpass1')
+  await page.getByRole('button', { name: '设置密码并继续' }).click()
+  await expect(page).toHaveURL(/#\/household$/)
+  expect(passwordRequest).toEqual({ newPassword: 'newpass1' })
+})
+
 test('authenticated users without a household share create and invite entry', async ({ page }) => {
   const token = 'a'.repeat(43)
   await page.route('**/api/me', (route) => route.fulfill({

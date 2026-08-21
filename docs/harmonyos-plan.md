@@ -1,7 +1,9 @@
-# BabyForge HarmonyOS 研究原型方案
+# BabyForge HarmonyOS 研究原型方案（历史记录）
 
 > 版本：v1（2026-08-17）
 > 目标：今晚产出可安装、可演示的 HarmonyOS NEXT 手机版研究原型；明天在真实华为手机上完成安装和手工验收。
+
+> Issue #74 收口说明：当前实现与发布门禁以 [`docs/harmonyos-native-release-gates.md`](harmonyos-native-release-gates.md) 和 [`contracts/harmony-candidate.v1.json`](../contracts/harmony-candidate.v1.json) 为准。本文保留早期 ArkWeb 壳方案、演示记录和风险讨论，不能作为当前一级业务架构或“已签名/已真机验证”的证据。
 
 ## 1. 已确认的产品边界
 

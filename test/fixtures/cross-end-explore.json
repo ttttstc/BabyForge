@@ -1,0 +1,14 @@
+{
+  "input": {
+    "baby": { "id": "baby-cross-end", "nickname": "小满", "birthDate": "2026-01-01" },
+    "events": [],
+    "experienceFeed": { "category": "recommended", "cacheState": "fresh", "articles": [{ "id": "article-1", "title": "安全睡眠", "sources": [{ "url": "https://example.test/source" }] }], "sources": [{ "id": "source-1", "url": "https://example.test/source" }] },
+    "query": "",
+    "organId": null,
+    "permissions": { "role": "owner", "readOnly": false, "canEdit": true },
+    "locale": "zh-CN",
+    "dataTimezone": "Asia/Shanghai",
+    "now": "2026-08-18T04:00:00.000Z"
+  },
+  "expected": { "contract": "babyforge.native.explore", "babyId": "baby-cross-end", "timezone": "Asia/Shanghai", "experienceCacheState": "fresh", "rawSourceRequired": true, "hasVaccines": true, "hasDiseases": true }
+}

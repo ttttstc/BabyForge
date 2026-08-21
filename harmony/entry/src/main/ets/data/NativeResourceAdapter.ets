@@ -14,7 +14,7 @@ import { NativeExploreModel, parseNativeExplore } from './NativeExploreContract'
 import { NativeSettingsModel, NativeSettingsPatch, parseNativeSettings } from './NativeSettingsContract';
 
 const SERVICE_ORIGIN: string = 'https://babyforge.bbroot.com';
-const NATIVE_AUTH_CALLBACK_URL: string = 'babyforge://auth/callback';
+const NATIVE_AUTH_START_URL: string = `${SERVICE_ORIGIN}/api/native/auth/start`;
 
 export interface NativeBootstrapResult {
   resource: NativeResourceEnvelope;
@@ -36,6 +36,7 @@ export interface NativeBabyInput {
 interface NativeHeaders {
   accept: string;
   'x-babyforge-timezone': string;
+  origin: string;
   Cookie?: string;
   'content-type'?: string;
 }
@@ -47,6 +48,8 @@ interface NativeRequestBody {
   name?: string;
   provider?: string;
   callbackURL?: string;
+  token?: string;
+  newPassword?: string;
   baby?: NativeBabyInput | null;
   event?: NativeCareEvent;
   enabled?: boolean;
@@ -81,14 +84,8 @@ export interface NativePhotoDownload {
 }
 
 interface NativeCorrectionRequest {
-  id: string;
   version: number;
-  occurredAt: string;
-  kind: string;
-  category: string;
-  source: string;
-  actor: Object;
-  payload: Object;
+  event: NativeCareEvent;
 }
 
 interface NativeVersionRequest {
@@ -165,11 +162,13 @@ export class NativeResourceAdapter {
       ? {
         accept: 'application/json',
         'x-babyforge-timezone': this.timezone,
+        origin: SERVICE_ORIGIN,
         'content-type': 'application/json'
       }
       : {
         accept: 'application/json',
-        'x-babyforge-timezone': this.timezone
+        'x-babyforge-timezone': this.timezone,
+        origin: SERVICE_ORIGIN
       };
     const cookie: string = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
@@ -198,13 +197,28 @@ export class NativeResourceAdapter {
         }
       }
       if (responseCode < 200 || responseCode >= 300) {
-        const error = record(payload)['error'];
-        const errorValue: Record<string, Object> = error !== null && typeof error === 'object' ? record(error) : emptyRecord();
+        const rawError = record(payload)['error'];
+        const errorValue: Record<string, Object> = rawError !== null && typeof rawError === 'object' ? record(rawError) : emptyRecord();
+        const nestedCode = errorValue['code'];
+        const topLevelCode = record(payload)['code'];
+        const nestedMessage = errorValue['message'];
+        const topLevelMessage = typeof rawError === 'string' ? rawError : null;
+        const payloadMessage = record(payload)['message'];
+        const retryable = errorValue['retryable'];
+        const serviceMessage = typeof nestedMessage === 'string'
+          ? String(nestedMessage)
+          : topLevelMessage !== null
+            ? topLevelMessage
+            : typeof payloadMessage === 'string' ? String(payloadMessage) : '';
         throw new NativeTransportError(
-          typeof errorValue['code'] === 'string' ? String(errorValue['code']) : 'SERVICE_ERROR',
-          typeof errorValue['message'] === 'string' ? String(errorValue['message']) : '请求未完成，请稍后重试。',
+          typeof nestedCode === 'string'
+            ? String(nestedCode)
+            : typeof topLevelCode === 'string'
+              ? String(topLevelCode)
+              : responseCode === 401 ? 'AUTH_REQUIRED' : 'SERVICE_ERROR',
+          serviceMessage === 'Invalid token' ? 'Google 登录会话已失效，请重新开始。' : serviceMessage || '请求未完成，请稍后重试。',
           responseCode,
-          Boolean(errorValue['retryable']) || responseCode >= 500
+          Boolean(retryable) || Boolean(record(payload)['retryable']) || responseCode >= 500
         );
       }
       return payload;
@@ -409,16 +423,10 @@ export class NativeResourceAdapter {
 
   async correctCareEvent(eventId: string, version: number, replacement: NativeCareEvent): Promise<Object> {
     const payload: NativeCorrectionRequest = {
-      id: replacement.id,
       version,
-      occurredAt: replacement.occurredAt,
-      kind: replacement.kind,
-      category: replacement.category,
-      source: replacement.source,
-      actor: replacement.actor,
-      payload: replacement.payload
+      event: replacement
     };
-    return this.request(`/api/events/${encodeURIComponent(eventId)}`, http.RequestMethod.POST, payload as Object);
+    return this.request(`/api/events/${encodeURIComponent(eventId)}`, PATCH_METHOD, payload as Object);
   }
 
   async findCareEvent(babyId: string, eventId: string): Promise<Object | null> {
@@ -448,7 +456,7 @@ export class NativeResourceAdapter {
       { name: 'timeSource', contentType: 'text/plain', data: timeSource },
       { name: 'photo', contentType, remoteFileName: `native-${Date.now()}.${extension}`, filePath: uri }
     ];
-    const headers: NativeHeaders = { accept: 'application/json', 'x-babyforge-timezone': this.timezone };
+    const headers: NativeHeaders = { accept: 'application/json', 'x-babyforge-timezone': this.timezone, origin: SERVICE_ORIGIN };
     const cookie = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
     try {
@@ -480,7 +488,7 @@ export class NativeResourceAdapter {
   private async fetchPhoto(photoId: string, download: boolean): Promise<NativePhotoDownload> {
     await this.ensureOpened();
     const request = http.createHttp();
-    const headers: NativeHeaders = { accept: 'image/*', 'x-babyforge-timezone': this.timezone };
+    const headers: NativeHeaders = { accept: 'image/*', 'x-babyforge-timezone': this.timezone, origin: SERVICE_ORIGIN };
     const cookie = this.session.cookie();
     if (cookie.length > 0) headers.Cookie = cookie;
     try {
@@ -541,9 +549,18 @@ export class NativeResourceAdapter {
   }
 
   async startSocialLogin(provider: string = 'google'): Promise<string> {
-    const payload = record(await this.request('/api/auth/sign-in/social', http.RequestMethod.POST, requestBody({ provider, callbackURL: NATIVE_AUTH_CALLBACK_URL })));
-    if (typeof payload['url'] !== 'string') throw new NativeTransportError('INVALID_RESPONSE', '第三方登录未返回跳转地址。');
-    return String(payload['url']);
+    if (provider !== 'google') throw new NativeTransportError('UNSUPPORTED_PROVIDER', '暂不支持该第三方登录方式。');
+    return NATIVE_AUTH_START_URL;
+  }
+
+  async finishSocialLogin(token: string): Promise<NativeBootstrapResult> {
+    await this.request('/api/auth/one-time-token/verify', http.RequestMethod.POST, requestBody({ token }));
+    return this.bootstrap();
+  }
+
+  async setAccountPassword(newPassword: string): Promise<NativeBootstrapResult> {
+    await this.request('/api/me/password', http.RequestMethod.POST, requestBody({ newPassword }));
+    return this.bootstrap();
   }
 
   async createHousehold(name: string, baby: NativeBabyInput | null): Promise<NativeBootstrapResult> {

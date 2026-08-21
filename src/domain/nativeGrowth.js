@@ -115,7 +115,7 @@ const buildChart = (definition, baby, measurements, now) => getGrowthChartModel(
 export function validateNativeGrowthModel(model) {
   if (!model || typeof model !== 'object') throw new TypeError('Native growth model must be an object')
   if (model.contract !== NATIVE_GROWTH_CONTRACT) throw new TypeError('Invalid native growth contract')
-  if (!model.contractVersion) throw new TypeError('Missing native growth contract version')
+  if (model.contractVersion !== NATIVE_GROWTH_CONTRACT_VERSION) throw new TypeError('Invalid native growth contract version')
   if (!model.metadata?.generatedAt || !model.metadata?.timezone) {
     throw new TypeError('Missing native growth metadata')
   }

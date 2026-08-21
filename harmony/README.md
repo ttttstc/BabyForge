@@ -8,17 +8,23 @@
 - Bundle Name：`com.ni.babyforge`
 - Production URL：`https://babyforge.bbroot.com/`
 - Device：HarmonyOS NEXT phone，portrait only
-- Distribution：DevEco 本地自动签名的 debug HAP，私人真机演示，不上架
+- Distribution：Issue #74 内测候选包；CI 允许 unsigned 产物，真机安装必须实际验签，不上架 AppGallery
 
 ## Build
 
 在仓库根目录执行：
 
 ```powershell
-& ".\\harmony\\scripts\\build-harmony.ps1"
+# 先验证跨端能力/写入合同和原生源门禁
+npm run verify:cross-end
+npm run verify:harmony
+npm run verify:harmony:candidate
+
+# 有 DevEco 时构建候选 HAP；构建脚本会自动再跑候选包门禁
+npm run build:harmony:candidate
 ```
 
-输出通常位于 `entry/build/default/outputs/default/`。为避免把开发者证书和密钥带入仓库，当前无凭据的命令行自测会生成 `entry-default-unsigned.hap`；明天用已有华为开发者账号在 DevEco Studio 打开 `harmony/`，按下面的本地签名步骤生成可安装的 `entry-default-signed.hap`。工程本身不携带开发者证书或密钥。
+输出通常位于 `entry/build/default/outputs/default/`。候选合同见 [`contracts/harmony-candidate.v1.json`](../contracts/harmony-candidate.v1.json)：无凭据的 CI/命令行构建可以生成 unsigned HAP，但 unsigned 只表示编译产物，不表示可安装或已完成真机验收。工程本身不携带开发者证书或密钥。
 
 ### 明日签名步骤
 
@@ -43,13 +49,14 @@ $env:HAP_SIGN_TOOL = "E:\soft\DevEco Studio\sdk\default\openharmony\toolchains\l
 
 如果 DevEco Studio 不在本机默认路径，可传入根目录：`-DevEcoRoot 'E:\\soft\\DevEco Studio'`。
 
-构建后执行静态验收：
+构建后执行完整候选包验收：
 
 ```powershell
+& "E:\\soft\\DevEco Studio\\tools\\node\\node.exe" ".\\scripts\\verify-harmony-candidate.mjs"
 & "E:\\soft\\DevEco Studio\\tools\\node\\node.exe" ".\\harmony\\scripts\\verify-harmony.mjs"
 ```
 
-明天安装真机前，再设置 `HAP_SIGN_TOOL` 并执行 `--require-signed`；它会实际验签并把未签名或仅改名的 HAP 判为不通过。
+安装真机前，再设置 `HAP_SIGN_TOOL` 并执行 `--require-signed`；它会调用 `hap-sign-tool.jar verify-app` 实际验签，把 unsigned、仅改名或过期 HAP 判为不通过。没有签名工具或授权设备时，候选包报告必须保留“签名/真机未验证”，不能改写为通过。
 
 ## Install
 
@@ -65,6 +72,8 @@ $env:HAP_SIGN_TOOL = "E:\soft\DevEco Studio\sdk\default\openharmony\toolchains\l
 
 原生入口只访问固定 HTTPS 共享业务服务，不连接 D1/R2，不维护第二套事实或规则。网络错误、合同错误、离线缓存、只读和无权限状态由 ArkUI 显式呈现；离线不排队创建照护事实。五个一级标签维护独立导航栈和临时输入，系统返回只处理当前标签栈。
 
-共享合同定义在 [`contracts/native-resource-contract.v1.json`](../contracts/native-resource-contract.v1.json)，跨端能力入口定义在 [`contracts/native-capability-manifest.v1.json`](../contracts/native-capability-manifest.v1.json)；后续页面实现不得绕过原生资源适配层。
+共享合同定义在 [`contracts/native-resource-contract.v1.json`](../contracts/native-resource-contract.v1.json)，跨端能力入口定义在 [`contracts/desktop-capability-manifest.v1.json`](../contracts/desktop-capability-manifest.v1.json) 与 [`contracts/native-capability-manifest.v1.json`](../contracts/native-capability-manifest.v1.json)，写入语义定义在 [`contracts/native-write-contract.v1.json`](../contracts/native-write-contract.v1.json)，共同夹具登记在 [`contracts/cross-end-fixtures.v1.json`](../contracts/cross-end-fixtures.v1.json)。后续页面实现不得绕过原生资源适配层或复制桌面事实/展示常量。
+
+Issue #74 的完整门禁、能力映射、人工验收和签名边界见 [`docs/harmonyos-native-release-gates.md`](../docs/harmonyos-native-release-gates.md)。
 
 历史 ArkWeb 目标仍保留独立页面，供回溯壳层导航、安全策略和 Web 业务兼容性研究；它不作为原生内测版的业务表面。

@@ -9,9 +9,32 @@ function fail(message) {
 }
 
 async function fetchRequired(url, label) {
-  const response = await fetch(url, { redirect: 'follow' })
-  if (!response.ok) throw new Error(`${label} 返回 HTTP ${response.status}`)
-  return response
+  let lastError
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      const response = await fetch(url, { redirect: 'follow' })
+      if (response.ok) return response
+      lastError = new Error(`${label} 返回 HTTP ${response.status}`)
+    } catch (error) {
+      lastError = error
+    }
+    if (attempt < 9) await new Promise((resolve) => setTimeout(resolve, 2000))
+  }
+  throw lastError
+}
+
+async function verifyAnonymousSession(url) {
+  let status = 0
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      status = (await fetch(url, { redirect: 'manual' })).status
+      if (status === 401) return
+    } catch {
+      status = 0
+    }
+    if (attempt < 9) await new Promise((resolve) => setTimeout(resolve, 2000))
+  }
+  throw new Error(`/api/me 未登录状态应返回 401，实际为 ${status || '网络错误'}`)
 }
 
 try {
@@ -26,10 +49,7 @@ try {
     throw new Error('入口资源未包含 remembered session 登录参数')
   }
 
-  const sessionResponse = await fetch(new URL('/api/me', baseUrl), { redirect: 'manual' })
-  if (sessionResponse.status !== 401) {
-    throw new Error(`/api/me 未登录状态应返回 401，实际为 ${sessionResponse.status}`)
-  }
+  await verifyAnonymousSession(new URL('/api/me', baseUrl))
 
   console.log(`生产 Web 冒烟验收通过：${baseUrl.origin}`)
 } catch (error) {

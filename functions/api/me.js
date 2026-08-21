@@ -1,4 +1,4 @@
-import { getBetterAuthSession } from '../_shared/betterAuth.js'
+import { getBetterAuthSession, requiresPasswordSetup } from '../_shared/betterAuth.js'
 import { json } from '../_shared/auth.js'
 import { findHouseholdForPrincipal, getPrincipal } from '../_shared/principal.js'
 
@@ -20,6 +20,7 @@ export async function onRequestGet({ request, env }) {
   const principal = await getPrincipal(request, env, { allowLegacy: false })
   if (principal.response) return principal.response
   const user = current.user
+  const passwordSetupRequired = await requiresPasswordSetup(env, user.id)
   return json({
     user: {
       id: user.id,
@@ -28,6 +29,7 @@ export async function onRequestGet({ request, env }) {
       nickname: user.name || '家长',
       displayName: user.name || '家长',
       avatar: user.image || null,
+      requiresPasswordSetup: passwordSetupRequired,
     },
     household: await findHouseholdForPrincipal(env, principal),
   })

@@ -33,8 +33,12 @@ jobs:
         run: npm run build
       - name: Verify web bundle budget
         run: npm run verify:bundle
+      - name: Verify Web and Harmony capability contract
+        run: npm run verify:cross-end
       - name: Verify HarmonyOS shell policy
         run: npm run verify:harmony
+      - name: Verify HarmonyOS candidate contract
+        run: npm run verify:harmony:candidate
       - name: Install Chromium for visual checks
         run: npx playwright install --with-deps chromium
       - name: Run experience visual checks

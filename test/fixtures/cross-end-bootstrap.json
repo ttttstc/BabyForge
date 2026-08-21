@@ -1,0 +1,13 @@
+{
+  "input": {
+    "contract": "babyforge.native.bootstrap",
+    "contractVersion": "1.0.0",
+    "generatedAt": "2026-08-18T04:00:00.000Z",
+    "dataTimezone": "Asia/Shanghai",
+    "sourceVersion": "fixture-web-main",
+    "permissions": { "authenticated": true, "role": "owner", "readOnly": false, "canEdit": true, "canManageHousehold": true, "canCreateHousehold": false, "canAcceptInvite": false },
+    "user": { "id": "user-cross-end", "email": "parent@example.test", "emailVerified": true, "nickname": "家长", "displayName": "家长", "requiresPasswordSetup": false },
+    "household": { "id": "household-cross-end", "name": "小舟的家庭", "role": "owner", "readOnly": false, "members": [], "pendingInvites": [], "baby": { "id": "baby-cross-end", "nickname": "小舟", "birthDate": "2026-08-01", "locale": "zh-CN" } }
+  },
+  "expected": { "contract": "babyforge.native.bootstrap", "userId": "user-cross-end", "householdId": "household-cross-end", "babyId": "baby-cross-end", "timezone": "Asia/Shanghai", "permissionRole": "owner", "readOnly": false }
+}

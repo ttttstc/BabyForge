@@ -1,0 +1,22 @@
+{
+  "contract": "babyforge.harmony.candidate",
+  "contractVersion": "1.0.0",
+  "bundleName": "com.ni.babyforge",
+  "moduleName": "entry",
+  "deviceTypes": ["phone"],
+  "orientation": "portrait",
+  "outputDirectory": "harmony/entry/build/default/outputs/default",
+  "hapPattern": "*.hap",
+  "signing": {
+    "requiredForInstall": true,
+    "unsignedAllowedForCi": true,
+    "appGallery": false
+  },
+  "verification": {
+    "source": "verify-harmony.mjs --source-only",
+    "candidate": "verify-harmony-candidate.mjs",
+    "archiveSecurity": "candidate HAP entries and text resources are scanned for signing material, secrets, and fixture/real-user markers",
+    "signature": "only verified when hap-sign-tool.jar is supplied",
+    "device": "only verified by a connected authorized HarmonyOS device"
+  }
+}

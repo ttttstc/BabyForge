@@ -41,6 +41,7 @@ function validateUser(user) {
   requiredString(value.id, 'user.id')
   requiredString(value.displayName, 'user.displayName')
   requiredBoolean(value.emailVerified, 'user.emailVerified')
+  requiredBoolean(value.requiresPasswordSetup, 'user.requiresPasswordSetup')
   if (value.email !== null && typeof value.email !== 'string') {
     throw new NativeResourceContractError('INVALID_FIELD', '共享业务合同的 user.email 无效')
   }
