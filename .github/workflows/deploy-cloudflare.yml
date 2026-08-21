@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      deploy_photo_transformer:
+        description: Deploy the private photo transformer Worker
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -62,6 +68,7 @@ jobs:
           command: d1 migrations apply babyforge --remote
 
       - name: Deploy private photo transformer
+        if: inputs.deploy_photo_transformer || (github.event_name == 'push' && contains(toJSON(github.event.commits), 'workers/photo-transformer/'))
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
